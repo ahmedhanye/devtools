@@ -1,0 +1,18 @@
+# Agent temp and scratch directories
+.scratch/
+
+# Dependencies
+node_modules/
+
+# Build artifacts and exports
+dist/
+out/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# OS files
+.DS_Store
+Thumbs.db
