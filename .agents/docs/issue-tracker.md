@@ -16,6 +16,7 @@ Issues and specs live as GitHub issues. Use the `gh` CLI for all operations. The
 External pull requests are not treated as feature requests. New features begin as issues.
 
 When inspecting pull requests:
+
 - Read a PR: `gh pr view <number> --json number,title,body,labels,comments` and `gh pr diff <number>` for the diff.
 - List PRs: `gh pr list --state open --json number,title,body,labels,author,comments`
 
@@ -45,7 +46,7 @@ The project organizes work into Specs (parent issues) and Tickets (child sub-iss
 
 ## Project board status lifecycle
 
-Status is tracked exclusively on the project board (`Todo`, `In Progress`, `In Review`, `Done`). Repository `status:*` labels are removed per ADR 0002.
+Status is tracked exclusively on the project board (`Todo`, `In Progress`, `In Review`, `Done`). Repository `status:*` labels are not used.
 
 - Claim ticket: assign `@me` and create the native linked branch:
   ```bash
@@ -56,7 +57,7 @@ Status is tracked exclusively on the project board (`Todo`, `In Progress`, `In R
   When any child ticket moves to `In Progress`, update the parent Spec to `In Progress` on the project board.
   Parent Specs never move to `In Review` automatically from child tickets.
   Parent Specs remain `In Progress` until all child tickets reach `Done` and the maintainer reviews the Spec.
-- Pull requests: follow `CONTRIBUTING.md` for draft PR creation, verification, and review submission.
+- Pull requests: follow `CONTRIBUTING.md` for pull request creation, verification, and review submission.
 - Resolve ticket: post the solution summary in a comment and close the ticket:
   ```bash
   gh issue comment <ticket_number> --body "..."

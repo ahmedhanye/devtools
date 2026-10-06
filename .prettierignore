@@ -1,0 +1,9 @@
+dist
+out
+.next
+node_modules
+bun.lock
+skills-lock.json
+.agents/skills
+.scratch
+storybook-static

@@ -7,6 +7,8 @@ node_modules/
 # Build artifacts and exports
 dist/
 out/
+.next/
+storybook-static/
 
 # Environment files
 .env
@@ -16,3 +18,10 @@ out/
 # OS files
 .DS_Store
 Thumbs.db
+
+# SQLite local databases and write-ahead logs
+.devtools/
+.data/
+*.db
+*.db-wal
+*.db-shm

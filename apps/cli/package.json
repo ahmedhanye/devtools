@@ -1,0 +1,21 @@
+{
+  "name": "@devtools/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "devtools": "./bin/devtools.js"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@devtools/api": "workspace:*",
+    "@devtools/core": "workspace:*",
+    "@devtools/db": "workspace:*",
+    "@inquirer/prompts": "^7.3.3",
+    "commander": "^13.1.0",
+    "picocolors": "^1.1.1"
+  }
+}

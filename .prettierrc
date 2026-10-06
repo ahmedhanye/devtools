@@ -1,0 +1,11 @@
+{
+  "overrides": [
+    {
+      "files": ["apps/frontend/**/*.{ts,tsx,css}"],
+      "options": {
+        "plugins": ["prettier-plugin-tailwindcss"],
+        "tailwindFunctions": ["cn", "clsx", "cva"]
+      }
+    }
+  ]
+}

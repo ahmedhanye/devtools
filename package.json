@@ -1,0 +1,28 @@
+{
+  "name": "devtools",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.2.4",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "lint": "oxlint .",
+    "lint:fix": "oxlint --fix .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "oxlint . && prettier --check .",
+    "typecheck": "bun --filter '*' typecheck",
+    "test": "bun --filter '*' test",
+    "verify": "bun run check && bun --filter '*' lint:design && bun --filter '*' lint:fsd && bun run typecheck && bun run test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "fallow": "^3.31.0",
+    "oxlint": "^1.86.0",
+    "prettier": "^3.9.9",
+    "prettier-plugin-tailwindcss": "^0.8.1",
+    "typescript": "^5.7.3"
+  }
+}

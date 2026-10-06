@@ -1,0 +1,4 @@
+[test]
+# Ignore frontend Vitest tests during root bun test runs
+pathIgnorePatterns = ["apps/frontend/**"]
+ignore = ["apps/frontend/**"]
