@@ -1,0 +1,189 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+language: "en-US"
+early_access: false
+
+tone_instructions: >-
+  Be concise, objective, and direct. Focus strictly on architecture boundaries,
+  correctness, type safety, security, and runtime performance.
+  Provide minimal, copy-pasteable diffs without conversational filler.
+
+reviews:
+  profile: "chill"
+  request_changes_workflow: false
+
+  high_level_summary: true
+  high_level_summary_in_walkthrough: true
+  collapse_walkthrough: true
+  sequence_diagrams: true
+  review_status: true
+  poem: false
+  enable_prompt_for_ai_agents: true
+
+  auto_review:
+    enabled: true
+    drafts: false
+    auto_incremental_review: true
+    auto_pause_after_reviewed_commits: 5
+    base_branches:
+      - "main"
+    ignore_title_keywords:
+      - "WIP"
+      - "wip"
+      - "Draft"
+    ignore_usernames:
+      - "dependabot[bot]"
+      - "renovate[bot]"
+
+  pre_merge_checks:
+    title:
+      mode: "error"
+      requirements: >-
+        Title must strictly adhere to Conventional Commits:
+        `<type>(<scope>): <imperative description>`.
+        Allowed types: feat, fix, chore, docs, style, refactor, perf, test, build, ci, revert.
+        Scope must be lowercase (e.g., api, frontend, db, core, cli).
+        Do not include issue references (e.g., `(#123)`) in the title.
+    description:
+      mode: "warning"
+    custom_checks:
+      - name: "Feature-Sliced Design (FSD) Layer Purity"
+        mode: "error"
+        instructions: >-
+          Verify that frontend code under `apps/frontend/src` strictly follows FSD v2.1:
+          1. Imports flow strictly downwards: app -> pages -> widgets -> features -> entities -> shared.
+          2. Slices in the same layer must NEVER import directly from each other.
+          3. Slices must be imported only through their public API entry point (`index.ts`).
+      - name: "No Hardcoded Secrets or Credentials"
+        mode: "error"
+        instructions: >-
+          Ensure that no plaintext API secrets, tokens, private keys, database connection
+          strings with passwords, or sensitive environment values are committed in diffs.
+
+  path_filters:
+    - "!bun.lock"
+    - "!**/bun.lock"
+    - "!package-lock.json"
+    - "!pnpm-lock.yaml"
+    - "!yarn.lock"
+    - "!apps/**/dist/**"
+    - "!apps/**/.next/**"
+    - "!dist/**"
+    - "!build/**"
+    - "!out/**"
+    - "!storybook-static/**"
+    - "!apps/frontend/next-env.d.ts"
+    - "!**/.scratch/**"
+    - "!**/.fallow/**"
+    - "!**/coverage/**"
+    - "!**/.turbo/**"
+    - "!skills-lock.json"
+    - "!.agents/skills/**"
+    - "!**/*.{png,jpg,jpeg,gif,svg,ico,woff,woff2,ttf,eot,mp4,webm}"
+    - "!**/*.min.{js,css}"
+    - "!**/*.map"
+
+  path_instructions:
+    - path: "apps/frontend/**"
+      instructions: >-
+        This package is a Next.js App Router frontend governed by strict Feature-Sliced Design (v2.1).
+        Enforce the following:
+        1. FSD Hierarchy: layers strictly descend (app -> pages -> widgets -> features -> entities -> shared).
+           Never import from an upper layer into a lower layer.
+        2. Encapsulation: Access slices strictly through their public API (`index.ts`). Never import internal files.
+        3. UI & Styling: Use `@base-ui/react` primitives for accessible UI components.
+           Enforce Tailwind CSS utility classes with the `cn()` helper.
+           Strictly forbid inline `style={{ ... }}` and hardcoded raw color literals (e.g. `text-[#fff]`, `bg-red-500`).
+        4. React 19: Keep Client Components (`'use client'`) at tree leaves. Avoid unnecessary useEffect or re-renders.
+
+    - path: "apps/api/**"
+      instructions: >-
+        This package is a Hono API service.
+        Enforce the following:
+        1. Input Validation: Validate all incoming request bodies, query params, and route parameters
+           using Zod/validator middleware prior to execution.
+        2. Thin Controllers: Route handlers must delegate business logic to domain services in `packages/core`.
+        3. HTTP Semantics: Return appropriate HTTP status codes (200, 201, 400, 401, 403, 404, 500)
+           and structured JSON error responses.
+
+    - path: "packages/db/**"
+      instructions: >-
+        This package manages database models and migrations via Drizzle ORM.
+        Enforce the following:
+        1. Type Safety: Use Drizzle query builders and prepared statements; strictly forbid raw unescaped SQL.
+        2. Migrations: All schema modifications must be backward-compatible and accompanied by generated migrations.
+        3. Integrity: Ensure indexes are defined on foreign keys and frequently queried columns.
+        4. Transactions: Multi-table writes must be wrapped inside `db.transaction()`.
+
+    - path: "apps/cli/**"
+      instructions: >-
+        This package provides command-line developer tooling.
+        Enforce clean exit codes (0 for success, non-zero for failure), pipe-friendly stdout,
+        informative stderr diagnostics, and graceful exception handling.
+
+    - path: "packages/core/**"
+      instructions: >-
+        This package provides canonical domain schemas, types, and error definitions.
+        Enforce the following:
+        1. Pure Domain: Zero runtime dependencies on database clients, HTTP servers, or browser/UI frameworks.
+        2. Schema Authority: Export canonical Zod schemas and derived TypeScript types for cross-package contracts.
+        3. Stable Contracts: Maintain backward-compatible schema changes and explicit error codes.
+
+    - path: ".github/workflows/**"
+      instructions: >-
+        Enforce secure CI/CD practices:
+        1. Pin actions to full commit SHAs or trusted releases.
+        2. Apply least privilege to `permissions:` blocks.
+        3. Use Bun (`bun`/`bunx`) for package execution and cache setups.
+
+  tools:
+    biome:
+      enabled: false
+    eslint:
+      enabled: false
+    oxc:
+      enabled: true
+    reactDoctor:
+      enabled: true
+    ast-grep:
+      enabled: true
+      essential_rules: true
+    github-checks:
+      enabled: true
+    gitleaks:
+      enabled: true
+    trufflehog:
+      enabled: true
+    zizmor:
+      enabled: true
+    skillspector:
+      enabled: true
+    markdownlint:
+      enabled: true
+    shellcheck:
+      enabled: true
+    actionlint:
+      enabled: true
+
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - ".agents/AGENTS.md"
+      - ".agents/CONTEXT.md"
+      - ".agents/rules/*"
+      - "CONTRIBUTING.md"
+      - ".agents/docs/adr/*"
+  learnings:
+    scope: "local"
+    approval_delay: 0
+  issues:
+    scope: "local"
+  pull_requests:
+    scope: "local"
+  web_search:
+    enabled: true
+
+chat:
+  auto_reply: true
+  art: false

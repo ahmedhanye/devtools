@@ -3,6 +3,7 @@ import { Command } from "commander";
 import pc from "picocolors";
 import { type DaemonInstance, startDaemon } from "./daemon";
 import { findNextAvailablePort, isPortAvailable } from "./port";
+import pkg from "../../../package.json";
 
 export interface WebCommandOptions {
   port?: number;
@@ -110,7 +111,7 @@ export function createProgram(): Command {
   program
     .name("devtools")
     .description("DevTools Developer CLI")
-    .version("0.1.0");
+    .version(pkg.version);
 
   program
     .command("web")

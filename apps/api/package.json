@@ -1,6 +1,6 @@
 {
   "name": "@devtools/api",
-  "version": "0.1.0",
+  "description": "Developer tooling HTTP API server",
   "private": true,
   "type": "module",
   "main": "./src/index.ts",

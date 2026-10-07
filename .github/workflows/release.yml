@@ -1,0 +1,128 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  DO_NOT_TRACK: "1"
+  NEXT_TELEMETRY_DISABLED: "1"
+  STORYBOOK_DISABLE_TELEMETRY: "1"
+  FALLOW_TELEMETRY_DISABLED: "1"
+  REACT_DOCTOR_NO_TELEMETRY: "1"
+
+jobs:
+  release-please:
+    name: Release Please
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # Required for creating release tags, notes, and releases
+      pull-requests: write # Required for creating and updating the candidate release PR
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
+        with:
+          egress-policy: audit
+
+      - name: Run Release Please
+        id: release
+        uses: googleapis/release-please-action@d1a8f221d7723166f48a584aebba00ef3f6febec # v4.1.4
+
+  build-binaries:
+    name: Build Standalone Binary (${{ matrix.target.name }})
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read # Required to checkout repository code
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - name: devtools-linux-x64
+            bun-target: bun-linux-x64
+          - name: devtools-linux-arm64
+            bun-target: bun-linux-arm64
+          - name: devtools-darwin-arm64
+            bun-target: bun-darwin-arm64
+          - name: devtools-darwin-x64
+            bun-target: bun-darwin-x64
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Bun environment
+        uses: ./.github/actions/setup-bun
+
+      - name: Compile standalone executable
+        env:
+          TARGET: ${{ matrix.target.bun-target }}
+          OUTFILE: dist/${{ matrix.target.name }}
+        run: |
+          mkdir -p dist
+          bun build apps/cli/bin/devtools.js --compile --minify --bytecode --format=esm --target="$TARGET" --outfile="$OUTFILE"
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        with:
+          name: ${{ matrix.target.name }}
+          path: dist/${{ matrix.target.name }}
+          if-no-files-found: error
+
+  publish-release-assets:
+    name: Publish Release Assets
+    needs:
+      - release-please
+      - build-binaries
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # Required for uploading binary assets and checksums to GitHub Release
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
+        with:
+          egress-policy: audit
+
+      - name: Download binary artifacts
+        uses: actions/download-artifact@cc203385981b70ca67e1cc392babf9cc229d5806 # v4.1.9
+        with:
+          pattern: "devtools-*"
+          path: dist
+          merge-multiple: true
+
+      - name: Verify binary artifacts and generate checksums
+        working-directory: dist
+        run: |
+          test -s devtools-linux-x64 && test -s devtools-linux-arm64
+          test -s devtools-darwin-arm64 && test -s devtools-darwin-x64
+          sha256sum devtools-linux-x64 devtools-linux-arm64 devtools-darwin-arm64 devtools-darwin-x64 > SHA256SUMS.txt
+
+      - name: Upload assets to GitHub Release
+        working-directory: dist
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          gh release upload "$TAG_NAME" devtools-* SHA256SUMS.txt --clobber

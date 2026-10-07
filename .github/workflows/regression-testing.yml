@@ -1,0 +1,165 @@
+name: Regression Testing
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  DO_NOT_TRACK: "1"
+  NEXT_TELEMETRY_DISABLED: "1"
+  STORYBOOK_DISABLE_TELEMETRY: "1"
+  FALLOW_TELEMETRY_DISABLED: "1"
+  REACT_DOCTOR_NO_TELEMETRY: "1"
+
+jobs:
+  lint-and-format:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Bun environment
+        uses: ./.github/actions/setup-bun
+
+      - name: Verify formatting (Prettier)
+        run: bun run format:check
+
+      - name: Run root Oxlint
+        run: bun run lint
+
+      - name: Run Steiger FSD architecture linting
+        run: bun --filter @devtools/frontend lint:fsd
+
+      - name: Run frontend design tokens linting
+        run: bun --filter @devtools/frontend lint:design
+
+  architecture-and-health:
+    name: Architecture & Health
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Bun environment
+        uses: ./.github/actions/setup-bun
+
+      - name: Verify FSD boundaries and dead code (Fallow)
+        run: bunx fallow dead-code
+
+      - name: Scan React regressions (React Doctor)
+        if: github.event_name == 'pull_request'
+        run: bunx react-doctor apps/frontend --scope changed --base origin/main --no-telemetry --no-supply-chain
+
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Bun environment
+        uses: ./.github/actions/setup-bun
+
+      - name: Run typecheck across all workspaces
+        run: bun run typecheck
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Bun environment
+        uses: ./.github/actions/setup-bun
+
+      - name: Build frontend static assets
+        run: bun --filter @devtools/frontend build
+
+      - name: Run test suites across all workspaces
+        run: bun run test
+
+  build:
+    name: Build & Smoke Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Bun environment
+        uses: ./.github/actions/setup-bun
+
+      - name: Build Next.js static production export
+        run: bun --filter @devtools/frontend build
+
+      - name: Compile standalone CLI for host
+        run: bun build apps/cli/bin/devtools.js --compile --outfile dist/devtools
+
+      - name: Smoke test host CLI binary
+        run: ./dist/devtools --help
+
+      - name: Cross-compile standalone CLI for darwin-arm64
+        run: bun build apps/cli/bin/devtools.js --compile --target=bun-darwin-arm64 --outfile dist/devtools-darwin-arm64

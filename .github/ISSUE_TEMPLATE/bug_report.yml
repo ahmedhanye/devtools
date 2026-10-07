@@ -1,0 +1,82 @@
+name: Bug Report
+description: File a reproducible bug report to help us improve DevTools
+title: "[Bug]: "
+labels: ["type:bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting an issue! Please verify that your report does not contain sensitive credentials or secrets.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected Area
+      description: Select the package or component affected by this issue.
+      options:
+        - "@devtools/cli"
+        - "@devtools/api"
+        - "@devtools/frontend"
+        - "@devtools/core"
+        - "@devtools/db"
+        - "toolchain / infra"
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Problem Description
+      description: A clear and concise description of the bug encountered.
+      placeholder: Describe what happened...
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Step-by-step instructions, minimal code, or terminal commands to reproduce the issue.
+      placeholder: |
+        1. Run 'bun run ...'
+        2. Execute 'devtools ...'
+        3. See error
+    validations:
+      required: true
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: Expected Behavior
+      description: A clear and concise description of what you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment Information
+      description: |
+        Please provide relevant environment information:
+        - Operating System & Architecture (e.g., macOS Sequoia arm64, Ubuntu 24.04 x64)
+        - Bun version (`bun --version`)
+        - DevTools binary version or commit SHA
+      placeholder: |
+        - OS:
+        - Bun version:
+        - DevTools version / commit:
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Terminal Logs & Output
+      description: Paste relevant terminal logs, stack traces, or errors here.
+      render: shell
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      description: "Please verify each requirement before submitting:"
+      options:
+        - label: I have searched existing issues to confirm this has not already been reported.
+          required: true
+        - label: I have verified this behavior against the latest release or `main` branch.
+          required: true
+        - label: I confirm this is not a security vulnerability (security issues must be reported privately via Security Advisories).
+          required: true

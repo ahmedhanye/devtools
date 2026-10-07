@@ -1,5 +1,6 @@
 {
   "name": "@devtools/core",
+  "description": "Shared domain models, configuration schemas, and utilities",
   "private": true,
   "type": "module",
   "main": "./src/index.ts",

@@ -1,5 +1,6 @@
 {
   "name": "@devtools/frontend",
+  "description": "Developer tooling web dashboard and UI",
   "private": true,
   "type": "module",
   "scripts": {

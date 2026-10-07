@@ -22,3 +22,21 @@ Rules for package management, workspace boundaries, and dependency placement acr
 1. Declare runtime dependencies in the importing workspace's `package.json`. Disallow phantom dependencies that resolve through root hoisting.
 2. Place package-specific linter plugins (`@shadcn/lint`, `steiger`) in the leaf workspace that uses them, not in the workspace root.
 3. Keep the TypeScript compiler (`typescript`) at the workspace root to maintain a single version across packages. Subpackages run `tsc --noEmit` without declaring a local `typescript` dependency.
+
+## Workspace lifecycle
+
+When adding or removing a workspace package under `apps/*` or `packages/*`:
+
+1. Update `.coderabbit.yaml` (`reviews.path_instructions`) with the package's architectural boundaries and domain review contracts.
+2. Update `.fallowrc.json` with new architecture boundary zones and import rules if the package introduces new structural layers.
+3. Configure `tsconfig.json` to extend `tsconfig.base.json` and declare inter-workspace dependencies using the `workspace:*` protocol.
+4. Verify root orchestration: ensure `bun run typecheck`, `bun run lint`, and `bun run test` cover the new workspace package.
+
+## Telemetry suppression for tools and packages
+
+When introducing or updating a tool, CLI, or library:
+
+1. Check whether the package collects telemetry, crash reports, or usage analytics.
+2. Disable telemetry through native configuration files when supported (such as `core.disableTelemetry` in Storybook).
+3. Add the package's kill switch environment variable to `.env.example` and `.github/workflows/*.yml`.
+4. Honor `DO_NOT_TRACK=1` alongside tool-specific kill switches.

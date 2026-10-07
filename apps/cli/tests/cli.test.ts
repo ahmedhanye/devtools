@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { HealthResponseSchema } from "@devtools/core";
 import { createProgram, runWebCommand } from "../src/cli";
+import pkg from "../../../package.json";
 import { getFreePort, waitForServer } from "./support/network";
 
 const binPath = resolve(__dirname, "../bin/devtools.js");
@@ -169,7 +170,7 @@ describe("CLI Command Structure & Parser Unit Tests", () => {
   test("createProgram initializes command options and metadata", () => {
     const program = createProgram();
     expect(program.name()).toBe("devtools");
-    expect(program.version()).toBe("0.1.0");
+    expect(program.version()).toBe(pkg.version);
 
     const webCommand = program.commands.find((cmd) => cmd.name() === "web");
     expect(webCommand).toBeDefined();

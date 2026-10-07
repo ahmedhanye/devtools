@@ -1,5 +1,35 @@
 {
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
   "entry": ["apps/frontend/steiger.config.js"],
-  "ignoreDependencies": ["prettier-plugin-tailwindcss"]
+  "ignoreDependencies": ["prettier-plugin-tailwindcss"],
+  "ignoreUnresolvedImports": ["./.next/**", "**/.next/**"],
+  "boundaries": {
+    "preset": "feature-sliced",
+    "zones": [
+      {
+        "name": "app",
+        "patterns": ["apps/frontend/src/app/**"]
+      },
+      {
+        "name": "pages",
+        "patterns": ["apps/frontend/src/pages/**"]
+      },
+      {
+        "name": "widgets",
+        "patterns": ["apps/frontend/src/widgets/**"]
+      },
+      {
+        "name": "features",
+        "patterns": ["apps/frontend/src/features/**"]
+      },
+      {
+        "name": "entities",
+        "patterns": ["apps/frontend/src/entities/**"]
+      },
+      {
+        "name": "shared",
+        "patterns": ["apps/frontend/src/shared/**"]
+      }
+    ]
+  }
 }

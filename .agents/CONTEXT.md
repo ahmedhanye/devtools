@@ -57,3 +57,30 @@ An undeclared package imported inside a workspace that resolves only through par
 
 **Shared Core**:
 The `@devtools/core` package providing domain schemas, types, and error definitions used across multiple packages.
+
+**Release PR**:
+The automated candidate pull request maintained on `main` by Release Please that aggregates Conventional Commits into changelog and version updates until merged by a maintainer.
+
+**Standalone Executable**:
+A self-contained, single-file binary produced by `bun build --compile` embedding the Bun runtime engine, entrypoint bytecode, and dependencies for a specific target operating system and architecture.
+
+**Checksum Manifest**:
+The cryptographic verification file (`SHA256SUMS.txt`) documenting SHA256 hashes of all compiled standalone executables attached to a GitHub release.
+
+**Code Owner**:
+The designated maintainer account (`@AhmedHanye`) holding mandatory review responsibility across the repository, declared via `.github/CODEOWNERS` and enforced via repository rulesets.
+
+**Private Vulnerability Reporting (PVR)**:
+The confidential disclosure channel within GitHub Security Advisories enabling researchers to submit vulnerability reports under a 48-hour triage SLA without public disclosure.
+
+**Fork Security Boundary**:
+The repository perimeter protection enforced via GitHub Branch Rulesets and mandatory Code Owner review (`@AhmedHanye`) ensuring external fork pull requests cannot modify protected workflows, toolchain manifests, or agent instruction files without explicit maintainer approval.
+
+**Branch Ruleset**:
+The repository policy configuration on `main` enforcing required CI status checks, linear squash merges, and Code Owner review gates with maintainer bypass authorization.
+
+**Vendor Skill**:
+An external capability package declared in `skills-lock.json` whose upstream instructions may be superseded by repository-specific execution boundaries.
+
+**Review Thread Resolution**:
+The pull request state invariant enforced by repository rulesets requiring all reviewer and bot comment conversations to be explicitly marked resolved before merge eligibility.

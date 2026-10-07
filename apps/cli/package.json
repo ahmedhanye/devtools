@@ -1,6 +1,6 @@
 {
   "name": "@devtools/cli",
-  "version": "0.1.0",
+  "description": "Developer tooling command-line interface",
   "private": true,
   "type": "module",
   "bin": {

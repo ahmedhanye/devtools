@@ -1,0 +1,65 @@
+name: Feature Slice
+description: Propose or track an atomic vertical slice delivering end-to-end functionality for a parent Spec
+title: "[Slice]: "
+labels: ["type:feat"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A **Feature Slice** (Ticket) delivers end-to-end functionality across schema, logic, UI, and tests in a single unit of work.
+
+        > **Linking Parent Spec:** Link this ticket to its parent Spec using GitHub's native Sub-Issues (`Add sub-issue` in the issue sidebar, or `gh api repos/:owner/:repo/issues/<spec_number>/sub_issues -F sub_issue_id=<ticket_id>`). Do not assign milestones to Tickets (milestones belong strictly to Specs).
+  - type: dropdown
+    id: area
+    attributes:
+      label: Primary Affected Area
+      description: Select the primary package or component for this vertical slice.
+      options:
+        - "@devtools/cli"
+        - "@devtools/api"
+        - "@devtools/frontend"
+        - "@devtools/core"
+        - "@devtools/db"
+        - "toolchain / infra"
+    validations:
+      required: true
+  - type: textarea
+    id: objective
+    attributes:
+      label: Slice Objective & User Value
+      description: What specific user behavior or capability does this slice enable?
+      placeholder: Describe what this slice delivers when merged...
+    validations:
+      required: true
+  - type: textarea
+    id: slice_scope
+    attributes:
+      label: Vertical Slice Scope
+      description: Outline the changes required across layers (schema, logic, UI, tests).
+      placeholder: |
+        - **Schema & DB:** (e.g., migrations, Drizzle schemas, contract types)
+        - **Logic & Services:** (e.g., domain logic, route handlers, error handling)
+        - **UI & Presentation:** (e.g., FSD slices, client components, state hooks)
+        - **Tests:** (e.g., unit tests, integration tests, contract assertions)
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Automated Acceptance Criteria
+      description: Specify observable, checkable commands (test runs, exit codes, HTTP statuses) that verify this ticket.
+      placeholder: |
+        - [ ] `bun run verify` passes with exit code 0
+        - [ ] New behavioral tests pass via `bun test ...`
+    validations:
+      required: true
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Ticket Invariants
+      description: "Verify ticket lifecycle invariants:"
+      options:
+        - label: I confirm this ticket represents an atomic vertical slice deliverable in a single session/PR.
+          required: true
+        - label: I will link this ticket to its parent Spec using native sub-issues and will not assign a milestone directly to this ticket.
+          required: true

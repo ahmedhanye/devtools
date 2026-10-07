@@ -1,25 +1,35 @@
 {
   "name": "devtools",
+  "version": "0.0.0",
+  "description": "Developer tooling monorepo providing development utilities and workflows across CLI, daemon, API, and frontend interfaces.",
+  "license": "MIT",
+  "author": "Ahmed Hanye",
+  "repository": "https://github.com/AhmedHanye/devtools.git",
   "private": true,
   "type": "module",
-  "packageManager": "bun@1.2.4",
+  "packageManager": "bun@1.4.2",
   "workspaces": [
     "apps/*",
     "packages/*"
   ],
   "scripts": {
+    "prepare": "lefthook install",
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "oxlint . && prettier --check .",
     "typecheck": "bun --filter '*' typecheck",
-    "test": "bun --filter '*' test",
+    "test": "bun --filter '*' test && bun test scripts/",
+    "build": "bun --filter '*' build",
+    "audit": "bun audit --audit-level=high --ignore GHSA-vfj7-8cjw-p6xm",
+    "pin:actions": ".agents/skills/github-actions/scripts/pin-action.sh",
     "verify": "bun run check && bun --filter '*' lint:design && bun --filter '*' lint:fsd && bun run typecheck && bun run test"
   },
   "devDependencies": {
     "@types/bun": "latest",
     "fallow": "^3.31.0",
+    "lefthook": "^2.1.17",
     "oxlint": "^1.86.0",
     "prettier": "^3.9.9",
     "prettier-plugin-tailwindcss": "^0.8.1",

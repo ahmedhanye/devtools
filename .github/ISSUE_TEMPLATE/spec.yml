@@ -1,0 +1,67 @@
+name: Capability Spec
+description: Propose or track a high-level capability specification or milestone epic
+title: "[Spec]: "
+labels: ["type:spec"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A **Spec** represents a high-level milestone epic tracking a core capability.
+        Specs hold milestones and break down into atomic vertical slices (child sub-issues).
+  - type: dropdown
+    id: area
+    attributes:
+      label: Primary Affected Area
+      description: Select the primary package or component for this capability.
+      options:
+        - "@devtools/cli"
+        - "@devtools/api"
+        - "@devtools/frontend"
+        - "@devtools/core"
+        - "@devtools/db"
+        - "toolchain / infra"
+        - "cross-cutting / all"
+    validations:
+      required: true
+  - type: textarea
+    id: overview
+    attributes:
+      label: Capability Overview & Problem Statement
+      description: What capability does this spec introduce, and what concrete technical problem or user need does it solve?
+      placeholder: Provide a clear, high-level summary of the capability...
+    validations:
+      required: true
+  - type: textarea
+    id: architecture
+    attributes:
+      label: Target Architecture & Seams
+      description: Describe key module boundaries, package interactions, schemas, or runtime stack components involved.
+      placeholder: Describe architectural decisions, interfaces, schemas, or data flow...
+    validations:
+      required: true
+  - type: textarea
+    id: security_boundaries
+    attributes:
+      label: Security & Non-Functional Boundaries
+      description: Note any supply chain, secret handling, fork security boundaries, or performance invariants.
+      placeholder: Detail security boundaries, telemetry restrictions, or performance SLAs...
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: High-Level Acceptance Criteria & Milestone Goals
+      description: Outline observable conditions that define completion for this capability.
+      placeholder: |
+        - [ ] Automated verification suite passes
+        - [ ] All child tickets delivered and verified
+    validations:
+      required: true
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Governance Check
+      description: "Verify spec alignment before submitting:"
+      options:
+        - label: I understand that milestones belong exclusively to Specs, not Tickets.
+          required: true
+        - label: I confirm this spec will be broken down into atomic, testable child tickets linked via native sub-issues.
+          required: true

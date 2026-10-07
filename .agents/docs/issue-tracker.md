@@ -57,7 +57,7 @@ Status is tracked exclusively on the project board (`Todo`, `In Progress`, `In R
   When any child ticket moves to `In Progress`, update the parent Spec to `In Progress` on the project board.
   Parent Specs never move to `In Review` automatically from child tickets.
   Parent Specs remain `In Progress` until all child tickets reach `Done` and the maintainer reviews the Spec.
-- Pull requests: follow `CONTRIBUTING.md` for pull request creation, verification, and review submission.
+- Pull requests: follow `CONTRIBUTING.md` for pull request creation (`gh pr create --assignee "@me"`), verification evidence, and review thread resolution via GraphQL.
 - Resolve ticket: post the solution summary in a comment and close the ticket:
   ```bash
   gh issue comment <ticket_number> --body "..."

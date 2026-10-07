@@ -1,6 +1,6 @@
 {
   "name": "@devtools/db",
-  "version": "0.1.0",
+  "description": "Database persistence schemas and migration utilities for DevTools",
   "private": true,
   "type": "module",
   "main": "./src/index.ts",

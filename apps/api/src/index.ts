@@ -7,10 +7,8 @@ import {
 } from "@devtools/core";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import pkg from "../package.json" with { type: "json" };
 
-const APP_VERSION =
-  typeof pkg.version === "string" && pkg.version ? pkg.version : "0.1.0";
+const APP_VERSION = "0.1.0";
 
 function isLoopbackOrigin(origin: string): boolean {
   try {
