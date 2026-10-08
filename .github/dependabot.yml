@@ -12,6 +12,9 @@ updates:
       dependencies:
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
     cooldown:
       default-days: 7
 
@@ -27,5 +30,8 @@ updates:
       actions:
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
     cooldown:
       default-days: 7

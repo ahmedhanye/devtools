@@ -55,16 +55,18 @@ fallow dead-code | grep "unused"
 fallow dead-code --format json --quiet
 ```
 
-The `--quiet` flag suppresses progress bars on stderr. Without it, stderr output may interfere with stdout parsing.
+The `--quiet` flag suppresses progress bars on stderr. Keep stderr separate from stdout when parsing JSON.
 
 ---
 
-## `--changed-since` Shows Only New Issues
+<a id="--changed-since-shows-only-new-issues"></a>
 
-The `--changed-since` flag limits analysis to files modified since a git ref. It only reports issues in those files, not all issues in the project. Works with both `dead-code` and `dupes`.
+## `--changed-since` Scopes Findings to Changed Files
+
+The `--changed-since` flag scopes findings to files modified since a git ref. It works with both `dead-code` and `dupes`. Existing findings in those files can remain; dead-code dependency findings remain project-wide. Use `fallow audit --gate new-only` to distinguish introduced findings from inherited ones.
 
 ```bash
-# This only shows issues in files changed since main
+# File-scoped findings are limited to files changed since main
 fallow dead-code --format json --quiet --changed-since main
 
 # Same for duplication, only clone groups involving changed files
@@ -109,10 +111,10 @@ fallow dead-code --format json --quiet
 
 ## Syntactic Analysis: No TypeScript Compiler
 
-Fallow uses Oxc for pure syntactic analysis. It does not run the TypeScript compiler. This means:
+Default analysis uses Oxc for syntactic references. The optional `--type-aware` mode adds TypeScript checker evidence. Syntactic analysis has these limits:
 
 - **Fully dynamic imports** (`import(variable)`) are not resolved. Only static strings, template literals with static prefixes, `import.meta.glob`, and `require.context` patterns
-- **Value-level type narrowing** is not performed. Fallow can't know that `if (x instanceof Foo)` means `Foo` is "used"
+- **General type narrowing** is outside syntactic analysis. Fallow does recognize `if (x instanceof Foo)` guards and credits member calls on `x` as uses of `Foo` members
 - **Conditional exports** based on runtime values are not analyzed
 - **Function overload signatures are deduplicated**: TypeScript function overloads (multiple signatures for the same function name) are merged into a single export. They are not reported as separate unused exports
 
@@ -151,7 +153,7 @@ export * from './utils';
 import { helper } from './index';  // Resolves through the chain
 ```
 
-If an export IS flagged as unused despite being in a barrel file, it means no downstream consumer actually imports it. The barrel file re-exports it, but nobody uses it from there.
+A re-export alone does not prove that an export is used. If Fallow reports an export from a barrel, trace its consumers before removal. Dynamic imports and external callers may be outside static analysis.
 
 ---
 
@@ -163,10 +165,10 @@ If an export IS flagged as unused despite being in a barrel file, it means no do
 | 1 | Error-severity issues found | Review findings |
 | 2 | Runtime error (`fix` without `--yes` in non-TTY, invalid config) | Fix config or add `--yes` |
 
-Exit code 1 is triggered by issues with `"error"` severity in the rules config. Without a rules section, all issue types default to `"error"`. Use the rules system to control which issues fail CI:
+Error-severity findings can trigger exit code 1. Default severity varies by rule: some rules default to `"warn"` or `"off"`. Use the rules system to control which findings fail CI:
 
 ```jsonc
-// Only fail on unused files and deps, warn on everything else
+// Warn on unused exports and types; other rules keep their defaults
 {
   "rules": {
     "unused-files": "error",
@@ -176,6 +178,8 @@ Exit code 1 is triggered by issues with `"error"` severity in the rules config. 
   }
 }
 ```
+
+Exit code 1 always means that an enforced gate failed. A load warning or a workspace diagnostic (for example `node-modules-missing` or a tsconfig `extends` that does not resolve) never changes the exit code. The only exception is `source-parse-degraded` with `--fail-on-parse-error`. To find the gate, read `gate_outcomes` in the JSON output and look for an entry with `status: "fail"` and `enforced: true`. Under `--quiet` and in every machine format, fallow also prints one stderr line that names the failed gates, for example `[X] Exit code 1: gate health-findings (3 at or above error) failed.` On `health`, the `complexity-*` rules default to `error`, so each complexity finding fails the run. Set them to `warn` or pass `--report-only` to report without a failure.
 
 ---
 
@@ -215,7 +219,7 @@ Commit the baseline file to your repo. Update it periodically as you fix existin
 
 ## Duplication Modes Affect What's Detected
 
-The detection mode significantly affects results. Choose based on your needs:
+Each detection mode normalizes different syntax. Choose the mode that fits the comparison:
 
 ```bash
 # strict: exact token match only
@@ -236,6 +240,10 @@ fallow dupes --format json --quiet --mode semantic
 ```
 
 `semantic` mode produces the most findings but may include false positives where similar structure is coincidental.
+
+Use `--near` separately when you want function-level clones with small inserted,
+removed, or changed regions. Exact detection still follows `--mode`; near
+detection uses semantic shingles and reports a `similarity` value.
 
 ---
 
@@ -333,7 +341,7 @@ If you use utility decorators that DO NOT imply reflective use (Playwright's `@s
 
 Conservative semantics: a method carrying any decorator NOT in the list still gets skipped. So `@step` + `@Inject` on the same method stays treated as framework-managed. Matching rule: entries containing `.` (`"decorators.log"`) match the full dotted path; bare entries (`"step"` or `"decorators"`) match the leftmost segment, so a single bare `"decorators"` entry collapses an entire `@decorators.*` namespace. Both `"@step"` and `"step"` round-trip equivalently. Unmatched entries (a decorator name in the config that never appears in your codebase) surface as a one-time warning at end of run.
 
-The default empty list preserves today's skip-all behavior, so existing NestJS / Angular / TypeORM projects see no change.
+With the default empty list every decorated method is treated as framework-managed, which is what NestJS, Angular, and TypeORM projects need.
 
 ### Angular `@Input()` / `@Output()` are still covered by the component rules
 
@@ -654,14 +662,14 @@ Both require a `GITLAB_TOKEN` CI/CD variable (project access token with `api` sc
 `fallow license refresh` and `fallow license activate --trial` can fail with a backend error. The CLI always appends the raw HTTP status and the backend error code after the human hint, so scripts can grep for the code without parsing prose:
 
 ```
-fallow license refresh: your stored license is too stale to refresh. Reactivate with: fallow license activate --trial --email <addr> (HTTP 401, code token_stale)
+fallow license refresh: your stored license is too stale to refresh: set FALLOW_API_KEY to a full-access key and run `fallow license refresh` again (generate one at https://fallow.cloud/settings#api-keys) (HTTP 401, code token_stale)
 ```
 
 Stable codes the CLI surfaces today:
 
 | Code | Operation | Meaning |
 |------|-----------|---------|
-| `token_stale` | `refresh` | Stored JWT is more than 45 days past its `exp`. Reactivate. |
+| `token_stale` | `refresh` | Stored JWT is more than 45 days past its `exp`. Surfaced only when no full-access API key was available to retry with. |
 | `invalid_token` | `refresh` | Stored JWT is missing required claims (e.g. `sub`). Reactivate. |
 | `unauthorized` | `refresh` or `trial` | Auth failed. Reactivate. |
 | `rate_limit_exceeded` | `trial` | Trial endpoint is capped at 5 per hour per IP. Wait or use a different network. |

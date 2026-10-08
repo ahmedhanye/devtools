@@ -11,7 +11,7 @@ Issues and specs live as GitHub issues. Use the `gh` CLI for all operations. The
 - Edit labels: `gh issue edit <number> --add-label "..."` or `--remove-label "..."`
 - Close an issue: `gh issue close <number> --comment "..."`
 
-## Pull requests as a triage surface
+## Pull request triage
 
 External pull requests are not treated as feature requests. New features begin as issues.
 
@@ -24,9 +24,9 @@ GitHub shares one number space across issues and PRs. Resolve a number with `gh 
 
 ## Hierarchy and dependencies
 
-The project organizes work into Specs (parent issues) and Tickets (child sub-issues).
+The project organizes work into Specs (high-level capability specifications) and Tickets (atomic vertical slice issues created using GitHub sub-issues).
 
-- Add sub-issue:
+- Attach Ticket to parent Spec:
   ```bash
   gh api --method POST repos/:owner/:repo/issues/<spec_number>/sub_issues \
     -F sub_issue_id=<ticket_db_id>
@@ -40,9 +40,9 @@ The project organizes work into Specs (parent issues) and Tickets (child sub-iss
   ```bash
   gh api repos/:owner/:repo/issues/<number> --jq .id
   ```
-- Single source of truth: omit manual parent links, child checklists, and `Blocked by: #...` lines from markdown bodies when native sub-issues and dependencies are enabled.
+- Single source of truth: omit manual parent links, child checklists, and `Blocked by: #...` lines from markdown bodies when native issue hierarchy and dependencies are enabled.
 - Milestones: assigned strictly to Specs to track milestone deliverables without metric dilution. Tickets do not receive milestones.
-- Query frontier: list open child tickets with zero unresolved blockers and no assignee.
+- Query frontier: list open tickets with zero unresolved blockers and no DRI.
 
 ## Project board status lifecycle
 

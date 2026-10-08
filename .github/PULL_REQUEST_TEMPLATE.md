@@ -5,7 +5,7 @@
      - Component tree for UI structure & boundaries
      - Diff sketch for state or control flow
      - Mermaid sequence diagram for data flow or interaction
-     Do NOT list commit messages, branch mechanics, or CLI commands. -->
+     Provide structural views rather than commit messages, branch mechanics, or CLI commands. -->
 
 Closes #<issue>
 

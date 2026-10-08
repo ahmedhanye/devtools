@@ -1,4 +1,5 @@
-# Agent temp and scratch directories
+# Temporary workspace directories
+tmp/
 .scratch/
 
 # Dependencies

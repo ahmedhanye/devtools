@@ -73,7 +73,7 @@ reviews:
     - "!out/**"
     - "!storybook-static/**"
     - "!apps/frontend/next-env.d.ts"
-    - "!**/.scratch/**"
+    - "!tmp/**"
     - "!**/.fallow/**"
     - "!**/coverage/**"
     - "!**/.turbo/**"
@@ -170,7 +170,7 @@ knowledge_base:
     enabled: true
     filePatterns:
       - ".agents/AGENTS.md"
-      - ".agents/CONTEXT.md"
+      - ".agents/GLOSSARY.md"
       - ".agents/rules/*"
       - "CONTRIBUTING.md"
       - ".agents/docs/adr/*"

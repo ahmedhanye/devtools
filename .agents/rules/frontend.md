@@ -43,13 +43,3 @@ Architectural rules and development standards for `apps/frontend`.
 4. In hooks managing polling lifecycles, scope an `AbortController` per tick and abort in-flight requests on unmount.
 5. Wrap event callbacks passed to fetch handlers to ensure DOM event arguments are discarded before reaching `AbortSignal` parameters.
 6. Declare pure helper functions and formatters that do not close over component state at module scope.
-
-## Verification pipeline
-
-Run the complete verification pipeline before presenting code for review:
-
-```bash
-bun run verify
-```
-
-The command must exit with code 0.
