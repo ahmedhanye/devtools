@@ -73,7 +73,7 @@ A working document, report, or visual preview generated during execution and sto
 _Avoid_: Build binary, output file, generated asset
 
 **Ephemeral File**:
-A temporary working file (debug script, raw spike, diff) living strictly in the gitignored workspace `tmp/` directory, partitioned by purpose under `tmp/scripts/`, `tmp/research/`, `tmp/handoff/`, or `tmp/issues/`.
+A temporary working file (debug script, raw spike, diff) living strictly in the gitignored workspace `tmp/` directory, partitioned by purpose under `tmp/scripts/`, `tmp/research/`, `tmp/handoff/`, `tmp/issues/`, or `tmp/qa/`.
 _Avoid_: Scratch file, temp file, scratchpad
 
 **Handoff**:
@@ -122,9 +122,9 @@ _Avoid_: Locked skill, third-party skill, external skill
 The pull request state invariant enforced by repository rulesets requiring all reviewer and bot comment conversations to be explicitly marked resolved before merge eligibility.
 _Avoid_: Comment signoff, thread closing
 
-**Evaluation Verdict**:
-The conclusive status (`MERGE` or `INVESTIGATE`) assigned to a pull request denoting its eligibility for squash merging into `main`.
-_Avoid_: PR status, check conclusion, review decision
+**Quality Assurance (QA)**:
+The end-to-end verification discipline synthesizing automated code-review findings with human-in-the-loop manual verification beyond CI capabilities.
+_Avoid_: Manual testing, PR gatekeeping, ad-hoc verification
 
 ### Documentation and developer guides
 
