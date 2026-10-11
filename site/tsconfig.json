@@ -1,0 +1,27 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@/.source/*": ["./.source/*"]
+    },
+    "jsx": "preserve",
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "lib": ["dom", "dom.iterable", "esnext"]
+  },
+  "include": [
+    "next-env.d.ts",
+    "source.config.ts",
+    "src/**/*",
+    "tests/**/*",
+    ".source/**/*",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": ["node_modules", "dist", ".next"]
+}

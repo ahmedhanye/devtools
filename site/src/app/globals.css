@@ -1,0 +1,49 @@
+@import "tailwindcss";
+@import "fumadocs-ui/css/neutral.css";
+@import "fumadocs-ui/css/preset.css";
+
+@source "../../../node_modules/fumadocs-ui/dist/**/*.js";
+
+@theme {
+  --color-primary: var(--color-fd-primary);
+  --color-primary-foreground: var(--color-fd-primary-foreground);
+  --color-background: var(--color-fd-background);
+  --color-foreground: var(--color-fd-foreground);
+  --color-muted: var(--color-fd-muted);
+  --color-muted-foreground: var(--color-fd-muted-foreground);
+  --color-card: var(--color-fd-card);
+  --color-card-foreground: var(--color-fd-card-foreground);
+  --color-border: var(--color-fd-border);
+  --color-accent: var(--color-fd-accent);
+  --color-accent-foreground: var(--color-fd-accent-foreground);
+}
+
+:root {
+  --tutorials-color: hsl(217, 100%, 58%);
+  --how-to-color: hsl(158, 75%, 40%);
+  --reference-color: hsl(38, 92%, 50%);
+  --explanation-color: hsl(270, 75%, 55%);
+}
+
+.dark {
+  --tutorials-color: #93c5fd;
+  --how-to-color: #6ee7b7;
+  --reference-color: #fde047;
+  --explanation-color: #d8b4fe;
+}
+
+.tutorials {
+  --color-fd-primary: var(--tutorials-color);
+}
+
+.how-to {
+  --color-fd-primary: var(--how-to-color);
+}
+
+.reference {
+  --color-fd-primary: var(--reference-color);
+}
+
+.explanation {
+  --color-fd-primary: var(--explanation-color);
+}

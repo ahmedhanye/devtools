@@ -1,0 +1,180 @@
+---
+title: Manage database migrations and storage
+description: Locate SQLite storage files, execute schema migrations, inspect system metadata, and reset local state.
+icon: Database
+---
+
+import { Tab, Tabs } from "fumadocs-ui/components/tabs";
+import { Callout } from "fumadocs-ui/components/callout";
+
+This guide explains how to manage the embedded SQLite database in DevTools, execute schema migrations with Drizzle ORM, view system metadata, and reset local persistence safely.
+
+## Prerequisites
+
+Ensure you have completed the following prerequisites:
+
+- Bun runtime version 1.2 or later installed.
+- DevTools workspace repository cloned with dependencies installed (`bun install`).
+
+## Locate database storage
+
+During local development, DevTools stores SQLite database files in the `.devtools` directory relative to the repository root:
+
+```bash title="terminal"
+ls -la .devtools/
+```
+
+Expected output:
+
+```text
+total 60
+drwxr-xr-x  2 agent agent  4096 Oct 10 16:22 .
+drwxr-xr-x 14 agent agent  4096 Oct  9 16:44 ..
+-rw-r--r--  1 agent agent 20480 Oct 10 07:46 devtools.db
+-rw-r--r--  1 agent agent 32768 Oct 10 16:22 devtools.db-shm
+-rw-r--r--  1 agent agent     0 Oct 10 16:22 devtools.db-wal
+```
+
+For the exhaustive database path resolution specifications across test, development, and production environments, refer to the [configuration and schema reference](/docs/reference/configuration).
+
+For architectural details on SQLite Write-Ahead Logging and WAL coordination files (`.db`, `.db-wal`, `.db-shm`), refer to the [persistence architecture explanation](/docs/explanation/runtime-stack#persistence-architecture-adr-0001).
+
+## Run schema migrations
+
+DevTools applies pending schema migrations automatically when the daemon starts up. When developing schema changes in `packages/db`, you can generate and apply migration files directly:
+
+<Tabs items={["Generate migration", "Apply migrations"]} groupId="migration-flow" persist>
+  <Tab value="Generate migration">
+    When modifying schema files under `packages/db/src/schema/`, compile a new SQL migration snapshot with Drizzle Kit:
+
+    ```bash title="terminal"
+    bun --filter @devtools/db db:generate
+    ```
+
+    Expected output:
+
+    ```text
+    $ drizzle-kit generate
+    No config path provided, using default 'drizzle.config.ts'
+    Reading config file 'packages/db/drizzle.config.ts'
+    1 tables
+    system_metadata 3 columns 0 indexes 0 fks
+
+    No schema changes, nothing to migrate 😴
+    ```
+
+    This creates a new immutable SQL file in `packages/db/drizzle/` along with updated migration journal metadata.
+
+  </Tab>
+
+  <Tab value="Apply migrations">
+    To execute migrations programmatically without launching the full web daemon, execute the migration runner:
+
+    ```bash title="terminal"
+    bun -e "import { db, runMigrations } from '@devtools/db'; runMigrations(db);"
+    ```
+
+    If all migrations are up to date, the runner exits cleanly without output.
+
+  </Tab>
+</Tabs>
+
+## Inspect and seed system metadata
+
+The core database foundation establishes the `system_metadata` table for persisting version identifiers, runtime configuration, and subsystem states.
+
+### Inspect metadata table
+
+Query the local SQLite database using Bun:
+
+```bash title="terminal"
+bun -e "import { db, systemMetadata } from '@devtools/db'; console.log(db.select().from(systemMetadata).all());"
+```
+
+Expected output on an unseeded database:
+
+```text
+[]
+```
+
+### Seed initial keys
+
+To insert or update a metadata record, use Drizzle insert statements:
+
+```bash title="terminal"
+bun -e "import { db, systemMetadata } from '@devtools/db'; db.insert(systemMetadata).values({ key: 'cluster_node', value: 'primary' }).onConflictDoUpdate({ target: systemMetadata.key, set: { value: 'primary' } }).run();"
+```
+
+Re-querying the metadata table returns the seeded record:
+
+```text
+[
+  {
+    key: "cluster_node",
+    value: "primary",
+    updatedAt: 2026-10-11T05:03:24.000Z
+  }
+]
+```
+
+## Reset local database
+
+When you need a clean state during local testing, you can reset the development database:
+
+<Callout type="warn" title="Permanent deletion warning">
+  Deleting `.devtools` permanently removes all local SQLite database records and
+  WAL journals.
+</Callout>
+
+1. Stop any running DevTools daemon processes with `Ctrl+C`.
+2. Delete the `.devtools` directory containing the database and WAL journals:
+
+```bash title="terminal"
+rm -rf .devtools
+```
+
+3. Restart the daemon to trigger a fresh database initialization:
+
+```bash title="terminal"
+bun run devtools web
+```
+
+The daemon recreates the `.devtools/` directory, initializes `devtools.db`, and executes all migrations automatically.
+
+## Verification
+
+Verify that the database initialized successfully by inspecting the daemon startup output:
+
+```text
+Persistence initialized: SQLite (.devtools/devtools.db)
+```
+
+Run the database package test suite to verify connection safeguards, WAL concurrency, and migration integrity:
+
+```bash title="terminal"
+bun --filter @devtools/db test
+```
+
+Expected output:
+
+```text
+bun test v1.4.2
+
+tests/db.test.ts:
+✓ Database Configuration & Path Resolution > resolves to :memory: in test environment by default
+✓ Database Configuration & Path Resolution > respects explicit custom path argument
+✓ Database Configuration & Path Resolution > respects DEVTOOLS_DB_PATH environment variable override
+✓ Database Configuration & Path Resolution > returns :memory: if DEVTOOLS_DB_PATH is :memory:
+✓ Database Configuration & Path Resolution > resolves to in-repo .devtools/devtools.db in development environment
+✓ Database Configuration & Path Resolution > findWorkspaceRoot discovers monorepo root from nested subdirectories
+✓ Database Configuration & Path Resolution > anchors development database to workspace root even when running from nested cwd
+✓ SQLite Connection & Concurrency PRAGMAs > initializes an in-memory connection with correct PRAGMAs
+✓ SQLite Connection & Concurrency PRAGMAs > enables WAL mode on file-backed connections
+✓ Migrations & Database Client Operations > applies migrations programmatically and performs CRUD operations
+✓ Migrations & Database Client Operations > supports getDb() singleton and resetDb()
+✓ Migrations & Database Client Operations > proxies db export dynamically and re-instantiates cleanly after resetDb()
+✓ Re-exported Primitives & Operators > exports essential Drizzle schema primitives and query operators
+
+ 13 pass
+ 0 fail
+```

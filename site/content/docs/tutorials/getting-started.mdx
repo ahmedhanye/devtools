@@ -1,0 +1,192 @@
+---
+title: Getting started with DevTools
+description: Learn how to set up the workspace, compile frontend assets, launch the local daemon, and verify services.
+icon: Play
+---
+
+import { Step, Steps } from "fumadocs-ui/components/steps";
+import { Callout } from "fumadocs-ui/components/callout";
+
+## What you will build
+
+In this tutorial, you will configure a local DevTools development environment from a fresh repository clone. You will install workspace dependencies, compile the static dashboard application, launch the local loopback daemon, and verify both API and web endpoints.
+
+By the end of this guide, you will have a running daemon serving the DevTools dashboard and HTTP API on `http://localhost:4000` (or `http://127.0.0.1:4000`).
+
+## Prerequisites
+
+Before starting, ensure your system has the following tools installed:
+
+- **Git**: Version 2.38 or later.
+- **Bun**: Version 1.2 or later. Run `bun --version` to verify your runtime version.
+- **cURL**: Command line utility for verifying HTTP responses.
+
+<Callout type="idea" title="Embedded persistence">
+  DevTools requires zero external database servers or Docker containers. The Bun
+  runtime and embedded SQLite handle all runtime persistence.
+</Callout>
+
+## Step-by-step setup
+
+<Steps>
+  <Step>
+    ### Install workspace dependencies
+
+    Clone the DevTools repository and install all monorepo dependencies using Bun:
+
+    ```bash title="terminal"
+    git clone https://github.com/AhmedHanye/devtools.git
+    cd devtools
+    bun install
+    ```
+
+    Expected output:
+
+    ```text
+    [0.05ms] ".env"
+    bun install v1.4.2 (744846f84)
+
+    $ lefthook install
+    sync hooks: ✔️(pre-commit, commit-msg)
+
+    + @types/bun@1.4.2
+    + fallow@3.31.0
+    + lefthook@2.1.17
+    + oxlint@1.86.0
+    + prettier@3.9.9
+    + prettier-plugin-tailwindcss@0.8.1
+    + typescript@5.9.3
+
+    839 packages installed [4.50s]
+    ```
+
+    All workspace packages are linked and dependencies are installed.
+
+  </Step>
+
+  <Step>
+    ### Build frontend static assets
+
+    The DevTools daemon serves pre-compiled dashboard assets from `apps/frontend/dist`. Build the Next.js static export using the Bun filter command:
+
+    ```bash title="terminal"
+    bun --filter @devtools/frontend build
+    ```
+
+    Expected output:
+
+    ```text
+    $ next build
+    ▲ Next.js 16.3.8 (Turbopack)
+
+      Creating an optimized production build ...
+    ✓ Compiled successfully
+      Running TypeScript ...
+      Finished TypeScript ...
+      Collecting page data using 3 workers ...
+      Generating static pages using 3 workers (0/3) ...
+    ✓ Generating static pages using 3 workers (3/3)
+      Finalizing page optimization ...
+
+    Route (app)
+    ┌ ○ /
+    └ ○ /_not-found
+
+    ○  (Static)  prerendered as static content
+    ```
+
+    The compiled static HTML, CSS, and JavaScript bundles are written to `apps/frontend/dist`.
+
+  </Step>
+
+  <Step>
+    ### Start the DevTools daemon
+
+    Start the background daemon process with the CLI `web` command:
+
+    ```bash title="terminal"
+    bun run devtools web
+    ```
+
+    Expected output:
+
+    ```text
+    Persistence initialized: SQLite (.devtools/devtools.db)
+    DevTools daemon listening on http://127.0.0.1:4000
+    Serving static assets from apps/frontend/dist
+    API health available at http://127.0.0.1:4000/api/health
+    ```
+
+    <Callout type="info" title="Default port binding">
+      The daemon listens on port 4000 (accessible via `http://localhost:4000` or `http://127.0.0.1:4000`). To configure custom network ports or hosts, refer to the [daemon configuration guide](/docs/how-to/start-daemon).
+    </Callout>
+
+  </Step>
+
+  <Step>
+    ### Verify API health
+
+    Open a second terminal window and query the daemon health endpoint to verify the service status:
+
+    ```bash title="terminal"
+    curl -s http://127.0.0.1:4000/api/health
+    ```
+
+    Expected output:
+
+    ```json
+    {
+      "status": "ok",
+      "timestamp": "2026-10-11T05:03:14.485Z",
+      "uptime": 45627.01,
+      "version": "0.1.0"
+    }
+    ```
+
+    A status of `"ok"` confirms that the daemon HTTP server and health API are operational.
+
+  </Step>
+
+  <Step>
+    ### Open the web dashboard
+
+    Open your web browser and navigate to the [DevTools web dashboard](http://localhost:4000) (or `http://127.0.0.1:4000`):
+
+    ```bash title="terminal"
+    # Open http://localhost:4000 in your browser
+    ```
+
+    Expected result:
+
+    The DevTools system dashboard opens and displays:
+    - **Active Services**: Service status cards monitoring the DevTools API Service, Shared Domain Core, Loopback Daemon, and Web Application Shell.
+    - **Service health**: Real-time status indicators and API metrics polled regularly.
+    - **Loopback address**: Header badge confirming active connection to the loopback daemon.
+
+  </Step>
+
+  <Step>
+    ### Stop the local daemon
+
+    When you finish exploring the dashboard, return to the terminal running the daemon and press `Ctrl+C`:
+
+    Expected output:
+
+    ```text
+    Received SIGINT. Shutting down DevTools daemon...
+    ```
+
+    The process captures the termination signal, closes open database handles, and terminates cleanly.
+
+  </Step>
+</Steps>
+
+## Conclusion
+
+You have successfully configured a local development environment, built static frontend bundles, started the DevTools loopback daemon on port 4000, and verified both API health and the dashboard user interface.
+
+### Next steps
+
+- Learn how to bind custom ports, hosts, and static directories in [Configure and start the local daemon](/docs/how-to/start-daemon).
+- Explore CLI flags and subcommands in the [CLI reference](/docs/reference/cli).
+- Inspect available REST endpoints in the [API reference](/docs/reference/api).

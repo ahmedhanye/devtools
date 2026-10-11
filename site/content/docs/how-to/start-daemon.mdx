@@ -1,0 +1,149 @@
+---
+title: Configure and start the local daemon
+description: Configure runtime parameters, bind custom hosts and ports, resolve socket conflicts, and serve static assets.
+icon: Terminal
+---
+
+import { Tab, Tabs } from "fumadocs-ui/components/tabs";
+import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
+import { Callout } from "fumadocs-ui/components/callout";
+
+This guide shows you how to configure and start the DevTools loopback daemon with custom network bindings, resolve port conflicts, and mount alternative static asset directories.
+
+## Prerequisites
+
+Ensure you have completed the following prerequisites:
+
+- DevTools workspace dependencies are installed (`bun install`).
+- Frontend assets are compiled (`bun --filter @devtools/frontend build`).
+
+## Start daemon on the default port
+
+To run the daemon with default settings, execute the `web` command through Bun:
+
+```bash title="terminal"
+bun run devtools web
+```
+
+By default, the daemon binds to `127.0.0.1` on port `4000` and serves static files from `apps/frontend/dist`.
+
+## Bind custom port and host
+
+Customize the listening port and network interface using command line options or environment variables:
+
+<Tabs items={["CLI flags", "Environment variables"]} groupId="config-method" persist>
+  <Tab value="CLI flags">
+    Pass the `-p` or `--port` flag to change the port, and `-H` or `--host` to specify the host address:
+
+    ```bash title="terminal"
+    bun run devtools web --port 5050 --host 127.0.0.1
+    ```
+
+  </Tab>
+
+  <Tab value="Environment variables">
+    The daemon inspects `PORT` and `HOST` when command flags are omitted:
+
+    ```bash title="terminal"
+    PORT=5050 HOST=127.0.0.1 bun run devtools web
+    ```
+
+  </Tab>
+</Tabs>
+
+<Callout type="info" title="Loopback security">
+  For security reasons, the daemon restricts origins and network bindings to
+  loopback interfaces (`127.0.0.1` or `localhost`). Binding to public network
+  interfaces is prohibited by the loopback security boundary.
+</Callout>
+
+## Resolve port conflicts
+
+When the requested port is already occupied by another process, DevTools adapts based on terminal interactivity:
+
+<Accordions type="single">
+  <Accordion id="interactive-resolution" title="Interactive terminal resolution (TTY)">
+    In an interactive terminal session, the CLI scans sequential port numbers starting at the target port, identifies the first free socket, and prompts for confirmation:
+
+    ```text
+    ? Port 4000 is in use. Would you like to use available port 4001 instead? (Y/n)
+    ```
+
+    Pressing `Enter` automatically binds the daemon to the suggested alternate port. Declining with `n` halts the process with exit code 1.
+
+  </Accordion>
+
+  <Accordion id="automated-ci-resolution" title="Automated or CI environments">
+    In automated pipelines or scripts where `stdin` is non-interactive, the daemon prints an error message and terminates immediately:
+
+    ```text
+    Port 4000 is already in use. Use --port <port> or set PORT=<port> to specify a different port.
+    ```
+
+    To prevent build failures in non-interactive environments, assign an explicit open port or pass `PORT=0` to let the operating system assign an ephemeral port.
+
+  </Accordion>
+</Accordions>
+
+## Serve custom static directory
+
+When developing alternative web dashboards or running embedded documentation previews, point the daemon to a custom static directory:
+
+<Tabs items={["CLI flag", "Environment variable"]} groupId="static-method" persist>
+  <Tab value="CLI flag">
+    Pass the `--static-dir` or `-s` flag with your target path:
+
+    ```bash title="terminal"
+    bun run devtools web --static-dir ./custom-dashboard
+    ```
+
+  </Tab>
+
+  <Tab value="Environment variable">
+    Define the `DEVTOOLS_STATIC_DIR` environment variable:
+
+    ```bash title="terminal"
+    DEVTOOLS_STATIC_DIR=./custom-dashboard bun run devtools web
+    ```
+
+  </Tab>
+</Tabs>
+
+<Callout type="warn" title="Static directory validation">
+  The daemon verifies that the specified directory exists before starting. If
+  the path does not exist, startup terminates with an informative error.
+</Callout>
+
+## Verification
+
+Confirm that your daemon instance is serving requests properly by inspecting the health route with cURL:
+
+```bash title="terminal"
+curl -I http://127.0.0.1:4000/api/health
+```
+
+Expected HTTP response headers:
+
+```text
+HTTP/1.1 200 OK
+Content-Type: application/json
+Vary: Origin
+Date: Sun, 11 Oct 2026 05:03:11 GMT
+Content-Length: 97
+```
+
+Verify that static HTML assets are also returned correctly from the root path:
+
+```bash title="terminal"
+curl -I http://127.0.0.1:4000/
+```
+
+Expected HTTP response headers:
+
+```text
+HTTP/1.1 200 OK
+Content-Type: text/html;charset=utf-8
+Content-Length: 15797
+```
+
+For the exhaustive list of CLI flags, defaults, and exit codes, see the [CLI command reference](/docs/reference/cli).

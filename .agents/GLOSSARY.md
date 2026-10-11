@@ -125,3 +125,25 @@ _Avoid_: Comment signoff, thread closing
 **Evaluation Verdict**:
 The conclusive status (`MERGE` or `INVESTIGATE`) assigned to a pull request denoting its eligibility for squash merging into `main`.
 _Avoid_: PR status, check conclusion, review decision
+
+### Documentation and developer guides
+
+**Documentation Platform**:
+The Fumadocs documentation application workspace (`site/`, `@devtools/site`) providing guides, Diátaxis documentation, and public interface references for DevTools.
+_Avoid_: Docs site, static docs, manual
+
+**Diátaxis Quadrant**:
+One of the four systematic documentation classifications (`Tutorials`, `How-to Guides`, `Reference`, `Explanation`) structuring developer content based on reader intent and pedagogical orientation.
+_Avoid_: Documentation category, doc type, topic section, page group
+
+**Topic Group**:
+An intermediate organizational grouping or separator in the navigation hierarchy (such as `---Daemon & Database---` or a folder group) clustering related documentation pages within a quadrant.
+_Avoid_: Section group, page category, folder group, category, section
+
+**Documentation Page**:
+An individual documentation document inside a quadrant (specialized by role: Tutorial, How-To Guide, Reference Specification, or Explanation Article).
+_Avoid_: Doc file, guide page, article, page item
+
+**Page Section**:
+A headed section within an individual documentation page (defined by Markdown `#`, `##`, `###` headings and reflected in the table of contents).
+_Avoid_: Document section, page header, document part, sub-section

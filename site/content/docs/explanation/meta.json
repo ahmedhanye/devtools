@@ -1,0 +1,12 @@
+{
+  "title": "Explanation",
+  "description": "Architecture & deep dives",
+  "root": true,
+  "icon": "Lightbulb",
+  "pages": [
+    "index",
+    "---Architecture---",
+    "daemon-architecture",
+    "runtime-stack"
+  ]
+}

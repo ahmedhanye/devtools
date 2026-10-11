@@ -1,0 +1,7 @@
+{
+  "title": "Reference",
+  "description": "Technical specs & CLI reference",
+  "root": true,
+  "icon": "Library",
+  "pages": ["index", "---Specifications---", "cli", "api", "configuration"]
+}

@@ -1,0 +1,122 @@
+---
+title: Configuration and schema reference
+description: Technical specifications for RuntimeConfigSchema, database path resolution, and schema definitions.
+icon: FileCode
+---
+
+import { TypeTable } from "fumadocs-ui/components/type-table";
+
+This page documents the TypeScript and Zod schemas governing runtime configuration, database path resolution algorithms, and embedded SQLite table definitions.
+
+## Runtime configuration schema
+
+The `@devtools/core` package defines `RuntimeConfigSchema` using Zod to validate server startup parameters.
+
+### Schema fields
+
+<TypeTable
+  id="runtime-config-schema"
+  type={{
+    host: {
+      description: "IP address or loopback hostname to bind. Minimum length 1",
+      type: "string",
+      default: '"127.0.0.1"',
+      required: false,
+    },
+    port: {
+      description:
+        "TCP port number to listen on (0 to 65535). Port 0 binds an ephemeral port",
+      type: "number",
+      default: "4000",
+      required: false,
+    },
+    staticDir: {
+      description:
+        "Filesystem directory containing pre-built frontend static assets",
+      type: "string",
+      default: "undefined",
+      required: false,
+    },
+  }}
+/>
+
+The schema enforces strict validation; unrecognized properties cause parsing to fail with a `ZodError`.
+
+### TypeScript type definition
+
+```ts title="packages/core/src/config.ts"
+export type RuntimeConfig = z.infer<typeof RuntimeConfigSchema>;
+```
+
+## Database configuration and path resolution
+
+The persistence layer (`@devtools/db`) resolves SQLite database paths through the `resolveDatabasePath()` function according to execution context.
+
+### Path resolution precedence
+
+1. **Explicit parameter or environment override**:
+   If an explicit path argument, `DEVTOOLS_DB_PATH`, or `DATABASE_URL` is set, it takes precedence. If set to `":memory:"`, an in-memory database is used. Otherwise, the path resolves relative to `process.cwd()`.
+2. **Automated test environment**:
+   If `NODE_ENV === "test"` or `BUN_ENV === "test"`, the path resolves to `":memory:"` for hermetic testing.
+3. **Local development**:
+   If `NODE_ENV !== "production"`, the path resolves to `<repo_root>/.devtools/devtools.db` using workspace root discovery.
+4. **Production default**:
+   In packaged production binaries, the path defaults to `~/.devtools/devtools.db` in the current user home directory.
+
+Parent directories are created automatically with recursive creation (`mkdirSync`) prior to opening SQLite connections.
+
+### SQLite concurrency pragmas
+
+Every database connection created by `@devtools/db` automatically executes the following pragmas:
+
+| Pragma         | Setting  | Purpose                                                                                 |
+| -------------- | -------- | --------------------------------------------------------------------------------------- |
+| `journal_mode` | `WAL`    | Enables Write-Ahead Logging for concurrent readers and writers without lock contention. |
+| `busy_timeout` | `5000`   | Waits up to 5,000 milliseconds for locks to clear before raising `SQLITE_BUSY`.         |
+| `foreign_keys` | `ON`     | Enforces referential integrity cascades.                                                |
+| `synchronous`  | `NORMAL` | Optimizes write performance in WAL mode while preserving crash resilience.              |
+
+## System metadata schema
+
+The `system_metadata` table persists key-value metadata, schema versions, and runtime state.
+
+### Table structure
+
+<TypeTable
+  id="system-metadata-schema"
+  type={{
+    key: {
+      description: "Primary key identifying the metadata entry",
+      type: "string",
+      required: true,
+    },
+    value: {
+      description: "Serialized string or JSON representation of the value",
+      type: "string",
+      required: true,
+    },
+    updatedAt: {
+      description:
+        "Timestamp in milliseconds when the record was last modified",
+      type: "Date",
+      required: true,
+    },
+  }}
+/>
+
+### Drizzle definition
+
+```ts title="packages/db/src/schema/system.ts"
+import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+
+export const systemMetadata = sqliteTable("system_metadata", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+export type SystemMetadata = typeof systemMetadata.$inferSelect;
+export type NewSystemMetadata = typeof systemMetadata.$inferInsert;
+```

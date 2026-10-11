@@ -2,7 +2,12 @@
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
   "entry": ["apps/frontend/steiger.config.js"],
   "ignoreDependencies": ["prettier-plugin-tailwindcss"],
-  "ignoreUnresolvedImports": ["./.next/**", "**/.next/**"],
+  "ignoreUnresolvedImports": [
+    "./.next/**",
+    "**/.next/**",
+    "**/.source/**",
+    "@/.source/**"
+  ],
   "boundaries": {
     "preset": "feature-sliced",
     "zones": [

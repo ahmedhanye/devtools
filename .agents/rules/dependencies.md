@@ -3,6 +3,7 @@ trigger:
   - "package.json"
   - "apps/*/package.json"
   - "packages/*/package.json"
+  - "site/package.json"
   - "bun.lock"
 description: Monorepo workspace boundaries and dependency declaration rules.
 ---
@@ -14,7 +15,7 @@ Rules for package management, workspace boundaries, and dependency placement acr
 ## Workspace roles
 
 1. The workspace root holds only repository orchestration and static analysis tools (for example, `oxlint`, `prettier`, `typescript`, `fallow`, `@types/bun`). Application runtime packages belong in leaf workspaces.
-2. Each leaf workspace (`apps/*`, `packages/*`) manages its own runtime and build dependencies in its own `package.json`.
+2. Each leaf workspace (`apps/*`, `packages/*`, `site`) manages its own runtime and build dependencies in its own `package.json`.
 3. The shared core package (`packages/core`) provides domain schemas, types, and error definitions. It isolates runtime-agnostic primitives and omits frontend-specific types, UI components, and browser APIs. Leaf applications consume it via the `workspace:*` protocol.
 
 ## Dependency placement rules

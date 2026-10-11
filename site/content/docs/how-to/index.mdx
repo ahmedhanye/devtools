@@ -1,0 +1,46 @@
+---
+title: Overview
+description: Practical step-by-step solutions for common operational tasks and developer workflows.
+icon: Wrench
+---
+
+import { Card, Cards } from "fumadocs-ui/components/card";
+import { Terminal, Database, LayoutDashboard } from "lucide-react";
+
+How-to guides address a problem-oriented mindset. They provide targeted procedures for developers who have a specific goal and need reliable operational instructions.
+
+Each guide assumes basic familiarity with DevTools and focuses on completing a practical objective without repeating introductory material or exploring theoretical architecture.
+
+## Guides
+
+Browse operational solutions for the DevTools workspace and runtime stack:
+
+<Cards>
+  <Card
+    icon={<Terminal className="size-4 text-[var(--how-to-color)]" />}
+    title="Configure and start the local daemon"
+    href="/docs/how-to/start-daemon"
+    description="Run the background daemon, bind custom network interfaces, resolve port conflicts, and serve static assets."
+  />
+  <Card
+    icon={<Database className="size-4 text-[var(--how-to-color)]" />}
+    title="Manage database migrations and storage"
+    href="/docs/how-to/manage-database"
+    description="Locate SQLite files across environments, run Drizzle migrations, inspect system metadata, and reset local data."
+  />
+  <Card
+    icon={<LayoutDashboard className="size-4 text-[var(--how-to-color)]" />}
+    title="Develop and test frontend dashboard"
+    href="/docs/how-to/develop-frontend"
+    description="Run the local Next.js development server, preview components in Storybook, and validate Feature-Sliced Design architecture."
+  />
+</Cards>
+
+## Conventions
+
+How-to guides follow these formatting principles:
+
+1. **Problem statement**: The opening section states the exact operational problem and expected outcome.
+2. **Prerequisites**: Clear declarations of required packages, environment variables, and background processes.
+3. **Action-oriented steps**: Focused instructions with imperative command headings.
+4. **Verification**: Explicit commands to confirm that the operational change took effect.

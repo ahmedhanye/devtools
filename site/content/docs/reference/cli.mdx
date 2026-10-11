@@ -1,0 +1,165 @@
+---
+title: CLI command reference
+description: Complete syntax, options, environment variables, exit codes, and examples for the DevTools CLI.
+icon: TerminalSquare
+---
+
+import { Tab, Tabs } from "fumadocs-ui/components/tabs";
+import { Callout } from "fumadocs-ui/components/callout";
+
+The `devtools` command-line utility controls the local loopback daemon, starts HTTP services, and manages runtime options.
+
+## Command synopsis
+
+The primary command starts the unified loopback daemon serving the API and static web dashboard:
+
+```bash title="terminal"
+devtools web [options]
+```
+
+To view general CLI help and global version information:
+
+```bash title="terminal"
+devtools --help
+```
+
+Expected output:
+
+```text
+Usage: devtools [options] [command]
+
+DevTools Developer CLI
+
+Options:
+  -V, --version   output the version number
+  -h, --help      display help for command
+
+Commands:
+  web [options]   Start the unified local loopback daemon
+  help [command]  display help for command
+```
+
+To view options for the `web` subcommand:
+
+```bash title="terminal"
+devtools web --help
+```
+
+Expected output:
+
+```text
+Usage: devtools web [options]
+
+Start the unified local loopback daemon
+
+Options:
+  -p, --port <number>      Port to bind (default: 4000)
+  -H, --host <string>      Host to bind (default: 127.0.0.1)
+  -s, --static-dir <path>  Static asset directory
+  -h, --help               display help for command
+```
+
+To inspect the installed version:
+
+```bash title="terminal"
+devtools --version
+```
+
+Expected output:
+
+```text
+0.0.0
+```
+
+<Callout type="info" title="Version identifiers">
+  `devtools --version` reports the root toolchain package release version
+  (`0.0.0`). The in-process REST API service independently reports its internal
+  service release (`0.1.0`) via GET `/api/health`.
+</Callout>
+
+## Options
+
+The following flags and parameters configure the `web` subcommand:
+
+| Option                | Short flag | Description                                                                      | Default value        |
+| --------------------- | ---------- | -------------------------------------------------------------------------------- | -------------------- |
+| `--port <number>`     | `-p`       | TCP port number for HTTP server binding. Pass `0` to allocate an ephemeral port. | `4000`               |
+| `--host <string>`     | `-H`       | Host interface address for server binding.                                       | `127.0.0.1`          |
+| `--static-dir <path>` | `-s`       | Path to directory containing pre-built frontend static assets.                   | `apps/frontend/dist` |
+| `--help`              | `-h`       | Display usage information and exit.                                              | None                 |
+| `--version`           | `-V`       | Output version number and exit.                                                  | None                 |
+
+## Environment variables
+
+When command-line flags are omitted, the CLI reads configuration from these environment variables:
+
+| Variable              | Description                                                               | Associated option | Default value        |
+| --------------------- | ------------------------------------------------------------------------- | ----------------- | -------------------- |
+| `PORT`                | Listening TCP port for loopback daemon. Set to `0` for an ephemeral port. | `--port`          | `4000`               |
+| `HOST`                | Loopback network interface address.                                       | `--host`          | `127.0.0.1`          |
+| `DEVTOOLS_STATIC_DIR` | Filesystem path to static assets directory.                               | `--static-dir`    | `apps/frontend/dist` |
+
+<Callout type="info" title="Configuration precedence">
+  Command line flags take precedence over environment variables when both are
+  provided.
+</Callout>
+
+## Exit codes
+
+The CLI reports process results using standard exit codes:
+
+| Exit code | Status  | Cause                                                                                                                                      |
+| --------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `0`       | Success | Command completed successfully, or daemon received shutdown signal (`SIGINT` or `SIGTERM`) and exited cleanly.                             |
+| `1`       | Error   | Unhandled failure occurred, such as unresolvable port conflict, missing static directory, database connection error, or invalid arguments. |
+
+## Usage examples
+
+Explore common command patterns:
+
+<Tabs items={["Default", "Custom port", "Ephemeral port", "Static assets", "Environment overrides"]} groupId="cli-examples" persist>
+  <Tab value="Default">
+    Start the daemon with standard port and host configurations:
+
+    ```bash title="terminal"
+    devtools web
+    ```
+
+  </Tab>
+
+  <Tab value="Custom port">
+    Bind the daemon to an alternative local port and loopback IP:
+
+    ```bash title="terminal"
+    devtools web --port 8080 --host 127.0.0.1
+    ```
+
+  </Tab>
+
+  <Tab value="Ephemeral port">
+    Bind the daemon to an operating-system assigned dynamic ephemeral port:
+
+    ```bash title="terminal"
+    devtools web --port 0
+    ```
+
+  </Tab>
+
+  <Tab value="Static assets">
+    Serve an alternative static website or dashboard directory:
+
+    ```bash title="terminal"
+    devtools web --static-dir ./custom-dist --port 3030
+    ```
+
+  </Tab>
+
+  <Tab value="Environment overrides">
+    Run the daemon in containerized or headless environments using environment variables:
+
+    ```bash title="terminal"
+    PORT=5000 HOST=127.0.0.1 devtools web
+    ```
+
+  </Tab>
+</Tabs>

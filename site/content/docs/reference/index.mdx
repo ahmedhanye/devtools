@@ -1,0 +1,46 @@
+---
+title: Overview
+description: Authoritative technical specifications, API schemas, CLI flags, and configuration formats.
+icon: Library
+---
+
+import { Card, Cards } from "fumadocs-ui/components/card";
+import { TerminalSquare, Globe, FileCode } from "lucide-react";
+
+Reference documents address an information-oriented mindset. They provide exhaustive technical specifications, exact parameter types, schema definitions, and command signatures.
+
+This quadrant emphasizes accuracy, completeness, and structured formatting so you can find exact values quickly. Reference pages avoid subjective explanations and procedural walkthroughs.
+
+## Topics
+
+Explore the technical specifications for DevTools interfaces and schemas:
+
+<Cards>
+  <Card
+    icon={<TerminalSquare className="size-4 text-[var(--reference-color)]" />}
+    title="CLI command reference"
+    href="/docs/reference/cli"
+    description="Syntax, flags, arguments, environment variables, and exit codes for the devtools executable."
+  />
+  <Card
+    icon={<Globe className="size-4 text-[var(--reference-color)]" />}
+    title="API specification"
+    href="/docs/reference/api"
+    description="Base paths, loopback security, REST endpoints, JSON error responses, and health payloads."
+  />
+  <Card
+    icon={<FileCode className="size-4 text-[var(--reference-color)]" />}
+    title="Configuration and schema reference"
+    href="/docs/reference/configuration"
+    description="RuntimeConfigSchema specifications, database path resolution rules, and table definitions."
+  />
+</Cards>
+
+## Conventions
+
+Reference material adheres to the following standards:
+
+1. **Structured layouts**: Options, variables, and schema keys are presented in type tables.
+2. **Exhaustive coverage**: Defaults, accepted types, constraints, and error values are documented completely.
+3. **Factual tone**: Descriptions focus strictly on technical realities and syntax constraints.
+4. **Minimal examples**: Code snippets provide copy-pasteable syntax rather than end-to-end tutorials.

@@ -73,6 +73,10 @@ reviews:
     - "!out/**"
     - "!storybook-static/**"
     - "!apps/frontend/next-env.d.ts"
+    - "!site/dist/**"
+    - "!site/.next/**"
+    - "!site/.source/**"
+    - "!site/next-env.d.ts"
     - "!tmp/**"
     - "!**/.fallow/**"
     - "!**/coverage/**"
@@ -128,6 +132,14 @@ reviews:
         1. Pure Domain: Zero runtime dependencies on database clients, HTTP servers, or browser/UI frameworks.
         2. Schema Authority: Export canonical Zod schemas and derived TypeScript types for cross-package contracts.
         3. Stable Contracts: Maintain backward-compatible schema changes and explicit error codes.
+
+    - path: "site/**"
+      instructions: >-
+        This package is the Fumadocs documentation platform application.
+        Enforce the following:
+        1. Diátaxis documentation structure across tutorials, how-to, reference, and explanation.
+        2. Clean MDX formatting and Fumadocs UI component usage.
+        3. Zero phantom dependencies: declare all dependencies directly in site/package.json.
 
     - path: ".github/workflows/**"
       instructions: >-

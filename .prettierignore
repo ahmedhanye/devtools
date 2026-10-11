@@ -7,3 +7,4 @@ skills-lock.json
 .agents/skills
 tmp
 storybook-static
+.source

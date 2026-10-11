@@ -1,0 +1,40 @@
+---
+title: Overview
+description: Architecture deep dives, system topology, design rationale, and boundary definitions.
+icon: Lightbulb
+---
+
+import { Card, Cards } from "fumadocs-ui/components/card";
+import { Server, Layers } from "lucide-react";
+
+Explanation documents address an understanding-oriented mindset. They clarify the architecture, design choices, and system trade-offs that shape the DevTools codebase.
+
+Rather than teaching initial setup or providing quick reference tables, explanations build deep mental models. They illuminate why subsystems are built the way they are and how boundaries protect stability.
+
+## Topics
+
+Examine architectural deep dives into the DevTools runtime and repository structure:
+
+<Cards>
+  <Card
+    icon={<Server className="size-4 text-[var(--explanation-color)]" />}
+    title="Loopback daemon architecture"
+    href="/docs/explanation/daemon-architecture"
+    description="In-process dispatch, single-port routing, loopback boundaries, and daemon lifecycle management."
+  />
+  <Card
+    icon={<Layers className="size-4 text-[var(--explanation-color)]" />}
+    title="Runtime stack and package boundaries"
+    href="/docs/explanation/runtime-stack"
+    description="Workspace topology, acyclic dependency graphs, Feature-Sliced Design, and embedded database persistence."
+  />
+</Cards>
+
+## Conventions
+
+Explanation articles follow these principles:
+
+1. **Context and rationale**: Each article explains the engineering trade-offs behind a design decision.
+2. **Visual topology**: Diagrams illustrate data flow, process boundaries, and module relationships.
+3. **Alternative evaluation**: Analysis includes discarded approaches and reasons for the chosen direction.
+4. **Clean boundaries**: Operational tasks link out to how-to guides, while formal schemas link to reference pages.

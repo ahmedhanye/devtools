@@ -1,0 +1,107 @@
+---
+title: Develop and test frontend dashboard
+description: Run the local Next.js development server, preview components in Storybook, and validate Feature-Sliced Design architecture.
+icon: LayoutDashboard
+---
+
+import { Tab, Tabs } from "fumadocs-ui/components/tabs";
+import { Callout } from "fumadocs-ui/components/callout";
+
+This guide explains how to run the DevTools frontend dashboard in local development mode, preview components in isolation with Storybook, and enforce Feature-Sliced Design (FSD) architecture rules.
+
+## Prerequisites
+
+Ensure you have completed the following prerequisites:
+
+- DevTools workspace repository cloned with dependencies installed (`bun install`).
+- Background daemon running (`bun run devtools web`) if you plan to connect live API telemetry.
+
+## Run local development server
+
+To start the Next.js development server with hot-module reloading:
+
+```bash title="terminal"
+bun --filter @devtools/frontend dev
+```
+
+The Next.js server binds to `http://localhost:3000` by default. Open `http://localhost:3000` in your browser to view the interactive dashboard.
+
+<Callout type="info" title="API endpoint configuration">
+  By default, the dashboard client connects to the daemon API at `http://127.0.0.1:4000`. To target a custom daemon port or host, pass `NEXT_PUBLIC_API_URL`:
+
+```bash title="terminal"
+NEXT_PUBLIC_API_URL=http://127.0.0.1:5050 bun --filter @devtools/frontend dev
+```
+
+</Callout>
+
+## Preview components in Storybook
+
+DevTools uses Storybook to develop and visually test UI primitives, shadcn components, and dashboard widgets in isolation without running the full Next.js application shell.
+
+To launch the Storybook development server:
+
+```bash title="terminal"
+bun --filter @devtools/frontend storybook
+```
+
+Storybook starts on port `6006`. Navigate to `http://localhost:6006` to inspect component states, error boundaries, and loading skeletons.
+
+## Enforce Feature-Sliced Design architecture
+
+The frontend codebase adheres strictly to Feature-Sliced Design v2.1. Run the Steiger architectural linter to verify import boundaries and slice encapsulation:
+
+```bash title="terminal"
+bun --filter @devtools/frontend lint:fsd
+```
+
+Expected output:
+
+```text
+$ steiger ./src
+No problems found!
+```
+
+If cross-slice imports violate the one-way layer hierarchy (`shared` -> `pages` -> `app`), Steiger halts with an explanatory lint error identifying the offending import.
+
+## Run frontend unit and component tests
+
+Verify frontend component behavior, React hooks, and health polling clients using Vitest:
+
+```bash title="terminal"
+bun --filter @devtools/frontend test
+```
+
+Expected output:
+
+```text
+$ vitest run
+ ✓ src/shared/lib/cn/cn.test.ts
+ ✓ src/shared/api/health/health-client.test.ts
+ ✓ src/shared/lib/use-is-mounted/use-is-mounted.test.ts
+ ✓ src/shared/lib/use-native-search-params/use-native-search-params.test.ts
+ ✓ src/pages/dashboard/model/use-service-health.test.ts
+ ✓ src/pages/dashboard/ui/service-status-card.test.tsx
+
+Test Files  6 passed
+```
+
+## Compile static production bundles
+
+Before distributing CLI releases or running the production loopback daemon, compile the static export bundles:
+
+```bash title="terminal"
+bun --filter @devtools/frontend build
+```
+
+The production assets are generated and written to `apps/frontend/dist`. The daemon serves these static assets directly from this path.
+
+## Verification
+
+Confirm that your frontend changes build cleanly and conform to all workspace design token constraints:
+
+```bash title="terminal"
+bun --filter @devtools/frontend lint:design && bun --filter @devtools/frontend typecheck
+```
+
+Both commands exit with code 0 without type errors or lint warnings. For background on the layer hierarchy and slice structure, refer to the [runtime stack and package boundaries explanation](/docs/explanation/runtime-stack#frontend-architecture).

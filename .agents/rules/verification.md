@@ -17,8 +17,10 @@ Run proportionate, change-scoped checks during iterative development. Run the fu
 | `.github/workflows/**`, `.github/actions/**` | Workflow validation   | `bunx prettier --check .github/workflows/** .github/actions/**` <br> `bun scripts/verify-staged-secrets.ts .github/workflows/** .github/actions/**`                 |
 | `apps/<pkg>/**`                              | Application workspace | `bun --filter @devtools/<pkg> typecheck` <br> `bun --filter @devtools/<pkg> test` <br> (For frontend: `bun --filter @devtools/frontend lint:design` and `lint:fsd`) |
 | `packages/<pkg>/**`                          | Package workspace     | `bun --filter @devtools/<pkg> typecheck` <br> `bun --filter @devtools/<pkg> test`                                                                                   |
+| `site/content/**`                            | Documentation content | `bun --filter @devtools/site typecheck` <br> `bun --filter @devtools/site build` <br> `bun run check`                                                               |
+| `site/**` (site application code)            | Site workspace        | `bun --filter @devtools/site typecheck` <br> `bun --filter @devtools/site test` <br> `bun --filter @devtools/site build`                                            |
 | `scripts/**`                                 | Internal scripts      | `bun test scripts/` <br> `bun run check`                                                                                                                            |
-| `.agents/**`, documentation (`*.md`)         | Docs and guidelines   | `bun run check`                                                                                                                                                     |
+| `.agents/**`, repository docs (`*.md`)       | Docs and guidelines   | `bun run check`                                                                                                                                                     |
 | Cross-cutting / Pre-PR gate                  | Full quality gate     | `bun run verify`                                                                                                                                                    |
 
 ## Workflow change invariant
@@ -30,6 +32,14 @@ Pull requests modifying only `.github/workflows/**` or `.github/actions/**` spec
 1. Write acceptance criteria as checkable automated commands or observable behaviors (test runs, exit codes, HTTP status codes).
 2. Record concrete verification evidence in pull request descriptions.
 3. Run targeted package or script checks during iterative development, reserving full `bun run verify` runs for cross-package contracts and pre-PR gates.
+
+## Test authoring and contract standards
+
+When authoring or modifying test files across any monorepo workspace:
+
+1. Read and adhere to `.agents/docs/testing.md` for permitted behavioral contract patterns and prohibited testing anti-patterns.
+2. Verify dynamic runtime behavior, schema boundaries, and error conditions. Never author tests that assert static copy, document inventories, exact headings, utility styling classes, or trivial variable equality.
+3. Rely on compilers (`tsc`, `fumadocs-mdx`, `next build`) for syntax, types, and static routes.
 
 ## Reactive background execution
 

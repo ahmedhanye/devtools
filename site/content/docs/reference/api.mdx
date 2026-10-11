@@ -1,0 +1,147 @@
+---
+title: API specification
+description: Technical specification for the DevTools REST API, loopback CORS boundaries, endpoints, and error schemas.
+icon: Globe
+---
+
+import { TypeTable } from "fumadocs-ui/components/type-table";
+
+The DevTools HTTP API exposes local runtime controls, process metrics, and service status endpoints. Hosted in-process on the daemon server under the `/api` route prefix, the API is consumed by the web dashboard frontend and external developer tools. The CLI does not call the API; it serves as the process launcher that starts the daemon.
+
+## Base URL and loopback CORS policy
+
+All endpoints are anchored under the `/api` base path:
+
+```text
+http://127.0.0.1:4000/api
+```
+
+### Loopback CORS boundary
+
+Cross-Origin Resource Sharing (CORS) is enforced by an origin filter on `/api/*`. Only origins hosted on local loopback hostnames are permitted:
+
+- Permitted hostnames: `localhost`, `127.0.0.1`
+- Permitted protocols: `http:`, `https:`
+- Permitted HTTP methods: `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `OPTIONS`, `HEAD`
+- Permitted request headers: `Content-Type`, `Authorization`
+
+Requests from non-loopback origins do not receive `Access-Control-Allow-Origin` headers and are rejected by browser security policies.
+
+## Health endpoint GET /api/health
+
+Returns the operational health status, system uptime, and version identifier of the running daemon process.
+
+### Request
+
+- **HTTP Method**: `GET`
+- **Path**: `/api/health`
+- **Headers**: None required
+- **Query parameters**: None
+
+### Response schema
+
+The response body conforms to `HealthResponseSchema` (`200 OK`, `application/json`):
+
+<TypeTable
+  id="health-response"
+  type={{
+    status: {
+      description: 'System status enum ("ok", "degraded", or "error")',
+      type: '"ok" | "degraded" | "error"',
+      required: true,
+    },
+    timestamp: {
+      description: "ISO 8601 UTC timestamp of the health check",
+      type: "string",
+      required: true,
+    },
+    uptime: {
+      description: "Process uptime in seconds (non-negative float)",
+      type: "number",
+      required: true,
+    },
+    version: {
+      description:
+        "Current semver release of the API service ('0.1.0'). Tracks service releases independently of the workspace CLI package release ('0.0.0')",
+      type: "string",
+      required: true,
+    },
+  }}
+/>
+
+## Error handling
+
+The API standardizes error responses using `ApiErrorResponseSchema`. All error responses follow a structured JSON schema:
+
+<TypeTable
+  id="api-error-response"
+  type={{
+    "error.code": {
+      description: "Machine-readable error code string",
+      type: '"BAD_REQUEST" | "NOT_FOUND" | "INTERNAL_ERROR" | "SERVICE_UNAVAILABLE"',
+      required: true,
+    },
+    "error.message": {
+      description: "Human-readable explanation of the failure",
+      type: "string",
+      required: true,
+    },
+    "error.details": {
+      description:
+        "Optional contextual payload with additional diagnostic information",
+      type: "unknown",
+      required: false,
+    },
+  }}
+/>
+
+### API error codes
+
+The table below maps supported error codes to HTTP status codes:
+
+| Error code            | HTTP status | Description                                            |
+| --------------------- | ----------- | ------------------------------------------------------ |
+| `BAD_REQUEST`         | 400         | Request validation failed or invalid payload syntax.   |
+| `NOT_FOUND`           | 404         | Requested route or resource does not exist.            |
+| `INTERNAL_ERROR`      | 500         | Unhandled exception encountered during route handling. |
+| `SERVICE_UNAVAILABLE` | 503         | Background service or database connection unavailable. |
+
+## Request and response examples
+
+### Health check
+
+Request:
+
+```bash title="terminal"
+curl -X GET http://127.0.0.1:4000/api/health
+```
+
+Response (`200 OK`):
+
+```json
+{
+  "status": "ok",
+  "timestamp": "2026-10-11T05:03:14.485Z",
+  "uptime": 45627.017856541,
+  "version": "0.1.0"
+}
+```
+
+### Route not found
+
+Request:
+
+```bash title="terminal"
+curl -X GET http://127.0.0.1:4000/api/unregistered-path
+```
+
+Response (`404 Not Found`):
+
+```json
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "Route not found: GET /api/unregistered-path"
+  }
+}
+```

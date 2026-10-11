@@ -10,6 +10,7 @@ dist/
 out/
 .next/
 storybook-static/
+.source/
 
 # Environment files
 .env

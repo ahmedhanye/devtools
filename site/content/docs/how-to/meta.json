@@ -1,0 +1,14 @@
+{
+  "title": "How-To Guides",
+  "description": "Problem-solving recipes",
+  "root": true,
+  "icon": "Wrench",
+  "pages": [
+    "index",
+    "---Daemon & Database---",
+    "start-daemon",
+    "manage-database",
+    "---Frontend & Dashboard---",
+    "develop-frontend"
+  ]
+}
