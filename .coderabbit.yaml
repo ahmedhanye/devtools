@@ -78,6 +78,7 @@ reviews:
     - "!site/.source/**"
     - "!site/next-env.d.ts"
     - "!tmp/**"
+    - "!.scratch/**"
     - "!**/.fallow/**"
     - "!**/coverage/**"
     - "!**/.turbo/**"

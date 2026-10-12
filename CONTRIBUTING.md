@@ -57,7 +57,7 @@ Examples:
    ```bash
    gh pr create --assignee "@me"
    ```
-3. **Follow the pull request structure:** PR descriptions must describe user-facing changes to `main` following `.github/PULL_REQUEST_TEMPLATE.md` (Summary with structural diff/tree, Evidence, and Merge Danger). Pull request descriptions cite permanent codebase paths and omit ephemeral workspace `tmp/` paths, raw session logs, and agent execution notes.
+3. **Follow the pull request structure:** PR descriptions must describe user-facing changes to `main` following `.github/PULL_REQUEST_TEMPLATE.md` (Summary with structural diff/tree, Evidence, and Merge Danger). Pull request descriptions cite permanent codebase paths and omit ephemeral workspace `.scratch/` paths, raw session logs, and agent execution notes.
 4. **Provide verification evidence:** Include terminal test output, commands, or observable behavior confirming all acceptance criteria.
 5. **Open the pull request and update status:** Run `gh pr create`, then update the tracking issue to `In Review` on the project board via `gh project item-edit`.
 6. **Review thread resolution:** Repository ruleset `#24154563` (`Protect Main Branch`) enforces `required_review_thread_resolution: true`. All comment threads opened by reviewers or automated review bots (such as CodeRabbit) must be addressed before merge eligibility:

@@ -48,7 +48,7 @@ Collect and aggregate the structured reports from both axes.
 
 Generate Artifact 1 strictly after the code review subagent completes.
 
-Write the artifact using `write_to_file` to the conversation artifact directory with `ArtifactMetadata` (`UserFacing: true`, `RequestFeedback: false`, and a concise summary) to render in the UI panel. Mirror the content to repository path `tmp/qa/code-review-<ref>.md`.
+Produce Artifact 1 as a user-facing review artifact. Save the content to repository path `.scratch/qa/<ref>/code-review.md`.
 
 Structure Artifact 1 with these sections:
 
@@ -72,7 +72,7 @@ If the diff modifies application code, schemas, configuration, API routes, UI co
 
 Generate Artifact 2 strictly after Artifact 1 is written.
 
-Write the artifact using `write_to_file` to the conversation artifact directory with `ArtifactMetadata` (`UserFacing: true`, `RequestFeedback: false`, and a concise summary) to render in the UI panel. Mirror the content to repository path `tmp/qa/qa-guide-<ref>.md`.
+Produce Artifact 2 as a user-facing review artifact. Save the content to repository path `.scratch/qa/<ref>/QA.md`.
 
 Structure Artifact 2 using the five-part blueprint:
 
