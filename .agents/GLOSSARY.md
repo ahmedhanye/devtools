@@ -126,6 +126,16 @@ _Avoid_: Comment signoff, thread closing
 The end-to-end verification discipline synthesizing automated code-review findings with human-in-the-loop manual verification beyond CI capabilities.
 _Avoid_: Manual testing, PR gatekeeping, ad-hoc verification
 
+### Continuous integration and quality gates
+
+**Skip Gate**:
+A job-level conditional evaluation that yields `conclusion: skipped` without VM runner allocation, satisfying required branch ruleset checks without consuming CI minutes.
+_Avoid_: Path filter, workflow bypass, job canceler
+
+**Ruleset Context Invariant**:
+The repository requirement that CI workflows must emit exact status check context names matching branch ruleset definitions to prevent permanent merge stalls.
+_Avoid_: Check contract, status convention, branch rule match
+
 ### Documentation and developer guides
 
 **Documentation Platform**:

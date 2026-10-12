@@ -25,9 +25,56 @@ env:
   REACT_DOCTOR_NO_TELEMETRY: "1"
 
 jobs:
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      dependencies: ${{ steps.filter.outputs.dependencies }}
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout repository (push only)
+        if: github.event_name == 'push'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Detect changed files
+        if: github.event_name != 'schedule'
+        id: filter
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        with:
+          filters: |
+            dependencies:
+              - 'package.json'
+              - 'bun.lock'
+              - 'bunfig.toml'
+              - 'apps/*/package.json'
+              - 'packages/*/package.json'
+              - 'site/package.json'
+            code:
+              - 'apps/**'
+              - 'packages/**'
+              - 'package.json'
+              - 'bun.lock'
+              - 'bunfig.toml'
+              - 'tsconfig.base.json'
+              - '.github/**'
+
   dependency-audit:
     name: Dependency Audit & Review
     runs-on: ubuntu-latest
+    needs: changes
+    if: github.event_name == 'schedule' || needs.changes.outputs.dependencies == 'true'
     timeout-minutes: 10
     permissions:
       contents: read
@@ -90,6 +137,8 @@ jobs:
   codeql:
     name: CodeQL SAST Analysis
     runs-on: ubuntu-latest
+    needs: changes
+    if: github.event_name == 'schedule' || needs.changes.outputs.code == 'true'
     timeout-minutes: 20
     permissions:
       contents: read
