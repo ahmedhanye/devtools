@@ -1,0 +1,15 @@
+{
+  "$schema": "https://react.doctor/config.json",
+  "ignore": {
+    "overrides": [
+      {
+        "files": ["src/shared/ui/shadcn/**"],
+        "rules": [
+          "shadcn/no-restyle",
+          "shadcn/no-arbitrary-values",
+          "shadcn/require-static-classes"
+        ]
+      }
+    ]
+  }
+}

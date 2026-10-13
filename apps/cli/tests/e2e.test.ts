@@ -29,11 +29,7 @@ describe("End-to-End Interconnected Stack Integration (CLI -> Daemon -> UI -> AP
 
       const indexHtml = await indexRes.text();
       expect(indexHtml).toContain("<!DOCTYPE html>");
-      expect(indexHtml).toContain("DevTools System Dashboard");
-      expect(indexHtml).toContain("DevTools API Service");
-      expect(indexHtml).toContain("Shared Domain Core");
-      expect(indexHtml).toContain("Loopback Daemon");
-      expect(indexHtml).toContain("Web Application Shell");
+      expect(indexHtml).toContain('data-slot="sidebar-wrapper"');
 
       // 2. Static Asset Delivery: CSS and JS bundles linked in HTML are servable
       const cssMatch = indexHtml.match(

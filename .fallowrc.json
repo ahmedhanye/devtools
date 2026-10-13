@@ -8,6 +8,14 @@
     "**/.source/**",
     "@/.source/**"
   ],
+  "overrides": [
+    {
+      "files": ["apps/frontend/src/shared/ui/shadcn/**"],
+      "rules": {
+        "unused-export": "off"
+      }
+    }
+  ],
   "boundaries": {
     "preset": "feature-sliced",
     "zones": [
