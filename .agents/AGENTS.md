@@ -2,30 +2,20 @@
 
 ## Context pointers
 
-- **Issue tracking and board operations**: Read `.agents/docs/issue-tracker.md` for `gh` CLI commands, ticket hierarchy, claiming, and board status.
-- **Git workflow and pull requests**: Read `CONTRIBUTING.md` for linked branches, Conventional Commits, and pull requests.
-- **Domain vocabulary**: Read `.agents/GLOSSARY.md` for system nouns (`Daemon`, `Runtime Stack`, `Spec`, `Ticket`, `Frontier`, `DRI`).
-- **Architecture decision records**: Consult `.agents/docs/adr/` when evaluating system software choices that alter runtime execution, data persistence, or network boundaries.
-- **Documentation platform architecture**: Read `.agents/docs/site-architecture.md` for Fumadocs routing, search APIs, LLM endpoints, and MDX configurations.
-- **Testing standards and contracts**: Read `.agents/docs/testing.md` for contract seams, testing anti-patterns, and workspace testing blueprints.
+- **Git workflow and issues.** Read `CONTRIBUTING.md` when managing branches, pull requests, commits, and GitHub issues.
+- **Domain vocabulary.** Read `.agents/GLOSSARY.md` for system nouns and naming constraints.
+- **Architecture decision records.** Consult `.agents/docs/adr/` before changing runtime execution, persistence, or network boundaries.
+- **Documentation site architecture.** Read `.agents/docs/site-architecture.md` when modifying Fumadocs routing, MDX configurations, search APIs, or LLM endpoints.
 
 ## Execution boundaries
 
-- **Rule discovery**: Rule files in `.agents/rules/*.md` trigger automatically based on frontmatter glob patterns.
-- **Architecture decision record (ADR) threshold**: Create an ADR in `.agents/docs/adr/` strictly for system software choices that alter runtime execution, data persistence, or network boundaries.
-  The decision must satisfy three criteria: high reversal cost, non-obvious rationale, and a trade-off between viable technical designs.
-  If the running software does not execute differently because of the choice, it is not an ADR.
-  Route git workflows to `CONTRIBUTING.md`, tracker procedures to `.agents/docs/issue-tracker.md`, and dev tooling to configs.
-- **Problem-first planning**: Before asking decision questions during planning or grilling, state the concrete technical failure mode and verify patterns against primary documentation or code.
-- **Contract-first tickets**: Define behavioral contracts and automated acceptance criteria in issues. Keep implementation recipes and branch names in code and PRs.
-- **Autonomous test seams**: Proceed test-first without interactive confirmation modals (`ask_question`) when seams directly implement ticket acceptance criteria. Do not pause execution to pre-agree seams unless requirements are ambiguous or specify competing architectural designs.
-- **Prohibition of content testing**: Never write tests that assert static copy, prose strings, styling classes, page inventory counts, or trivial variable equality. Reserve automated tests strictly for runtime behavior, contracts, data schemas, and error boundaries.
-- **Ticket partitioning**: Stage only the files belonging to the active ticket before branching for subsequent tickets.
-- **Working artifact storage**: Ephemeral files live strictly in workspace `.scratch/` partitioned by purpose. Consult `.agents/rules/storage.md` for partition routing, host `/tmp` prohibition, and UI panel session storage.
-- **Reactive background execution**: Await reactive system completion notifications for background tasks. Yield execution immediately without polling status loops or sleep commands.
-- **Instruction hygiene**: Follow `.agents/skills/unslop` and `.agents/skills/writing-for-agents` whenever creating or editing instructions, rules, or documentation in `.agents/`.
-- **Path portability**: Reference files, code symbols, and documentation exclusively using repository-relative paths. Never embed or commit absolute machine paths (such as `/home/...` or `file:///...`).
-- **Git checkpoint**: Require explicit user confirmation before executing `git commit`, `git push`, or opening pull requests. Present `git status` and a compact summary (`git diff --stat`) for review.
-- **Immutable locked skills**: Treat skills declared in `skills-lock.json` (`.agents/skills/*`) as vendor-managed, read-only assets. Update them exclusively through `bunx skills`.
-- **Escalation**: When requirements are ambiguous or tests fail repeatedly, apply `needs-human-review`, post a blocker summary, and yield execution.
-- **Package manager and runner**: Execute all commands, package installations, and script runs with `bun` and `bunx`.
+- **Problem-first planning.** State concrete technical failure modes and verify patterns against documentation or code before asking decision questions.
+- **Contract-first tickets.** Define behavioral contracts and automated acceptance criteria in issues. Keep implementation recipes and branch names in code and pull requests.
+- **Ticket partitioning.** Stage only files belonging to the active ticket before branching for subsequent tickets.
+- **Reactive background execution.** Await reactive system completion notifications for background tasks. Yield execution immediately without polling status loops or sleep commands.
+- **Instruction hygiene.** Follow `.agents/skills/unslop` and `.agents/skills/writing-for-agents` when creating or editing instructions, rules, or documentation in `.agents/`.
+- **Path portability.** Use repository-relative paths for all files, symbols, and documentation. Never embed or commit absolute machine paths.
+- **Secret handling.** Never write sensitive data or credentials into the repository. Store runtime secrets in gitignored `.env` files. Use the file's comment syntax: append `// trufflehog:ignore` in `//`-comment files or `# trufflehog:ignore` in `#`-comment files, and only when a test fixture is completely fake.
+- **Git checkpoint.** Require explicit user confirmation before executing `git commit`, `git push`, branch merges, opening pull requests, or mutating stacks (`gh stack push`, `gh stack submit`, `gh stack merge`). Present `git status` alongside staged (`git diff --cached --stat`) and unstaged (`git diff --stat`) changes for review.
+- **Two-tier skill management.** Treat skills declared in `skills-lock.json` as vendor-managed, read-only assets updated through `bunx skills`. Eject customized skills into `.agents/skills-override.json` to shield them from CLI overwrites, and reconcile updates with `/update-custom-skills`.
+- **Package manager and runner.** Use `bun` and `bunx` for package installations and package scripts. Translate `npm`, `npx`, or `pnpm` references to their `bun` equivalents or workspace scripts.

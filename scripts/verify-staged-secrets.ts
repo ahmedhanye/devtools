@@ -277,6 +277,13 @@ export function readStagedContent(
   return onExit(1);
 }
 
+/**
+ * Executes the staged secrets verification workflow.
+ *
+ * Scans staged files against known credential patterns, filters allowlisted
+ * paths and fake fixtures, logs violations, and exits with a non-zero code
+ * if potential secrets are detected.
+ */
 function run(): void {
   const startTime = performance.now();
   const cliArgs = process.argv.slice(2);
@@ -319,7 +326,7 @@ function run(): void {
       "\nTo resolve:\n" +
         "1. Remove real credentials immediately and rotate compromised keys.\n" +
         "2. For synthetic unit test fixtures or mock keys, append `// trufflehog:ignore`\n" +
-        "   or `# trufflehog:ignore` to the line per .agents/rules/secrets.md.\n",
+        "   in `//`-comment files or `# trufflehog:ignore` in `#`-comment files per .agents/AGENTS.md.\n",
     );
     process.exit(1);
   }

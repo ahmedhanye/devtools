@@ -8,6 +8,68 @@ Development follows an issue-first, vertical slice workflow:
 2. One ticket, one vertical slice. Deliver end-to-end functionality across schema, logic, UI, and tests in a single session.
 3. Deliver all code to `main` through reviewed pull requests.
 
+## Issue tracking and management
+
+Issues and specs live as GitHub issues. Use the `gh` CLI for all operations. The repository is inferred from `git remote -v`.
+
+GitHub shares one number space across issues and pull requests. When inspecting a reference, resolve the number with `gh pr view <number>` first, then fall back to `gh issue view <number>`.
+
+### Issue CLI commands
+
+- **Create an issue**: `gh issue create --title "..." --body "..."` (use a heredoc for multi-line bodies).
+- **Read an issue**: `gh issue view <number> --json number,title,body,labels,state,comments,subIssues` (always specify `--json` to avoid deprecated GraphQL queries).
+- **List issues**: `gh issue list --state open --json number,title,body,labels,comments` with `--label` and `--state` filters.
+- **Comment on an issue**: `gh issue comment <number> --body "..."`
+- **Edit labels**: `gh issue edit <number> --add-label "..."` or `--remove-label "..."`
+- **Close an issue**: `gh issue close <number> --comment "..."`
+
+### Hierarchy and dependencies
+
+The project organizes work into Specs (high-level capability specifications) and Tickets (atomic vertical slice issues created using GitHub sub-issues).
+
+- **Attach Ticket to parent Spec**:
+  ```bash
+  gh api --method POST repos/:owner/:repo/issues/<spec_number>/sub_issues \
+    -F sub_issue_id=<ticket_db_id>
+  ```
+- **Add dependency**:
+  ```bash
+  gh api --method POST repos/:owner/:repo/issues/<ticket_number>/dependencies/blocked_by \
+    -F issue_id=<blocker_db_id>
+  ```
+- **Resolve database ID**:
+  ```bash
+  gh api repos/:owner/:repo/issues/<number> --jq .id
+  ```
+- **Single source of truth**: Omit manual parent links, child checklists, and `Blocked by: #...` lines from markdown bodies when native issue hierarchy and dependencies are enabled.
+- **Milestones**: Assigned strictly to Specs to track milestone deliverables without metric dilution. Tickets do not receive milestones.
+- **Query frontier**: List open tickets with zero unresolved blockers and no DRI.
+
+### Project board status lifecycle
+
+Status is tracked exclusively on the project board (`Todo`, `In Progress`, `In Review`, `Done`). Repository `status:*` labels are not used.
+
+- **Claim ticket**: Assign `@me` and create the native linked branch:
+  ```bash
+  gh issue edit <ticket_number> --add-assignee @me
+  gh issue develop <ticket_number> --checkout
+  ```
+- **Parent Spec rollup**:
+  - When any child ticket moves to `In Progress`, update the parent Spec to `In Progress` on the project board.
+  - Parent Specs never move to `In Review` automatically from child tickets.
+  - Parent Specs remain `In Progress` until all child tickets reach `Done` and the maintainer reviews the Spec.
+- **Resolve ticket**: Post the solution summary in a comment and close the ticket:
+  ```bash
+  gh issue comment <ticket_number> --body "..."
+  gh issue close <ticket_number>
+  ```
+
+### Issue hygiene
+
+- Check off completed acceptance criteria (`- [x]`).
+- Post technical discoveries and blocker alerts as issue comments.
+- Preserve existing issue descriptions, problem statements, and acceptance criteria.
+
 ## Branching
 
 Create linked branches directly from issues:
@@ -50,6 +112,15 @@ Examples:
 - `fix(web): resolve layout shift on mobile viewports`
 - `chore(ci): update workflow dependencies`
 
+### Pull request triage
+
+External pull requests are not treated as feature requests. New features begin as issues.
+
+When inspecting pull requests:
+
+- **Read a PR**: `gh pr view <number> --json number,title,body,labels,comments` and `gh pr diff <number>` for the diff.
+- **List PRs**: `gh pr list --state open --json number,title,body,labels,author,comments`
+
 ### Pull request rules
 
 1. **Link the tracking issue:** `gh issue develop` links the issue automatically. If created manually, add `Closes #<issue>` to the pull request body.
@@ -69,34 +140,7 @@ Examples:
    - _Ambiguous or high-risk finding:_ Leave the thread unresolved, apply the `needs-human-review` label, and escalate.
 7. **Squash merge into `main` after review passes:** `gh pr merge <pr_number> --squash --delete-branch`. Linear history with squash merging is enforced by repository rulesets.
 
-## Verification and quality standards
-
-All changes must pass local and CI verification before merging:
-
-### Local verification gate
-
-Run the canonical local gate before pushing:
-
-```bash
-bun run verify
-```
-
-This command runs the complete quality suite:
-
-1. `check`: Prettier formatting verification and Oxlint static analysis.
-2. `lint:design`: Frontend design token constraints.
-3. `lint:fsd`: Steiger architectural Feature-Sliced Design boundary checks.
-4. `typecheck`: TypeScript compiler type checks (`tsc --noEmit`) across all workspaces.
-5. `test`: Vitest and Bun test suites across all packages.
-
-**Workflow and action changes exemption:** Pull requests modifying exclusively `.github/workflows/**` or `.github/actions/**` are exempt from full monorepo test suites and require only targeted workflow validation before pushing:
-
-```bash
-bunx prettier --check .github/workflows/** .github/actions/**
-bun scripts/verify-staged-secrets.ts .github/workflows/** .github/actions/**
-```
-
-Follow `.agents/rules/verification.md` for proportionate change-scoped checks during iterative development.
+## Code style and pre-commit hooks
 
 ### Code style and autofix
 
@@ -120,11 +164,5 @@ Contributors and automated agents observe these security and contribution bounda
 3. **Fork security boundary:**
    Protected workflows (`.github/workflows/`), agent configurations (`.agents/`), and toolchain configurations (`bunfig.toml`, `lefthook.yml`, `package.json`) are guarded by GitHub Branch Rulesets and mandatory Code Owner review (`@AhmedHanye`). External pull requests modifying these protected boundaries cannot be merged without explicit maintainer approval.
 
-4. **Issue operations:**
-   Follow `.agents/docs/issue-tracker.md` for ticket claiming, dependency management, and project board status updates.
-   - Check off completed acceptance criteria (`- [x]`).
-   - Post technical discoveries and blocker alerts as issue comments.
-   - Preserve existing issue descriptions, problem statements, and acceptance criteria.
-
-5. **Escalation:**
+4. **Escalation:**
    When requirements are ambiguous or tests fail repeatedly, apply `needs-human-review`, post a blocker summary, and yield execution to the maintainer.
