@@ -16,6 +16,6 @@
   },
   "dependencies": {
     "@devtools/core": "workspace:*",
-    "hono": "^4.13.12"
+    "hono": "^4.13.13"
   }
 }
