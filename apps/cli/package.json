@@ -15,7 +15,7 @@
     "@devtools/core": "workspace:*",
     "@devtools/db": "workspace:*",
     "@inquirer/prompts": "^7.3.3",
-    "commander": "^13.1.0",
+    "commander": "^15.0.0",
     "picocolors": "^1.1.1"
   }
 }
