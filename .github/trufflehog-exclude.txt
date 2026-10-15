@@ -1,0 +1,6 @@
+# TruffleHog path exclusion patterns (Go RE2 regular expressions).
+# Each non-empty, non-comment line defines a file path regex to exclude from scans.
+
+# Issue #34: Vendor documentation contains the 20-character environment variable
+# FALLOW_SUMMARY_SCOPE, which triggers an unverified GitLab token heuristic false positive.
+^\.agents/skills/fallow/references/cli-reference\.md$
