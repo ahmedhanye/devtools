@@ -17,7 +17,7 @@
   "implement": {
     "source": "mattpocock/skills",
     "path": "skills/engineering/implement/SKILL.md",
-    "commit": "c612defa9e5cf9372262d0279eb124993ba77b71"
+    "commit": "6d6a5b9072f47ee7ba1d972d8ce0ee98b7ed4394"
   },
   "improve-codebase-architecture": {
     "source": "mattpocock/skills",
@@ -29,6 +29,11 @@
     "path": "skills/engineering/prototype/SKILL.md",
     "commit": "c612defa9e5cf9372262d0279eb124993ba77b71"
   },
+  "research": {
+    "source": "mattpocock/skills",
+    "path": "skills/engineering/research/SKILL.md",
+    "commit": "321658273cb1d20b76026717d027d505790106d4"
+  },
   "teach": {
     "source": "mattpocock/skills",
     "path": "skills/productivity/teach/SKILL.md",
@@ -37,11 +42,11 @@
   "to-spec": {
     "source": "mattpocock/skills",
     "path": "skills/engineering/to-spec/SKILL.md",
-    "commit": "c612defa9e5cf9372262d0279eb124993ba77b71"
+    "commit": "5c89081d4bbeb3d039a42093653f90bb698d780e"
   },
   "to-tickets": {
     "source": "mattpocock/skills",
     "path": "skills/engineering/to-tickets/SKILL.md",
-    "commit": "c612defa9e5cf9372262d0279eb124993ba77b71"
+    "commit": "9e2abf8611a345efbf779aacb171cff015bcdeb6"
   }
 }

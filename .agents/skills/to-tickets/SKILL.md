@@ -1,24 +1,28 @@
 ---
 name: to-tickets
-description: Break a plan, spec, or the current conversation into a set of tracer-bullet tickets, each declaring its blocking edges, published to the configured tracker (edges as text in one file per ticket locally, or native blocking links on a real tracker).
+description: Break a plan, spec, or conversation into tracer-bullet tickets with blocking edges, published locally or to a tracker.
 disable-model-invocation: true
 ---
 
-# To Tickets
+# To tickets
 
-Break a plan, spec, or conversation into a set of tickets: tracer-bullet vertical slices, each declaring the tickets that block it.
+Break a plan, spec, or conversation into tracer-bullet tickets, each declaring its blocking dependencies. Follow Git and GitHub CLI workflows in `CONTRIBUTING.md`.
 
 ## Process
 
 ### 1. Gather context
 
-Work from whatever is already in the conversation context. If the user passes a reference (a spec path, an issue number or URL) as an argument, fetch it and read its full body and comments.
+Work from whatever is already in the conversation context. If the user passes a reference, such as a spec path, issue number, or URL as an argument, fetch it and read its full body and comments.
+
+Completion criterion: Target context, spec, or ticket loaded and read completely.
 
 ### 2. Explore the codebase (optional)
 
-If you have not already explored the codebase, do so to understand the current state of the code. Ticket titles and descriptions should use the project domain glossary vocabulary, and respect ADRs in the area you are touching.
+If you have not already explored the codebase, do so to understand the current state of the code. Use vocabulary from `.agents/GLOSSARY.md` and respect ADRs in `.agents/docs/adr/`.
 
-Look for opportunities to prefactor the code to make the implementation easier. "Make the change easy, then make the easy change."
+Look for prefactoring opportunities to simplify the change.
+
+Completion criterion: Codebase boundaries mapped and prefactoring opportunities identified.
 
 ### 3. Draft vertical slices
 
@@ -26,95 +30,72 @@ Break the work into tracer bullet tickets.
 
 <vertical-slice-rules>
 
-- Each slice cuts a narrow but complete path through every layer (schema, API, UI, tests): vertical, not a horizontal slice of one layer
-- A completed slice is demoable or verifiable on its own
-- Each slice is sized to fit in a single fresh context window
-- Any prefactoring should be done first
+- Each slice cuts a narrow but complete path through every layer, including schema, API, UI, and tests: vertical, not a horizontal slice of one layer.
+- A completed slice is demoable or verifiable on its own.
+- Each slice is sized to fit in a single fresh context window.
+- Any prefactoring should be done first.
 
 </vertical-slice-rules>
 
-Give each ticket its blocking edges: the other tickets that must complete before it can start. A ticket with no blockers can start immediately.
+Declare blocking edges for each ticket. A ticket with no blockers can start immediately.
 
-Wide refactors are the exception to vertical slicing. A wide refactor is one mechanical change (rename a column, retype a shared symbol) whose blast radius fans across the whole codebase, so a single edit breaks thousands of call sites at once and no vertical slice can land green. Do not force it into a tracer bullet; sequence it as expand-contract. First expand: add the new form beside the old so nothing breaks. Then migrate the call sites over in batches sized by blast radius (per package, per directory), each batch its own ticket blocked by the expand, keeping CI green batch to batch because the old form still exists. Finally contract: delete the old form once no caller remains, in a ticket blocked by every migrate batch.
+Wide refactors are the exception to vertical slicing. A wide refactor is one mechanical change, such as renaming a column or retyping a shared symbol, whose blast radius fans across the whole codebase, so a single edit breaks thousands of call sites at once and no vertical slice can land green. Do not force it into a tracer bullet; sequence it as expand-contract. First expand by adding the new form beside the old so nothing breaks. Then migrate the call sites over in batches sized by blast radius, by package or directory, each batch its own ticket blocked by the expand, keeping CI green batch to batch because the old form still exists. Finally contract by deleting the old form once no callers remain, in a ticket blocked by every migrate batch.
+
+Completion criterion: Vertical slices drafted with declared blocking edges.
 
 ### 4. Quiz the user
 
 Present the proposed breakdown as a numbered list. For each ticket, show:
 
-- **Title**: short descriptive name
-- **Blocked by**: which other tickets (if any) must complete first
-- **What it delivers**: the end-to-end behaviour this ticket makes work
+- **Title.** Short descriptive name.
+- **Blocked by.** Other tickets that must complete first, if any.
+- **Delivered capability.** The end-to-end behavior this ticket makes work.
 
 Ask the user:
 
-- Does the granularity feel right? (too coarse / too fine)
-- Are the blocking edges correct: does each ticket only depend on tickets that genuinely gate it?
+- Does the granularity feel right, or is it too coarse or too fine?
+- Are the blocking edges correct? Confirm each ticket depends only on tickets that genuinely gate it.
 - Should any tickets be merged or split further?
 
 Iterate until the user approves the breakdown.
 
+Completion criterion: Breakdown approved by the user without pending revisions.
+
 ### 5. Publish the tickets
 
-Publish the approved tickets:
+Determine the target destination from the user's prompt:
 
-- **Local files**: write one file per ticket under `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01` in dependency order (blockers first). Use the local ticket template below: one ticket per file, never a single combined file.
-- **GitHub**: publish one issue per ticket in dependency order (blockers first) with title prefix `[Slice]: <title>` and label `type:feat`. Use the issue template below. Attach each ticket to its parent Spec as a native sub-issue, and link blockers using native blocking dependencies.
+- **Local files (default).** Unless the user explicitly requests publishing to GitHub or a remote tracker, save tickets locally under `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01` in dependency order (blockers first). Use the template below with `# <NN>: <Ticket title>` prepended and a `### Blocked by` section listing blocking ticket numbers or `None (can start immediately)`. Write one ticket per file, never a single combined file.
+- **GitHub.** When the user explicitly requests publishing to GitHub or the issue tracker, create one issue per ticket in dependency order (blockers first) with title prefix `[Slice]: <title>` and label `type:feat`. Use the ticket template below for the issue body. If the ticket belongs to a parent Spec, attach it as a native sub-issue. Declare any blocking dependencies to gate start order.
 
-Work the frontier: any ticket whose blockers are all done. For a purely linear chain that means top to bottom.
+Leave parent Specs open in the issue tracker until all child tickets reach Done.
 
-<local-ticket-template>
+Completion criterion: All approved tickets published locally or created as linked GitHub issues.
 
-# <NN>: <Ticket title>
+<ticket-template>
 
-### Slice Objective & User Value
+### Primary affected area
 
-The end-to-end behaviour this ticket makes work from the user perspective.
+Select the primary workspace app or package from `apps/*` or `packages/*`, or `toolchain / infra`.
 
-### Vertical Slice Scope
+### Slice objective and user value
 
-- **Schema & DB:** (migrations, schemas, contract types)
-- **Logic & Services:** (domain logic, route handlers, error handling)
-- **UI & Presentation:** (client components, state hooks)
-- **Tests:** (unit tests, integration tests, contract assertions)
+The end-to-end behavior this ticket makes work from the user perspective.
 
-### Blocked by
+### Vertical slice scope
 
-The numbers or titles of the tickets that gate this one, or "None (can start immediately)".
+Describe how these layers collaborate to deliver the end-to-end behavior above as a single vertical path.
 
-### Automated Acceptance Criteria
+- **Schema and database.** Migrations, schemas, or contract types. State none if untouched.
+- **Logic and services.** Domain logic, route handlers, or error handling.
+- **User interface and presentation.** Components, layout, or state hooks. State none if untouched.
+- **Tests.** Unit tests, integration tests, or contract assertions.
 
-- [ ] Automated verification suite passes
-- [ ] Behavioral tests pass for new functionality
-
-</local-ticket-template>
-
-<issue-template>
-
-### Primary Affected Area
-
-Select one: `@devtools/cli`, `@devtools/api`, `@devtools/frontend`, `@devtools/core`, `@devtools/db`, `toolchain / infra`, or `cross-cutting / all`.
-
-### Slice Objective & User Value
-
-The end-to-end behaviour this ticket makes work from the user perspective.
-
-### Vertical Slice Scope
-
-- **Schema & DB:** (migrations, schemas, contract types)
-- **Logic & Services:** (domain logic, route handlers, error handling)
-- **UI & Presentation:** (client components, state hooks)
-- **Tests:** (unit tests, integration tests, contract assertions)
-
-### Automated Acceptance Criteria
+### Automated acceptance criteria
 
 - [ ] Automated verification suite passes
 - [ ] Behavioral tests pass for new functionality
 
-### Ticket Invariants
+</ticket-template>
 
-- [x] Atomic vertical slice deliverable in a single PR.
-- [x] Linked to parent Spec via native sub-issue without direct milestone assignment.
-
-</issue-template>
-
-Avoid specific file paths or code snippets: they go stale fast. Exception: if a prototype produced a snippet that encodes a decision more precisely than prose can (state machine, reducer, schema, type shape), inline it and note briefly that it came from a prototype.
+Avoid specific file paths or code snippets because they go stale quickly. Exception: if a prototype produced a snippet that encodes a decision more precisely than prose (state machine, reducer, schema, or type shape), inline it and note that it came from a prototype.

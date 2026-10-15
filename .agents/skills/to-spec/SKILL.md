@@ -1,49 +1,70 @@
 ---
 name: to-spec
-description: Turn the current conversation into a spec and publish it to the project issue tracker: no interview, just synthesis of what you have already discussed.
+description: Synthesize the current conversation and codebase understanding into a published capability specification.
 disable-model-invocation: true
 ---
 
-This skill takes the current conversation context and codebase understanding and produces a spec. Do not interview the user; synthesize what you already know.
+# To spec
+
+Synthesize conversation context and codebase understanding into a spec, confirming testing seams before publishing. Follow Git and GitHub CLI workflows in `CONTRIBUTING.md`.
 
 ## Process
 
-1. Explore the repo to understand the current state of the codebase, if you have not already. Use the project domain glossary vocabulary throughout the spec, and respect any ADRs in the area you are touching.
+1. Explore the repository to understand the current state of the codebase, if you have not already. Use vocabulary from `.agents/GLOSSARY.md` throughout the spec, and respect any ADRs in `.agents/docs/adr/`.
 
-2. Sketch the seams at which you are going to test the feature. Prefer existing seams to new ones. Use the highest seam possible. The fewer seams across the codebase, the better.
+Completion criterion: Target packages identified, glossary vocabulary cross-referenced, and relevant ADRs checked.
 
-Check with the user that these seams match their expectations.
+2. Sketch the seams for testing the feature. Prefer existing seams to new ones. Use the highest seam possible. The fewer seams across the codebase, the better. The ideal number is one.
 
-3. Write the spec using the template below and publish it with title prefix `[Spec]: <title>` and label `type:spec`.
+Confirm with the user that these seams match expectations.
+
+Completion criterion: Testing seams identified and user confirmation recorded in context.
+
+3. Write the spec using the template below and publish it as an issue with title prefix `[Spec]: <title>`, label `type:spec`, and the assigned capability milestone.
+
+Completion criterion: Spec issue published with prefix `[Spec]: <title>`, labeled `type:spec`, assigned to active milestone, and issue URL returned.
 
 <spec-template>
 
-### Primary Affected Area
+### Primary affected area
 
-Select one: `@devtools/cli`, `@devtools/api`, `@devtools/frontend`, `@devtools/core`, `@devtools/db`, `toolchain / infra`, or `cross-cutting / all`.
+Select the primary workspace app or package from `apps/*` or `packages/*`, or `toolchain / infra`.
 
-### Capability Overview & Problem Statement
+### Capability overview and problem statement
 
 What capability this spec introduces, and what concrete technical problem or user need it solves.
 
-### Target Architecture & Seams
+### User stories
 
-Module boundaries, package interactions, schemas, interface contracts, and the seams chosen for testing. If a prototype produced a snippet that encodes a decision more precisely than prose can (state machine, reducer, schema, type shape), inline it here.
+Numbered list of user stories covering personas, core paths, edge cases, and failure modes:
+1. As an <actor>, I want <capability>, so that <benefit>.
 
-### Security & Non-Functional Boundaries
+Example:
+1. As a CLI user running in CI, I want the command to return non-zero exit codes on lint failures, so that broken builds are halted.
+
+### In and out of scope
+
+- **In scope.** Concrete boundaries delivered under this capability.
+- **Out of scope.** Related capabilities, premature optimizations, or deferred integrations.
+
+### Target architecture
+
+Module boundaries, package interactions, schemas, and interface contracts. If a prototype produced a snippet that encodes a decision more precisely than prose (state machine, reducer, schema, or type shape), inline it here.
+
+### Testing decisions
+
+- Seams and modules tested. Favor the highest possible seam and test external behavior rather than internals.
+- Prior art or existing fixtures reused.
+
+### Security and non-functional boundaries
 
 Supply chain constraints, secret handling rules, fork security boundaries, performance invariants, or telemetry restrictions.
 
-### High-Level Acceptance Criteria & Milestone Goals
+### High-level acceptance criteria and milestone goals
 
 Observable conditions defining capability completion:
 
 - [ ] Automated verification suite passes
 - [ ] All child tickets delivered and verified
-
-### Governance Check
-
-- [x] Milestones belong exclusively to Specs, not Tickets.
-- [x] This spec will be broken down into atomic child tickets linked via native sub-issues.
 
 </spec-template>

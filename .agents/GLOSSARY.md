@@ -39,3 +39,13 @@ _Avoid_: QA checklist, testing checklist, manual test plan
 **Developer Review Guide**:
 A structural summary of architecture decisions, state logic, and test coverage provided to help developers understand changes without reading raw diffs.
 _Avoid_: Code review checklist, technical QA, implementation review
+
+### Issue and tracking hierarchy
+
+**Spec**:
+A capability specification that tracks milestone completion and decomposes into child tickets.
+_Avoid_: Epic, feature initiative, milestone goal, parent issue
+
+**Ticket**:
+An atomic vertical slice issue that delivers end-to-end functionality in a single pull request, either standalone or linked to a parent Spec as a native sub-issue.
+_Avoid_: Sub-task, story, work item, task issue
