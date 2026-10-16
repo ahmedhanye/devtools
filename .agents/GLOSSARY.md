@@ -40,6 +40,10 @@ _Avoid_: QA checklist, testing checklist, manual test plan
 A structural summary of architecture decisions, state logic, and test coverage provided to help developers understand changes without reading raw diffs.
 _Avoid_: Code review checklist, technical QA, implementation review
 
+**Runner Egress Allowlist**:
+The explicit, job-scoped set of approved destination hostnames and ports configured on StepSecurity Harden-Runner in block mode to prevent unauthorized outbound network telemetry or credential exfiltration.
+_Avoid_: Firewall whitelist, network rules, proxy allowlist, runner sandbox filter
+
 ### Issue and tracking hierarchy
 
 **Spec**:
