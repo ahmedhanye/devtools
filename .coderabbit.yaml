@@ -134,6 +134,14 @@ reviews:
         2. Schema Authority: Export canonical Zod schemas and derived TypeScript types for cross-package contracts.
         3. Stable Contracts: Maintain backward-compatible schema changes and explicit error codes.
 
+    - path: "packages/browser/**"
+      instructions: >-
+        This package provides Chromium browser provisioning and detection infrastructure.
+        Enforce the following:
+        1. 3-Tier Waterfall: Strict resolution order (explicit flag/env -> managed cache & system probes -> terminal remediation failure).
+        2. Clean Seams: Mock external download operations (@puppeteer/browsers) in tests to guarantee offline test isolation.
+        3. Stable Contracts: Export public contracts (resolveBrowserPath, installBrowser, getBrowserStatus, types, errors) via index.ts.
+
     - path: "site/**"
       instructions: >-
         This package is the Fumadocs documentation platform application.

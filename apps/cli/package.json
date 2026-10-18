@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@devtools/api": "workspace:*",
+    "@devtools/browser": "workspace:*",
     "@devtools/core": "workspace:*",
     "@devtools/db": "workspace:*",
     "@inquirer/prompts": "^8.7.3",

@@ -3,6 +3,7 @@ import { Command } from "commander";
 import pc from "picocolors";
 import { type DaemonInstance, startDaemon } from "./daemon";
 import { findNextAvailablePort, isPortAvailable } from "./port";
+import { registerBrowserCommands } from "./browser";
 import pkg from "../../../package.json";
 
 export interface WebCommandOptions {
@@ -128,6 +129,8 @@ export function createProgram(): Command {
     .action(async (options: WebCommandOptions) => {
       await runWebCommand(options);
     });
+
+  registerBrowserCommands(program);
 
   return program;
 }
