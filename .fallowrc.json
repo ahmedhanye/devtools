@@ -1,6 +1,11 @@
 {
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
-  "entry": ["apps/frontend/steiger.config.js"],
+  "entry": [
+    "apps/frontend/steiger.config.js",
+    "packages/browser/src/index.ts",
+    "packages/core/src/index.ts",
+    "packages/db/src/index.ts"
+  ],
   "ignoreDependencies": ["prettier-plugin-tailwindcss"],
   "ignoreUnresolvedImports": [
     "./.next/**",
@@ -10,6 +15,16 @@
   ],
   "overrides": [
     {
+      "files": [
+        "packages/**/errors.ts",
+        "packages/**/src/**/errors.ts",
+        "packages/**/src/browser/errors.ts"
+      ],
+      "rules": {
+        "unused-class-member": "off"
+      }
+    },
+    {
       "files": ["apps/frontend/src/shared/ui/shadcn/**"],
       "rules": {
         "unused-export": "off"
@@ -17,7 +32,6 @@
     }
   ],
   "boundaries": {
-    "preset": "feature-sliced",
     "zones": [
       {
         "name": "app",
@@ -28,21 +42,57 @@
         "patterns": ["apps/frontend/src/pages/**"]
       },
       {
-        "name": "widgets",
-        "patterns": ["apps/frontend/src/widgets/**"]
-      },
-      {
-        "name": "features",
-        "patterns": ["apps/frontend/src/features/**"]
-      },
-      {
-        "name": "entities",
-        "patterns": ["apps/frontend/src/entities/**"]
-      },
-      {
         "name": "shared",
         "patterns": ["apps/frontend/src/shared/**"]
       }
+    ],
+    "rules": [
+      {
+        "from": "app",
+        "allow": ["pages", "shared"]
+      },
+      {
+        "from": "pages",
+        "allow": ["shared"]
+      },
+      {
+        "from": "shared",
+        "allow": []
+      }
     ]
+  },
+  "regression": {
+    "baseline": {
+      "analysisIdentity": {
+        "mode": "syntactic",
+        "semantic_schema_version": 1,
+        "capabilities": [],
+        "project_config_hash": "",
+        "backend_family": "",
+        "completeness": "complete"
+      },
+      "totalIssues": 1,
+      "unusedFiles": 0,
+      "unusedExports": 0,
+      "unusedTypes": 1,
+      "unusedDependencies": 0,
+      "unusedDevDependencies": 0,
+      "unusedOptionalDependencies": 0,
+      "unusedEnumMembers": 0,
+      "unusedClassMembers": 0,
+      "unresolvedImports": 0,
+      "unlistedDependencies": 0,
+      "duplicateExports": 0,
+      "circularDependencies": 0,
+      "reExportCycles": 0,
+      "packageCycles": 0,
+      "typeOnlyDependencies": 0,
+      "testOnlyDependencies": 0,
+      "devDependenciesInProduction": 0,
+      "boundaryViolations": 0,
+      "boundaryCoverageViolations": 0,
+      "boundaryCallViolations": 0,
+      "policyViolations": 0
+    }
   }
 }

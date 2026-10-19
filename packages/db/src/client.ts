@@ -16,17 +16,17 @@ export function createDb(options: CreateDbOptions = {}): DevtoolsDb {
   return drizzle({ client: sqlite, schema });
 }
 
-let _instance: DevtoolsDb | null = null;
+let devtoolsDbInstance: DevtoolsDb | null = null;
 
 export function getDb(): DevtoolsDb {
-  if (!_instance) {
-    _instance = createDb();
+  if (!devtoolsDbInstance) {
+    devtoolsDbInstance = createDb();
   }
-  return _instance;
+  return devtoolsDbInstance;
 }
 
 export function resetDb(): void {
-  _instance = null;
+  devtoolsDbInstance = null;
 }
 
 export const db: DevtoolsDb = new Proxy({} as DevtoolsDb, {

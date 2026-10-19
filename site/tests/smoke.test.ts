@@ -17,6 +17,8 @@ describe("documentation source loader", () => {
   it("resolves pages by slug and by url through source query functions", () => {
     const pages = source.getPages();
     const samplePage = pages[0];
+    expect(samplePage).toBeDefined();
+    if (!samplePage) throw new Error("Expected at least one page in source");
 
     const bySlug = source.getPage(samplePage.slugs);
     expect(bySlug).toBeDefined();

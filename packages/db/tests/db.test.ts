@@ -31,8 +31,7 @@ describe("Database Configuration & Path Resolution", () => {
   });
 
   it("resolves to :memory: in test environment by default", () => {
-    process.env.NODE_ENV = "test";
-    expect(resolveDatabasePath()).toBe(":memory:");
+    expect(resolveDatabasePath({ env: { NODE_ENV: "test" } })).toBe(":memory:");
   });
 
   it("respects explicit custom path argument", () => {
@@ -46,11 +45,12 @@ describe("Database Configuration & Path Resolution", () => {
     }
   });
 
-  it("respects DEVTOOLS_DB_PATH environment variable override", () => {
+  it("respects DEVTOOLS_DB_PATH environment variable override via env seam", () => {
     const tempPath = join(tmpdir(), "devtools-env-test", "env.db");
-    process.env.DEVTOOLS_DB_PATH = tempPath;
     try {
-      const resolved = resolveDatabasePath();
+      const resolved = resolveDatabasePath({
+        env: { DEVTOOLS_DB_PATH: tempPath },
+      });
       expect(resolved).toBe(tempPath);
       expect(existsSync(join(tmpdir(), "devtools-env-test"))).toBe(true);
     } finally {
@@ -62,17 +62,17 @@ describe("Database Configuration & Path Resolution", () => {
   });
 
   it("returns :memory: if DEVTOOLS_DB_PATH is :memory:", () => {
-    process.env.DEVTOOLS_DB_PATH = ":memory:";
-    expect(resolveDatabasePath()).toBe(":memory:");
+    expect(
+      resolveDatabasePath({
+        env: { DEVTOOLS_DB_PATH: ":memory:" },
+      }),
+    ).toBe(":memory:");
   });
 
-  it("resolves to in-repo .devtools/devtools.db in development environment", () => {
-    delete process.env.DEVTOOLS_DB_PATH;
-    delete process.env.DATABASE_URL;
-    process.env.NODE_ENV = "development";
-    delete process.env.BUN_ENV;
-
-    const resolved = resolveDatabasePath();
+  it("resolves to in-repo .devtools/devtools.db in development environment via env seam", () => {
+    const resolved = resolveDatabasePath({
+      env: { NODE_ENV: "development" },
+    });
     expect(resolved).toContain(".devtools");
     expect(resolved.endsWith("devtools.db")).toBe(true);
   });

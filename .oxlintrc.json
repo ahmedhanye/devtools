@@ -1,5 +1,112 @@
 {
+  "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/refs/heads/main/npm/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "import", "promise"],
   "categories": {
-    "correctness": "error"
-  }
+    "correctness": "deny",
+    "suspicious": "deny",
+    "perf": "warn"
+  },
+  "rules": {
+    "typescript/no-floating-promises": "deny",
+    "typescript/await-thenable": "deny",
+    "typescript/no-misused-spread": "deny",
+    "typescript/no-redundant-type-constituents": "deny",
+    "import/no-duplicates": "deny",
+    "import/no-self-import": "deny",
+    "import/no-unassigned-import": "off",
+    "import/namespace": "off",
+    "promise/catch-or-return": "deny",
+    "promise/no-return-wrap": "deny",
+    "unicorn/prefer-node-protocol": "deny",
+    "react/react-in-jsx-scope": "off"
+  },
+  "overrides": [
+    {
+      "files": ["apps/frontend/**", "site/**"],
+      "plugins": ["react", "react-perf", "jsx-a11y", "nextjs"],
+      "rules": {
+        "react/react-in-jsx-scope": "off",
+        "react/no-unstable-nested-components": "deny",
+        "react/exhaustive-deps": "deny",
+        "react/jsx-key": "deny",
+        "react/jsx-no-duplicate-props": "deny",
+        "react/jsx-no-constructed-context-values": "warn",
+        "react/set-state-in-effect": "deny",
+        "nextjs/no-head-element": "deny",
+        "nextjs/no-sync-scripts": "deny",
+        "jsx-a11y/alt-text": "deny",
+        "jsx-a11y/anchor-is-valid": "deny",
+        "jsx-a11y/click-events-have-key-events": "warn",
+        "jsx-a11y/prefer-tag-over-role": "off"
+      }
+    },
+    {
+      "files": ["apps/frontend/src/shared/ui/shadcn/**"],
+      "rules": {
+        "no-shadow": "off"
+      }
+    },
+    {
+      "files": ["packages/**/src/**"],
+      "plugins": ["node"],
+      "rules": {
+        "node/no-process-env": "deny",
+        "unicorn/no-process-exit": "deny",
+        "node/no-path-concat": "deny",
+        "node/handle-callback-err": "deny"
+      }
+    },
+    {
+      "files": [
+        "**/packages/db/src/config.ts",
+        "**/packages/browser/src/config.ts"
+      ],
+      "plugins": ["node"],
+      "rules": {
+        "node/no-process-env": "off"
+      }
+    },
+    {
+      "files": [
+        "**/packages/browser/src/browser/detector.ts",
+        "**/packages/browser/src/browser/waterfall.ts"
+      ],
+      "rules": {
+        "no-await-in-loop": "off"
+      }
+    },
+    {
+      "files": ["apps/cli/**", "apps/api/**", "scripts/**"],
+      "plugins": ["node"],
+      "rules": {
+        "node/no-path-concat": "deny",
+        "node/handle-callback-err": "deny"
+      }
+    },
+    {
+      "files": [
+        "**/*.test.{ts,tsx,js}",
+        "**/*.spec.{ts,tsx,js}",
+        "**/tests/**/*.{ts,tsx,js}"
+      ],
+      "plugins": ["vitest"],
+      "rules": {
+        "vitest/no-focused-tests": "deny",
+        "vitest/no-disabled-tests": "warn",
+        "vitest/valid-expect": "deny",
+        "vitest/expect-expect": "warn",
+        "vitest/no-identical-title": "deny",
+        "typescript/no-floating-promises": "off",
+        "unicorn/consistent-function-scoping": "off",
+        "no-await-in-loop": "off"
+      }
+    }
+  ],
+  "ignorePatterns": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/.next/**",
+    "**/.source/**",
+    "**/coverage/**"
+  ]
 }

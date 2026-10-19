@@ -1,7 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { Mermaid, getMermaidThemeConfig } from "../src/components/mermaid";
+import { Mermaid } from "../src/components/mermaid";
+import { getMermaidThemeConfig } from "../src/lib/mermaid";
 
 describe("diagram rendering component seam", () => {
   it("adapts mermaid theme configuration between light and dark modes", () => {
@@ -15,7 +16,7 @@ describe("diagram rendering component seam", () => {
     expect(fallbackConfig.theme).toBe("neutral");
   });
 
-  it("renders accessible diagram container with role, aria-label, and describedby association", () => {
+  it("renders accessible diagram container with semantic figure, aria-label, and describedby association", () => {
     const sampleChart = `
 flowchart TD
   CLI["CLI Process"] --> Daemon["Background Daemon"]
@@ -29,7 +30,7 @@ flowchart TD
       }),
     );
 
-    expect(html).toContain('role="figure"');
+    expect(html.startsWith("<figure")).toBe(true);
     expect(html).toContain('aria-label="Architecture Flow"');
 
     const match = html.match(/aria-describedby="([^"]+)"/);
@@ -50,7 +51,17 @@ sequenceDiagram
       }),
     );
 
-    expect(html).toContain('role="figure"');
+    expect(html.startsWith("<figure")).toBe(true);
     expect(html).toContain('aria-label="Diagram visualization"');
+  });
+
+  it("renders pre-rendered SVG diagram markup when initialSvg is provided", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(Mermaid, {
+        chart: "graph TD; A-->B;",
+        initialSvg: '<svg data-testid="rendered-mermaid"><g></g></svg>',
+      }),
+    );
+    expect(html).toContain('data-testid="rendered-mermaid"');
   });
 });

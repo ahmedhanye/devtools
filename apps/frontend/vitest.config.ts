@@ -7,6 +7,18 @@ export default defineConfig({
   test: {
     environment: "happy-dom",
     globals: true,
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "lcov", "json", "json-summary"],
+      reportsDirectory: "./coverage",
+      reportOnFailure: true,
+      exclude: [
+        "**/*.test.{ts,tsx}",
+        "**/dist/**",
+        "**/.next/**",
+        "steiger.config.js",
+      ],
+    },
   },
   resolve: {
     alias: {

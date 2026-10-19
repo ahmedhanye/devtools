@@ -40,7 +40,7 @@ export function DiataxisSection() {
               <Link
                 key={quadrant.id}
                 href={quadrant.href}
-                className="group flex flex-col justify-between rounded-xl border border-border bg-card p-5 shadow-sm transition-all hover:border-primary/50"
+                className="group flex flex-col justify-between rounded-xl border border-border bg-card p-5 shadow-sm transition-colors hover:border-primary/50"
               >
                 <div>
                   <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">

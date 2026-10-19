@@ -9,9 +9,18 @@ export interface ResolvedPageDetails {
   content: string;
 }
 
-function parseMarkdownMetadata(raw: string): ResolvedPageDetails {
+export function parseMarkdownMetadata(raw: string): ResolvedPageDetails {
+  const emptyMatch = raw.match(/^---\r?\n---\r?\n([\s\S]*)$/);
+  if (emptyMatch && emptyMatch[1] !== undefined) {
+    return {
+      title: "DevTools Documentation",
+      description: undefined,
+      content: emptyMatch[1].trim(),
+    };
+  }
+
   const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
-  if (!match) {
+  if (!match || match[2] === undefined) {
     return {
       title: "DevTools Documentation",
       description: undefined,
@@ -19,19 +28,19 @@ function parseMarkdownMetadata(raw: string): ResolvedPageDetails {
     };
   }
 
-  const frontmatterStr = match[1];
+  const frontmatterStr = match[1] ?? "";
   const bodyContent = match[2].trim();
 
   let title: string | undefined;
   let description: string | undefined;
 
   const titleMatch = frontmatterStr.match(/^title:\s*(.+)$/m);
-  if (titleMatch) {
+  if (titleMatch?.[1]) {
     title = titleMatch[1].trim().replace(/^['"]|['"]$/g, "");
   }
 
   const descMatch = frontmatterStr.match(/^description:\s*(.+)$/m);
-  if (descMatch) {
+  if (descMatch?.[1]) {
     description = descMatch[1].trim().replace(/^['"]|['"]$/g, "");
   }
 
@@ -81,8 +90,7 @@ export function resolvePageDetails(page: Page): ResolvedPageDetails {
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function buildSearchIndex(page: any) {
+export async function buildSearchIndex(page: Page) {
   const details = resolvePageDetails(page);
   const data = page.data as {
     structuredData?: unknown;

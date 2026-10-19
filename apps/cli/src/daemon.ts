@@ -68,6 +68,29 @@ export function resolveDaemonConfig(options: StartDaemonOptions = {}): {
   };
 }
 
+async function tryServeFile(
+  filePath: string,
+  status = 200,
+): Promise<Response | null> {
+  try {
+    if (existsSync(filePath)) {
+      const stat = statSync(filePath);
+      if (stat.isFile()) {
+        const file = Bun.file(filePath);
+        return new Response(file, {
+          status,
+          headers: {
+            "Content-Type": file.type || "application/octet-stream",
+          },
+        });
+      }
+    }
+  } catch {
+    // ignore filesystem errors
+  }
+  return null;
+}
+
 export async function serveStaticAsset(
   staticDir: string,
   urlPath: string,
@@ -87,26 +110,6 @@ export async function serveStaticAsset(
   if (safePath !== baseDir && !safePath.startsWith(baseDir + sep)) {
     return new Response("Forbidden", { status: 403 });
   }
-
-  const tryServeFile = async (filePath: string, status = 200) => {
-    try {
-      if (existsSync(filePath)) {
-        const stat = statSync(filePath);
-        if (stat.isFile()) {
-          const file = Bun.file(filePath);
-          return new Response(file, {
-            status,
-            headers: {
-              "Content-Type": file.type || "application/octet-stream",
-            },
-          });
-        }
-      }
-    } catch {
-      // ignore filesystem errors
-    }
-    return null;
-  };
 
   // 1. Root route: /
   if (decodedPath === "/" || decodedPath === "") {
@@ -151,6 +154,7 @@ export function startDaemon(options: StartDaemonOptions = {}): DaemonInstance {
   } catch (error) {
     throw new Error(
       `Fatal: failed to initialize persistence database: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
     );
   }
 

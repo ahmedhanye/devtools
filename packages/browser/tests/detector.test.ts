@@ -253,4 +253,91 @@ describe("Browser Detector & Executable Verification", () => {
     expect(found).toBeDefined();
     expect(found?.source).toBe("puppeteer");
   });
+
+  test("probeAlternativeBrowsers evaluates paths for win32 platform", async () => {
+    const candidates = await probeAlternativeBrowsers(
+      {
+        PROGRAMFILES: "C:\\CustomProgramFiles",
+        "PROGRAMFILES(X86)": "C:\\CustomProgramFilesX86",
+      },
+      "win32",
+    );
+    expect(candidates).toBeArray();
+  });
+
+  test("probeAlternativeBrowsers evaluates paths for darwin platform", async () => {
+    const candidates = await probeAlternativeBrowsers({}, "darwin");
+    expect(candidates).toBeArray();
+  });
+
+  test("probeToolCaches falls back to cwd node_modules when PLAYWRIGHT_BROWSERS_PATH=0 cannot resolve playwright-core", async () => {
+    const isolatedDir = join(testDir, "isolated-no-modules");
+    mkdirSync(isolatedDir, { recursive: true });
+    const candidates = await probeToolCaches(
+      join(testDir, "nonexistent-home"),
+      {
+        INIT_CWD: isolatedDir,
+        PLAYWRIGHT_BROWSERS_PATH: "0",
+      },
+    );
+    expect(candidates).toBeArray();
+  });
+
+  test("probeAlternativeBrowsers accepts ProbeAlternativeBrowsersOptions seam", async () => {
+    const candidatesLinux = await probeAlternativeBrowsers({
+      seam: {
+        platform: () => "linux",
+        env: {},
+      },
+    });
+    expect(candidatesLinux).toBeArray();
+
+    const candidatesDarwin = await probeAlternativeBrowsers({
+      platform: "darwin",
+      env: {},
+    });
+    expect(candidatesDarwin).toBeArray();
+
+    const candidatesWin32 = await probeAlternativeBrowsers({
+      platform: "win32",
+      env: {
+        PROGRAMFILES: "C:\\Program Files",
+      },
+    });
+    expect(candidatesWin32).toBeArray();
+
+    const candidatesOverride = await probeAlternativeBrowsers(
+      undefined,
+      "darwin",
+    );
+    expect(candidatesOverride).toBeArray();
+  });
+
+  test("probeToolCaches evaluates win32 and darwin platform cache directories with seams", async () => {
+    const mockHome = join(testDir, "win32-home");
+    const localAppData = join(mockHome, "CustomAppData", "Local");
+    const win32Candidates = await probeToolCaches(mockHome, {
+      seam: {
+        platform: () => "win32",
+        env: { LOCALAPPDATA: localAppData },
+      },
+    });
+    expect(win32Candidates).toBeArray();
+
+    const win32FallbackCandidates = await probeToolCaches(mockHome, {
+      seam: {
+        platform: () => "win32",
+        env: {},
+      },
+    });
+    expect(win32FallbackCandidates).toBeArray();
+
+    const darwinCandidates = await probeToolCaches(mockHome, {
+      seam: {
+        platform: () => "darwin",
+        env: {},
+      },
+    });
+    expect(darwinCandidates).toBeArray();
+  });
 });

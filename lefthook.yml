@@ -1,9 +1,9 @@
 # lefthook.yml
-# Fast, parallel git pre-commit and commit-msg quality gates
+# Fast, parallel git pre-commit, commit-msg, and pre-push quality gates
 # https://github.com/evilmartians/lefthook
 
 pre-commit:
-  parallel: true
+  parallel: false
   commands:
     lint-and-format:
       glob: "*.{js,jsx,ts,tsx,mjs,cjs,mts,cts}"
@@ -16,17 +16,19 @@ pre-commit:
       stage_fixed: true
 
     react-doctor:
-      glob: "apps/frontend/**/*.{js,jsx,ts,tsx}"
-      run: bunx react-doctor apps/frontend --staged --blocking error --no-telemetry --no-supply-chain
+      glob: "{apps/frontend,site}/**/*.{js,jsx,ts,tsx}"
+      run: bunx react-doctor --project apps/frontend,site --staged --blocking error --no-telemetry --no-supply-chain
 
     verify-secrets:
       run: bun scripts/verify-staged-secrets.ts {staged_files}
 
-    test-scripts:
-      glob: "scripts/*"
-      run: bun test scripts/
-
 commit-msg:
   commands:
     conventional-commits:
-      run: bun scripts/verify-commit-msg.ts {1}
+      run: bunx commitlint --edit {1}
+
+pre-push:
+  parallel: false
+  commands:
+    full-verification-gate:
+      run: bun run verify

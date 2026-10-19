@@ -9,7 +9,8 @@
     "start": "next start --port 3001",
     "typecheck": "fumadocs-mdx && tsc --noEmit",
     "pretest": "fumadocs-mdx",
-    "test": "fumadocs-mdx && bun test"
+    "test": "fumadocs-mdx && bun test",
+    "test:coverage": "fumadocs-mdx && bun test --coverage"
   },
   "dependencies": {
     "fumadocs-core": "^16.17.0",

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { GET } from "../src/app/api/search/route";
+import { parseMarkdownMetadata } from "../src/lib/docs-index";
 
 describe("search api route seam", () => {
   it("returns empty json array when query parameter is empty or absent", async () => {
@@ -23,5 +24,31 @@ describe("search api route seam", () => {
     expect(Array.isArray(data)).toBe(true);
     expect(data.length).toBeGreaterThan(0);
     expect(data[0].url).toContain("/docs");
+  });
+});
+
+describe("parseMarkdownMetadata", () => {
+  it("preserves body content when frontmatter is empty", () => {
+    const raw = "---\n---\nGuide body content";
+    const details = parseMarkdownMetadata(raw);
+    expect(details.title).toBe("DevTools Documentation");
+    expect(details.description).toBeUndefined();
+    expect(details.content).toBe("Guide body content");
+  });
+
+  it("extracts title, description, and body when frontmatter is present", () => {
+    const raw =
+      "---\ntitle: 'Custom Guide'\ndescription: \"Helpful desc\"\n---\nCustom body";
+    const details = parseMarkdownMetadata(raw);
+    expect(details.title).toBe("Custom Guide");
+    expect(details.description).toBe("Helpful desc");
+    expect(details.content).toBe("Custom body");
+  });
+
+  it("falls back gracefully when frontmatter delimiters are missing", () => {
+    const raw = "Plain document without frontmatter";
+    const details = parseMarkdownMetadata(raw);
+    expect(details.title).toBe("DevTools Documentation");
+    expect(details.content).toBe("Plain document without frontmatter");
   });
 });

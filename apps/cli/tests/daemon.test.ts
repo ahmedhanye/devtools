@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ApiErrorResponseSchema, HealthResponseSchema } from "@devtools/core";
+import * as dbModule from "@devtools/db";
 import { db, resetDb, systemMetadata } from "@devtools/db";
 import {
   type DaemonInstance,
@@ -27,6 +28,33 @@ describe("Unified Loopback Daemon Lifecycle and Routing", () => {
     activeDaemon = startDaemon({ port: 0, host: "127.0.0.1" });
     const records = await db.select().from(systemMetadata);
     expect(Array.isArray(records)).toBe(true);
+  });
+
+  test("throws and attaches cause when database migrations fail", () => {
+    resetDb();
+    const migrationError = new Error("Disk full or corrupted SQLite database");
+    const migrationSpy = spyOn(dbModule, "runMigrations").mockImplementation(
+      () => {
+        throw migrationError;
+      },
+    );
+
+    try {
+      let caughtError: unknown;
+      try {
+        startDaemon({ port: 0, host: "127.0.0.1" });
+      } catch (err) {
+        caughtError = err;
+      }
+
+      expect(caughtError).toBeInstanceOf(Error);
+      expect((caughtError as Error).message).toBe(
+        "Fatal: failed to initialize persistence database: Disk full or corrupted SQLite database",
+      );
+      expect((caughtError as Error).cause).toBe(migrationError);
+    } finally {
+      migrationSpy.mockRestore();
+    }
   });
 
   test("boots on ephemeral port 0 and co-locates static assets and API routes", async () => {

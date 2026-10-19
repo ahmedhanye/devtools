@@ -1,5 +1,5 @@
 {
-  "jsPlugins": ["@shadcn/lint", "oxlint-plugin-react-doctor"],
+  "jsPlugins": ["@shadcn/lint"],
   "rules": {
     "shadcn/no-raw-colors": "error",
     "shadcn/no-restyle": ["error", { "allow": ["layout"] }],

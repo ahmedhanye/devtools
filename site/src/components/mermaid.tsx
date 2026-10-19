@@ -1,27 +1,17 @@
 "use client";
 
-import React, { useEffect, useId, useRef, useState } from "react";
+import React, { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import type mermaidType from "mermaid";
+import { getMermaidThemeConfig } from "../lib/mermaid";
 
 export interface MermaidProps {
   chart: string;
   title?: string;
   description?: string;
   className?: string;
-}
-
-export interface MermaidThemeConfig {
-  theme: "dark" | "neutral";
-  fontFamily: string;
-}
-
-export function getMermaidThemeConfig(theme?: string): MermaidThemeConfig {
-  const isDark = theme === "dark";
-  return {
-    theme: isDark ? "dark" : "neutral",
-    fontFamily: "inherit",
-  };
+  /** Pre-rendered SVG markup for SSR or testing seam */
+  initialSvg?: string;
 }
 
 export function Mermaid({
@@ -29,14 +19,22 @@ export function Mermaid({
   title,
   description,
   className = "",
+  initialSvg,
 }: MermaidProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rawId = useId().replace(/:/g, "_");
   const uniqueId = `mermaid_${rawId}`;
   const descId = `mermaid_desc_${rawId}`;
-  const [svgContent, setSvgContent] = useState<string | null>(null);
+  const [svgContent, setSvgContent] = useState<string | null>(
+    initialSvg ?? null,
+  );
   const [hasError, setHasError] = useState(false);
   const { resolvedTheme } = useTheme();
+
+  const innerHtml = useMemo(
+    () => (svgContent ? { __html: svgContent } : undefined),
+    [svgContent],
+  );
 
   useEffect(() => {
     let isMounted = true;
@@ -64,7 +62,6 @@ export function Mermaid({
         }
       } catch (err) {
         if (isMounted) {
-          // eslint-disable-next-line no-console
           console.error("Failed to render Mermaid diagram:", err);
           setHasError(true);
         }
@@ -80,7 +77,6 @@ export function Mermaid({
 
   return (
     <figure
-      role="figure"
       aria-label={title || "Diagram visualization"}
       aria-describedby={description ? descId : undefined}
       className={`my-6 w-full overflow-x-auto rounded-lg border border-fd-border bg-fd-card/50 p-4 transition-colors ${className}`}
@@ -102,7 +98,7 @@ export function Mermaid({
         <div
           ref={containerRef}
           className="flex w-full justify-center [&>svg]:h-auto [&>svg]:max-w-full"
-          dangerouslySetInnerHTML={{ __html: svgContent }}
+          dangerouslySetInnerHTML={innerHtml}
         />
       ) : (
         <div

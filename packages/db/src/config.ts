@@ -7,6 +7,11 @@ export interface DatabaseConfig {
   isMemory: boolean;
 }
 
+export interface ResolveDatabasePathOptions {
+  customPath?: string;
+  env?: Record<string, string | undefined>;
+}
+
 /**
  * Walks up from startDir to discover the monorepo workspace root
  * by looking for .git or a package.json containing "workspaces".
@@ -55,23 +60,40 @@ function ensureParentDirectory(filePath: string): string {
 
 /**
  * Resolves the database file path based on environment variables and execution context.
+ * Supports an explicit env seam to guarantee test isolation without mutating global process.env.
  */
-export function resolveDatabasePath(customPath?: string): string {
+export function resolveDatabasePath(
+  customPathOrOptions?: string | ResolveDatabasePathOptions,
+  maybeEnv?: Record<string, string | undefined>,
+): string {
+  let customPath: string | undefined;
+  let env: Record<string, string | undefined> | undefined;
+
+  if (typeof customPathOrOptions === "object" && customPathOrOptions !== null) {
+    customPath = customPathOrOptions.customPath;
+    env = customPathOrOptions.env;
+  } else {
+    customPath = customPathOrOptions;
+    env = maybeEnv;
+  }
+
+  const currentEnv = env ?? process.env;
+
   // 1. Explicit override via argument or environment variable
   const envPath =
-    customPath ?? process.env.DEVTOOLS_DB_PATH ?? process.env.DATABASE_URL;
+    customPath ?? currentEnv.DEVTOOLS_DB_PATH ?? currentEnv.DATABASE_URL;
   if (envPath) {
     if (envPath === ":memory:") return ":memory:";
     return ensureParentDirectory(resolve(process.cwd(), envPath));
   }
 
   // 2. Automated test environment
-  if (process.env.NODE_ENV === "test" || process.env.BUN_ENV === "test") {
+  if (currentEnv.NODE_ENV === "test" || currentEnv.BUN_ENV === "test") {
     return ":memory:";
   }
 
   // 3. Local Development (Django-style in-repo database anchored to workspace root)
-  if (process.env.NODE_ENV !== "production") {
+  if (currentEnv.NODE_ENV !== "production") {
     const root = findWorkspaceRoot() ?? process.cwd();
     const devDbPath = resolve(root, ".devtools", "devtools.db");
     return ensureParentDirectory(devDbPath);

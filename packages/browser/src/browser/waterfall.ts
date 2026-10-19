@@ -5,8 +5,10 @@ import {
   probeToolCaches as defaultProbeToolCaches,
   verifyBrowserExecutable as defaultVerify,
   type CandidateBrowser,
+  type ProbeAlternativeBrowsersOptions,
 } from "./detector";
 import { BrowserNotFoundError, InvalidBrowserPathError } from "./errors";
+import { resolveChromePathOverride, type BrowserConfigSeam } from "../config";
 import type {
   BrowserResolution,
   BrowserSource,
@@ -21,12 +23,14 @@ export interface WaterfallDependencies {
     timeoutMs?: number,
   ) => Promise<{ path: string; version: string } | null>;
   probeSystemInstallations?: () => Promise<string[]>;
-  probeAlternativeBrowsers?: () => Promise<
-    Array<CandidateBrowser<"edge" | "brave">>
-  >;
+  probeAlternativeBrowsers?: (
+    optionsOrEnv?:
+      ProbeAlternativeBrowsersOptions | Record<string, string | undefined>,
+    platformOverride?: NodeJS.Platform | string,
+  ) => Promise<Array<CandidateBrowser<"edge" | "brave">>>;
   probeToolCaches?: (
     home?: string,
-    env?: Record<string, string | undefined>,
+    envOrSeam?: Record<string, string | undefined> | BrowserConfigSeam,
   ) => Promise<Array<CandidateBrowser<"playwright" | "puppeteer">>>;
   verifyBrowserExecutable?: (
     path: string,
@@ -59,7 +63,7 @@ export async function resolveBrowserPath(
   options?: ResolveBrowserOptions,
   deps?: WaterfallDependencies,
 ): Promise<BrowserResolution> {
-  const env = options?.env ?? process.env;
+  const seam: BrowserConfigSeam = { env: options?.env };
   const timeoutMs = options?.timeoutMs ?? 3000;
 
   const verify = deps?.verifyBrowserExecutable ?? defaultVerify;
@@ -98,11 +102,7 @@ export async function resolveBrowserPath(
 
   // Next, inspect environment variable overrides in order of precedence:
   // DEVTOOLS_CHROME_PATH then CHROME_PATH.
-  // Empty or whitespace strings are treated as unset.
-  const envCandidates = [env.DEVTOOLS_CHROME_PATH, env.CHROME_PATH];
-  const envPath = envCandidates
-    .map((p) => (typeof p === "string" ? p.trim() : ""))
-    .find((p) => p.length > 0);
+  const envPath = resolveChromePathOverride(seam);
 
   if (envPath) {
     const check = await verify(envPath, timeoutMs);
@@ -123,7 +123,7 @@ export async function resolveBrowserPath(
   // --- Tier 2: Managed Cache & System Discovery ---
 
   // 1. Managed Browser Cache (~/.devtools/browsers/)
-  const cacheHit = await probeCache(options?.cacheDir, env, timeoutMs);
+  const cacheHit = await probeCache(options?.cacheDir, options?.env, timeoutMs);
   if (cacheHit) {
     return {
       executablePath: cacheHit.path,
@@ -144,7 +144,7 @@ export async function resolveBrowserPath(
   }
 
   // 3. Alternative Chromium browsers (Microsoft Edge, Brave)
-  const altCandidates = await probeAlternatives();
+  const altCandidates = await probeAlternatives({ seam });
   const altHit = await findFirstRunnableCandidate(
     altCandidates,
     verify,
@@ -155,7 +155,7 @@ export async function resolveBrowserPath(
   }
 
   // 4. Test tool caches (Playwright, Puppeteer)
-  const toolCandidates = await probeToolCaches(undefined, env);
+  const toolCandidates = await probeToolCaches(undefined, options?.env);
   const toolHit = await findFirstRunnableCandidate(
     toolCandidates,
     verify,

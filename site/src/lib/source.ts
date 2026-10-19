@@ -53,8 +53,8 @@ function patchTree(tree: typeof baseSource.pageTree) {
       (child.name === "Tutorials" || child.$id === "tutorials")
     ) {
       const remainingChildren = (child.children || []).filter(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (c: any) => c.url !== "/docs/tutorials" && c.url !== "/docs",
+        (c) =>
+          !("url" in c) || (c.url !== "/docs/tutorials" && c.url !== "/docs"),
       );
       child.children = [
         {

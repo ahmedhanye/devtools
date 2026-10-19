@@ -61,8 +61,12 @@ jobs:
               - 'package.json'
               - 'bun.lock'
               - 'bunfig.toml'
-              - 'tsconfig.base.json'
+              - 'tsconfig*.json'
               - '.github/**'
+              - '.oxlintrc.json'
+              - '.fallowrc.json'
+              - '.fallow/**'
+              - 'lefthook.yml'
             site:
               - 'site/**'
             scripts:
@@ -102,16 +106,16 @@ jobs:
         run: bun run lint
 
       - name: Run Steiger FSD architecture linting
-        run: bun --filter @devtools/frontend lint:fsd
+        run: bun run lint:fsd
 
       - name: Run frontend design tokens linting
-        run: bun --filter @devtools/frontend lint:design
+        run: bun run lint:design
 
   architecture-and-health:
     name: Architecture & Health
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.site == 'true'
     timeout-minutes: 10
     permissions:
       contents: read
@@ -137,12 +141,16 @@ jobs:
       - name: Set up Bun environment
         uses: ./.github/actions/setup-bun
 
-      - name: Verify FSD boundaries and dead code (Fallow)
-        run: bunx fallow dead-code
+      - name: Verify architecture boundaries and dead code (Fallow)
+        run: bun run fallow:dead-code
+
+      - name: Verify duplication baseline (Fallow)
+        if: github.event_name == 'pull_request'
+        run: bun run fallow:dupes
 
       - name: Scan React regressions (React Doctor)
         if: github.event_name == 'pull_request'
-        run: bunx react-doctor apps/frontend --scope changed --base origin/main --no-telemetry --no-supply-chain
+        run: bun run react-doctor
 
   typecheck:
     name: Typecheck
@@ -176,14 +184,15 @@ jobs:
       - name: Run typecheck across all workspaces
         run: bun run typecheck
 
-  test:
-    name: Test
+  test-and-coverage:
+    name: Test & Coverage Gate
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.code == 'true' || needs.changes.outputs.site == 'true' || needs.changes.outputs.scripts == 'true'
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       contents: read
+      pull-requests: write # Required for posting/updating sticky PR coverage comment
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
@@ -200,6 +209,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Set up Bun environment
@@ -208,8 +218,51 @@ jobs:
       - name: Build frontend static assets
         run: bun --filter @devtools/frontend build
 
-      - name: Run test suites across all workspaces
-        run: bun run test
+      - name: Execute test suites with coverage aggregation
+        run: bun run test:coverage
+
+      - name: Verify 100% diff coverage gate
+        if: github.event_name == 'pull_request'
+        run: bun scripts/verify-diff-coverage.ts --base origin/main --output coverage/diff-coverage-summary.md
+
+      - name: Post or update sticky PR coverage comment
+        if: github.event_name == 'pull_request' && !cancelled() && github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const fs = require('fs');
+            const summaryPath = 'coverage/diff-coverage-summary.md';
+            if (!fs.existsSync(summaryPath)) {
+              return;
+            }
+            const summary = fs.readFileSync(summaryPath, 'utf8');
+            const header = '<!-- devtools-diff-coverage -->';
+            const body = `${header}\n${summary}`;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            });
+
+            const botComment = comments.find(comment => comment.body && comment.body.includes(header));
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body,
+              });
+            }
 
   build:
     name: Build & Smoke Test
@@ -243,11 +296,8 @@ jobs:
       - name: Build Next.js static production export
         run: bun --filter @devtools/frontend build
 
-      - name: Compile standalone CLI for host
-        run: bun build apps/cli/bin/devtools.js --compile --outfile dist/devtools
-
-      - name: Smoke test host CLI binary
-        run: ./dist/devtools --help
+      - name: Compile and smoke test host CLI binary
+        run: bun run build:smoke
 
       - name: Cross-compile standalone CLI for darwin-arm64
-        run: bun build apps/cli/bin/devtools.js --compile --target=bun-darwin-arm64 --outfile dist/devtools-darwin-arm64
+        run: bun run build:darwin-arm64
