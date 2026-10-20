@@ -19,7 +19,7 @@
     "test:coverage": "bun test --coverage"
   },
   "dependencies": {
-    "drizzle-orm": "^0.45.3"
+    "drizzle-orm": "^0.45.4"
   },
   "devDependencies": {
     "drizzle-kit": "^0.31.11"
