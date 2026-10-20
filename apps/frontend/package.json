@@ -36,7 +36,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "@vitest/coverage-v8": "^5.0.5",
-    "happy-dom": "^20.14.5",
+    "happy-dom": "^21.0.1",
     "postcss": "^8.5.29",
     "react-doctor": "^0.9.17",
     "steiger": "^0.7.0",
