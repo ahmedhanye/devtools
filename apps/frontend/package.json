@@ -38,7 +38,7 @@
     "@vitest/coverage-v8": "^5.0.5",
     "happy-dom": "^21.0.1",
     "postcss": "^8.5.29",
-    "react-doctor": "^0.9.17",
+    "react-doctor": "^0.9.18",
     "steiger": "^0.7.0",
     "storybook": "^10.6.2",
     "tailwindcss": "^4.3.3",
