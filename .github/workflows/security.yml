@@ -105,8 +105,8 @@ jobs:
         uses: ./.github/actions/setup-bun
 
       - name: Run transitive lockfile audit (Bun)
-        # GHSA-vfj7-8cjw-p6xm has no upstream patch yet for braces <=3.0.3
-        run: bun audit --audit-level=high --ignore GHSA-vfj7-8cjw-p6xm
+        # GHSA-vfj7-8cjw-p6xm has no upstream patch yet for braces <=3.0.3 (configured in root package.json audit script)
+        run: bun run audit
 
       - name: Dependency Review Gate
         if: github.event_name == 'pull_request'

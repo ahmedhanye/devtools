@@ -28,3 +28,8 @@ Thumbs.db
 *.db
 *.db-wal
 *.db-shm
+
+# Fallow cache
+.fallow/*
+!.fallow/dupes-baseline.json
+
