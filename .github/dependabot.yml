@@ -7,7 +7,10 @@ updates:
       - "/packages/*"
       - "/site"
     schedule:
-      interval: "daily"
+      interval: "weekly"
+      day: "monday"
+      time: "04:00"
+      timezone: "Etc/UTC"
     open-pull-requests-limit: 10
     commit-message:
       prefix: "chore(deps)"
@@ -24,7 +27,10 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "daily"
+      interval: "weekly"
+      day: "monday"
+      time: "04:00"
+      timezone: "Etc/UTC"
     open-pull-requests-limit: 10
     commit-message:
       prefix: "chore(ci)"

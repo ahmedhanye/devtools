@@ -33,7 +33,7 @@ _Avoid_: Config adapter, env wrapper, config provider, environment bridge
 ### Verification and review workflows
 
 **Local Verification Gate**:
-The change-scoped automated test, lint, typecheck, and formatting checks executed before committing, pushing, or opening a pull request.
+The automated test, lint, typecheck, and formatting checks executed on-demand locally (`bun run verify`) or automatically in CI before merging a pull request.
 _Avoid_: Pre-PR gate, full quality gate, verification pipeline, CI suite
 
 **Fast Verification Gate**:

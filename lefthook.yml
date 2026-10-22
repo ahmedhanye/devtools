@@ -1,5 +1,5 @@
 # lefthook.yml
-# Fast, parallel git pre-commit, commit-msg, and pre-push quality gates
+# Fast, parallel git pre-commit and commit-msg quality gates
 # https://github.com/evilmartians/lefthook
 
 pre-commit:
@@ -26,9 +26,3 @@ commit-msg:
   commands:
     conventional-commits:
       run: bunx commitlint --edit {1}
-
-pre-push:
-  parallel: false
-  commands:
-    full-verification-gate:
-      run: bun run verify

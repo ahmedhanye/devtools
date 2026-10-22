@@ -24,12 +24,12 @@ Agents and developers must follow the verification ladder before committing, pus
    bun --filter <package-name> test
    ```
    Runs targeted tests during iterative development and TDD red-green cycles.
-4. **Canonical Local Verification Gate (Pre-Push, Pre-PR & Post-Implementation)**:
+4. **Canonical Local Verification Gate (On-Demand & Pre-PR)**:
    ```bash
    bun run verify
    ```
    Runs `bun run verify:fast && bun run lint:design && bun run lint:fsd && bun run fallow:dupes && bun run test:coverage && bun run verify:diff-coverage && bun run audit && bun run build:smoke && bun run lint:workflows`.
-   Executed automatically by Lefthook `pre-push`.
+   Executed on-demand locally. Pull-request CI runs applicable verification checks in separate conditional jobs.
    **Mandatory requirement**: Agents must execute `bun run verify` with exit code 0 after completing an implementation plan or before completing `/code-review`.
 
 ## Scope-based verification

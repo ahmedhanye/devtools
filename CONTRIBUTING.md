@@ -220,7 +220,7 @@ When inspecting pull requests:
 
 ### Pre-commit hooks
 
-[Lefthook](https://github.com/evilmartians/lefthook) runs fast pre-commit hooks on staged files. Run git hooks on every commit; bypass hooks (`--no-verify`) strictly during maintainer-approved emergencies.
+[Lefthook](https://github.com/evilmartians/lefthook) runs fast, offline pre-commit hooks on staged files (`oxlint`, `prettier`, `react-doctor`, and staged secret scanning). The local pre-push verification hook has been removed; comprehensive verification (`bun run verify`) runs asynchronously on pull requests in CI and remains available for on-demand local execution. Run git hooks on every commit; bypass hooks (`--no-verify`) strictly during maintainer-approved emergencies.
 
 ## Supply chain security and contributor boundaries
 
