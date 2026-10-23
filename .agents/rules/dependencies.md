@@ -1,10 +1,5 @@
 ---
-trigger:
-  - "package.json"
-  - "apps/*/package.json"
-  - "packages/*/package.json"
-  - "site/package.json"
-  - "bun.lock"
+trigger: "{package.json,apps/*/package.json,packages/*/package.json,site/package.json,bun.lock}"
 description: Workspace package scaffolding and telemetry suppression rules.
 ---
 

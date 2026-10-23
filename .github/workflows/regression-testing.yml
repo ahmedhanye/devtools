@@ -67,6 +67,8 @@ jobs:
               - '.fallowrc.json'
               - '.fallow/**'
               - 'lefthook.yml'
+              - '.agents/**'
+              - 'skills-lock.json'
             site:
               - 'site/**'
             scripts:
@@ -110,6 +112,9 @@ jobs:
 
       - name: Run frontend design tokens linting
         run: bun run lint:design
+
+      - name: Verify agent skills and rules
+        run: bun run lint:agents
 
   architecture-and-health:
     name: Architecture & Health

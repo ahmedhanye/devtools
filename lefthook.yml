@@ -22,6 +22,10 @@ pre-commit:
     verify-secrets:
       run: bun scripts/verify-staged-secrets.ts {staged_files}
 
+    verify-agent-rules:
+      glob: "{.agents/*.md,.agents/**/*.md}"
+      run: bun scripts/verify-agent-rules.ts {staged_files}
+
 commit-msg:
   commands:
     conventional-commits:

@@ -1,140 +1,154 @@
 ---
 name: teach
-description: Teach the user a new skill or concept, within this workspace.
+description: Teach a skill or concept through grounded lessons. Use when asked to teach, create lessons, explain a topic, or record user learning progress.
 disable-model-invocation: true
 argument-hint: "What would you like to learn about?"
 ---
 
-The user has asked you to teach them something. This is a stateful request - they intend to learn the topic over multiple sessions.
+# Teach
 
-## Teaching Workspace
+The user wants to learn a topic over multiple sessions. All learning state and lesson files live in `.scratch/teach/`.
 
-Treat `.scratch/teach/` as the teaching workspace. All learning state files and lessons resolve inside `.scratch/teach/`:
+## Teaching workspace
 
-- `.scratch/teach/MISSION.md`: A document capturing the _reason_ the user is interested in the topic. This should be used to ground all teaching. Use the format in [MISSION-FORMAT.md](./MISSION-FORMAT.md).
-- `.scratch/teach/reference/*.html`: A directory of reference materials. These are the compressed learnings from the lessons - cheat sheets, reference algorithms, syntax, yoga poses, glossaries. They are the raw units of learning. They should be beautiful documents which print out well, and are designed for quick reference.
-- `.scratch/teach/RESOURCES.md`: A list of resources which can be explored to ground your teaching in contextual knowledge, or to acquire knowledge and wisdom. Use the format in [RESOURCES-FORMAT.md](./RESOURCES-FORMAT.md).
-- `.scratch/teach/learning-records/*.md`: A directory of learning records, which capture what the user has learned. These are loosely equivalent to architectural decision records in software development - they capture non-obvious lessons and key insights that may need to be revised later, or drive future sessions. These should be used to calculate the zone of proximal development. They are titled `0001-<dash-case-name>.md`, where the number increments each time. Use the format in [LEARNING-RECORD-FORMAT.md](./LEARNING-RECORD-FORMAT.md).
-- `.scratch/teach/lessons/*.html`: A directory of lessons. A **lesson** is a single, self-contained HTML output that teaches one tightly-scoped thing tied to the mission. This is the primary unit of teaching in this workspace.
-- `.scratch/teach/assets/*`: Reusable **components** shared across lessons. See [Assets](#assets).
-- `.scratch/teach/NOTES.md`: A scratchpad for you to jot down user preferences, or working notes.
+Resolve all state files, reference documents, and lessons inside `.scratch/teach/`:
 
-## Philosophy
+- **MISSION.md.** Captures the concrete reason the user learns the topic. Ground every lesson in this file. Follow [MISSION-FORMAT.md](./MISSION-FORMAT.md).
+- **reference/*.md.** Condensed reference documents such as cheat sheets, algorithms, syntax guides, and glossaries. Use pure Markdown.
+- **RESOURCES.md.** Curated list of high-trust external sources and learning communities. Follow [RESOURCES-FORMAT.md](./RESOURCES-FORMAT.md).
+- **learning-records/*.md.** Sequential records (`0001-<slug>.md`) capturing validated understanding, misconceptions corrected, and prior knowledge. Follow [LEARNING-RECORD-FORMAT.md](./LEARNING-RECORD-FORMAT.md).
+- **lessons/*.md.** Sequenced Markdown lessons (`0001-<slug>.md`). Each lesson teaches one tightly scoped skill tied to the mission.
+- **assets/*.** Visual and media files generated for lessons, such as conceptual diagrams and illustrations.
+- **NOTES.md.** Working notes and user preferences recorded during sessions.
 
-To learn at a deep level, the user needs three things:
+## Learning model
 
-- **Knowledge**, captured from high-quality, high-trust resources
-- **Skills**, acquired through highly-relevant interactive lessons devised by you, based on the knowledge
-- **Wisdom**, which comes from interacting with other learners and practitioners
+Learning requires three inputs:
 
-Before the `RESOURCES.md` is well-populated, your focus should be to find high-quality resources which will help the user acquire knowledge. Never trust your parametric knowledge.
+- **Knowledge.** Verified facts from high-trust sources recorded in `RESOURCES.md`. Do not rely on unverified memory.
+- **Skills.** Practical application through interactive drills and structured exercises.
+- **Wisdom.** Real-world calibration through communities and outside practitioners.
 
-Some topics may require more skills than knowledge. Learning more about theoretical physics might be more knowledge-based. For yoga, more skills-based.
+### Fluency versus storage strength
 
-### Fluency vs Storage Strength
+Distinguish between two types of retention:
 
-You should be careful to split between two types of learning:
+- **Fluency strength.** Immediate retrieval during the lesson. Fluency creates an illusion of mastery without retention.
+- **Storage strength.** Long-term durability of knowledge.
 
-- **Fluency strength**: in-the-moment retrieval of knowledge
-- **Storage strength**: long-term retention of knowledge
+Build storage strength through deliberate difficulty:
 
-Fluency can give the user an illusory sense of mastery, but storage strength is the real goal. Try to design lessons which build long-term retention by desirable difficulty:
-
-- Using retrieval practice (recall from memory)
-- Spacing (distributing practice over time)
-- Interleaving (mixing up different but related topics in practice - for skills practice only)
+- **Retrieval practice.** Require recall from memory before revealing answers.
+- **Spacing.** Revisit concepts across subsequent sessions.
+- **Interleaving.** Mix related skills during practice drills.
 
 ## Lessons
 
-A lesson is the main thing you produce: the unit in which knowledge and skills reach the user. Each lesson is one self-contained HTML file, saved to `.scratch/teach/lessons/` and titled `0001-<dash-case-name>.html` where the number increments each time.
+A lesson is the primary unit of instruction. Save each lesson to `.scratch/teach/lessons/0001-<slug>.md`. Increment the number for each new file.
 
-A lesson should be **beautiful**, with clean, readable typography and layout, since the user will return to these later to review. Think Tufte.
+Write lessons in pure Markdown. Do not generate HTML files, CSS stylesheets, or JavaScript widgets.
 
-The lesson should be short, and completable very quickly. Learners' working memory is very small, and we need to stay within it. But each lesson should give the user a single tangible win that they can build on. It should be directly tied to the mission, and should be in the user's zone of proximal development.
+Keep each lesson short and focused on a single win within the user's zone of proximal development.
 
-If possible, open the lesson file for the user by running a CLI command.
+### Structure of a lesson
 
-Each lesson should link via HTML anchors to other lessons and reference documents.
+Structure every lesson file in this sequence:
 
-Each lesson should recommend a primary source for the user to read or watch. This should be the most high-quality, high-trust resource you found on the topic.
+1. **Title.** Start with the top-level heading: `# Lesson <NNNN>: <Title>`.
+2. **Header metadata.** Directly below the title, include a blockquote with the lesson eyebrow, reading time, primary source citation, and workspace file path. End each line in the blockquote with `<br>` so Markdown previewers preserve line breaks:
+   ```markdown
+   > **Eyebrow**: Teach Workspace · Lesson 0001 · ~4 min read<br>
+   > **Source**: Grounded in <Source Title or Author><br>
+   > **Workspace File**: `.scratch/teach/lessons/0001-<slug>.md`
+   ```
+3. **Divider.** Place a horizontal rule (`---`) below the metadata block.
+4. **Hero visual (optional).** Place an illustration or primary Mermaid diagram directly beneath the divider if a visual anchor clarifies the lesson. Omit this section if not needed.
+5. **Problem statement.** Explain the failure mode or limitation that makes this skill necessary.
+6. **Core concepts.** Explain the key rules and definitions. Use GitHub Flavored Markdown alerts (`> [!TIP]`, `> [!IMPORTANT]`, `> [!NOTE]`) inside the lesson body only for critical constraints.
+7. **Visual workflows (optional).** Include Mermaid diagrams to illustrate state transitions, decision trees, or sequences when structural visualization clarifies the logic.
+8. **Interactive retrieval drill.** End the lesson with a self-testing drill.
+9. **Primary sources.** List verified external documentation, books, or repositories for deeper study.
 
-Each lesson should contain a reminder to ask followup questions to the agent. The agent is their teacher, and can assist with anything that's unclear.
+Do not append generic reminder boilerplate about being a teacher or asking followup questions.
 
-## Assets
+### Interactive retrieval drill
 
-Lessons are built from reusable **components**, stored in `./assets/`: stylesheets, quiz widgets, simulators, diagram helpers, and anything else a second lesson could reuse.
+Conclude every lesson with an interactive drill:
 
-Reuse is the default, not the exception. Before authoring a lesson, read `./assets/` and build from the components already there. When a lesson needs something new and reusable, write it as a component in `./assets/` and link to it; never inline code a future lesson would duplicate.
+- Title the section `## Interactive retrieval drill`.
+- Include two or three multiple-choice questions testing core concepts.
+- Format answer options symmetrically: `* **A)** ...`, `* **B)** ...`, `* **C)** ...`. Make options similar in length so formatting does not reveal the answer.
+- Vary the correct option position across questions.
+- Hide the solution behind a native disclosure block:
+  ```markdown
+  <details>
+  <summary>🔍 Reveal Answer & Explanation</summary>
 
-A shared stylesheet is the first component every workspace earns: every lesson links it, so the lessons look like one consistent course rather than a pile of one-offs. As the workspace grows, so should the component library.
+  > **Correct Answer: B**
+  >
+  > **Why:** Explain why the answer is correct and why the alternatives fail.
+  </details>
+  ```
 
-## The Mission
+## Lesson presentation in chat
 
-Every lesson should be tied into the mission - the reason that the user is interested in learning about the topic.
+Do not duplicate lesson content in the chat response. The Markdown file in `.scratch/teach/lessons/` is the complete deliverable.
 
-If the user is unclear about the mission, or the `MISSION.md` is not populated, your first job should be to question the user on why they want to learn this.
+Do not wrap file references or links in callout alerts (`> [!TIP]`, `> [!NOTE]`, `> [!IMPORTANT]`). Present file references directly in plain text.
 
-Failing to understand the mission will mean knowledge acquisition is not grounded in real-world goals. Lessons will feel too abstract. You will have no way of judging what the user should do next.
+Structure the chat response with these elements:
 
-Missions may change as the user develops more skills and knowledge. This is normal - make sure to update the `MISSION.md` and add a learning record to capture the change. Confirm with the user before changing the mission.
+- **Link the lesson file.** Provide a clickable Markdown link using the full absolute filesystem path with the `file://` scheme (for example, `[0001-<slug>.md](file:///path/to/workspace/.scratch/teach/lessons/0001-<slug>.md)`). Never attach `file:///` directly to a relative path like `.scratch/...`, which produces broken links such as `file:///.scratch/...`.
+- **Summarize the core win.** State the core concept and primary takeaway in two or three sentences.
+- **Direct the user to the drill.** Tell the user in plain text to open the lesson file to review the material and complete the interactive retrieval drill.
 
-## Zone Of Proximal Development
+## Visuals and diagrams
 
-Each lesson, the user should always feel as if they are being challenged 'just enough'.
+Images and Mermaid diagrams are distinct visual tools. A lesson can use both, either, or neither:
 
-The user may specify an exact thing they want to learn. If they don't, figure out their zone of proximal development by:
+- **Need determines inclusion.** Create an image only when an illustration clarifies the concept. Create a Mermaid diagram only when a flowchart, sequence, or decision tree clarifies the logic. If visual aids add no value, omit them.
+- **Image generation.** If an image generation tool is available in your environment and an image is needed, generate the image. Save the file to `.scratch/teach/assets/<name>.<ext>`.
+- **Image embedding.** Embed images in lessons using absolute filesystem paths (for example, `![Description](/path/to/repo/.scratch/teach/assets/diagram.png)`). Absolute paths ensure markdown preview tools and webviews render gitignored assets without path resolution errors.
+- **Mermaid diagrams.** Author Mermaid diagrams directly in the Markdown document when a structural or procedural visualization clarifies the lesson.
 
-- Reading their `learning-records`
-- Figuring out the right thing to teach them based on their mission
-- Teach the most relevant thing that fits in their zone of proximal development
+## Mermaid diagram accessibility
 
-## Knowledge
+Mermaid diagrams must remain legible across both dark and light editor themes:
 
-Lessons should be designed around a skill the user is going to learn. The knowledge in the lesson should be only what's required to acquire that skill. You teach the knowledge first, then get the user to practice the skills via an interactive feedback loop.
+- Avoid low-contrast pastel backgrounds.
+- If defining custom node styles, specify both fill and font color with high contrast. For example, use dark green fill `#14532d` with white text `#ffffff`, or dark red fill `#7f1d1d` with white text `#ffffff`.
+- If custom colors are not strictly necessary, use default unstyled nodes to inherit the viewer's theme.
+- Stick to supported diagram types: `flowchart TD`, `flowchart LR`, `sequenceDiagram`, `stateDiagram-v2`, and `classDiagram`.
 
-Knowledge should first be gathered from trusted resources. Use `RESOURCES.md` to keep track of them. Lessons should be littered with citations - links to external resources to back up any claim made. This increases the trustworthiness of the lesson.
+## The mission
 
-For acquiring knowledge, difficulty is the enemy. It eats working memory you need for understanding.
+Every lesson must advance the goal in `MISSION.md`.
 
-## Skills
+If `MISSION.md` is empty or missing, interview the user before teaching. Identify the concrete real-world outcome they want to achieve.
 
-If knowledge is all about acquisition, skills are about durability and flexibility. Make the knowledge stick.
+Update `MISSION.md` and add a learning record whenever the user's focus or constraints evolve. Confirm with the user before changing the mission.
 
-For skill acquisition, difficulty is the tool. Effortful retrieval is what builds storage strength. Skills should be taught through interactive lessons. There are several tools at your disposal:
+## Zone of proximal development
 
-- Interactive lessons, using quizzes and light in-browser tasks
-- Lessons which guide the user through a list of real-world steps to take (for instance, yoga poses)
+Tailor each lesson to challenge the user without overwhelming working memory:
 
-Each of these should be based on a **feedback loop**, where the user receives feedback on their performance. This feedback loop should be as tight as possible, giving feedback immediately - and ideally automatically.
+- Read existing `learning-records` to identify what the user already knows.
+- Skip concepts already mastered.
+- Teach the single next concept needed to make progress toward the mission.
 
-For quizzes, each answer should be exactly the same number of words (and characters, if possible). Vary which position holds the correct answer across questions. Don't give the user any clues about the answer through formatting or order.
+## Reference documents
 
-## Acquiring Wisdom
+Create reference documents in `.scratch/teach/reference/*.md` alongside lessons.
 
-Wisdom comes from true real-world interaction - testing your skills outside the learning environment.
+Reference documents contain durable lookup material that outlives individual lessons:
 
-When the user asks a question that appears to require wisdom, your default posture should be to attempt to answer - but to ultimately delegate to a **community**.
+- Code syntax and snippets
+- Algorithm flowcharts
+- Domain glossaries
+- Workout sequences and movement standards
 
-A community is a place (online or offline) where the user can test their skills in the real world. This might be a forum, a subreddit, a real-world class (budget permitting) or a local interest group.
+Do not place interactive retrieval drills in reference documents. Keep them concise and structured for quick lookup.
 
-You should attempt to find high-reputation communities the user can join. If the user expresses a preference that they don't want to join a community, respect it.
+## User notes
 
-## Reference Documents
-
-While creating lessons, you should also create reference documents. Lessons can reference these documents - they are useful for tracking raw units of knowledge useful across lessons.
-
-Lessons will rarely be revisited later - reference documents will be. They should be the compressed essence of the lesson, in a format designed for quick reference.
-
-Some learning topics lend themselves to reference:
-
-- Syntax and code snippets for programming
-- Algorithms and flowcharts for processes
-- Yoga poses and sequences for yoga
-- Exercises and routines for fitness
-- Glossaries for any topic with its own nomenclature
-
-Glossaries, in particular, are an essential reference. Once one is created, it should be adhered to in every lesson.
-
-## `NOTES.md`
-
-The user will sometimes express preferences of how they want to be taught, or things you should keep in mind. This is the place to record those preferences, so you can refer back to them when designing lessons or working with the user.
+Record learning preferences, pace requirements, and environment constraints in `.scratch/teach/NOTES.md`. Check this file before planning each session.

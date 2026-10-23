@@ -1,4 +1,4 @@
-# 0001: Embedded database foundation (@devtools/db)
+# Embedded database foundation (@devtools/db)
 
 ## Context
 

@@ -1,4 +1,4 @@
-# 0002: Package configuration boundaries and environment seams
+# Package configuration boundaries and environment seams
 
 ## Context
 

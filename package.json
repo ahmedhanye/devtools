@@ -29,13 +29,14 @@
     "audit": "bun audit --audit-level=high --ignore GHSA-vfj7-8cjw-p6xm",
     "pin:actions": ".agents/skills/github-actions/scripts/pin-action.sh",
     "lint:workflows": ".agents/skills/github-actions/scripts/lint.sh",
+    "lint:agents": "bun scripts/verify-agent-rules.ts",
     "lint:fsd": "bun --filter @devtools/frontend lint:fsd",
     "lint:design": "bun --filter @devtools/frontend lint:design",
     "fallow:dead-code": "fallow dead-code --type-aware",
     "fallow:dupes": "fallow dupes --mode semantic --baseline .fallow/dupes-baseline.json --fail-on-baseline-growth --baseline-base origin/main",
     "react-doctor": "react-doctor --project apps/frontend,site --scope changed --base origin/main --no-telemetry --no-supply-chain",
     "verify:diff-coverage": "bun scripts/verify-diff-coverage.ts --base origin/main",
-    "verify:fast": "bun run check && bun run typecheck && bun run fallow:dead-code",
+    "verify:fast": "bun run check && bun run typecheck && bun run fallow:dead-code && bun run lint:agents",
     "verify": "bun run verify:fast && bun run lint:design && bun run lint:fsd && bun run fallow:dupes && bun run test:coverage && bun run verify:diff-coverage && bun run audit && bun run build:smoke && bun run lint:workflows"
   },
   "devDependencies": {

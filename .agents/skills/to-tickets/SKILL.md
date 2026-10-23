@@ -18,7 +18,7 @@ Completion criterion: Target context, spec, or ticket loaded and read completely
 
 ### 2. Explore the codebase (optional)
 
-If you have not already explored the codebase, do so to understand the current state of the code. Use vocabulary from `.agents/GLOSSARY.md` and respect ADRs in `.agents/docs/adr/`.
+If you have not already explored the codebase, do so to understand the current state of the code. Use vocabulary from `GLOSSARY-MAP.md` (and context glossaries under `docs/glossary/`) and respect ADRs in `docs/adr/`.
 
 Look for prefactoring opportunities to simplify the change.
 

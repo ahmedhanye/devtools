@@ -14,4 +14,4 @@ Run typechecking regularly, single test files regularly, and the full test suite
 
 Once done, call the Skill tool with "code-review" to review the work.
 
-Follow the Git checkpoint rule: require explicit user confirmation before executing git commit, git push, or branch merges, presenting `git status` alongside staged and unstaged diff stats for review.
+Commit your work to the current branch.

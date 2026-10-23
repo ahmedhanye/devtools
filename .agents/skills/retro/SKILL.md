@@ -1,44 +1,76 @@
 ---
 name: retro
-description: "Conduct a retrospective on a coding session."
+description: Conduct a retrospective across sessions to surface recurring agent, tooling, and workflow problems.
 disable-model-invocation: true
 ---
 
-The user has asked for a **retrospective**. You are suggesting improvements to the coding agent's **environment** to improve future runs.
+# Retrospective
+
+Diagnose recurring problems across conversation transcripts, verify each against repository truth, and report unresolved problems.
+
+## Execution rules
+
+- Keep tracked repository files untouched throughout the retrospective.
+- Store temporary analysis files strictly in the active session scratch directory; never write to system temporary paths like `/tmp`.
+- Keep verification strictly read-only: inspect git logs, diffs, PR/issue states, config files, and CLI help. Never run full test suites, coverage runners, project linters, or build scripts during retrospective verification.
+- Run transcript parsing scripts through single-quoted standard input heredocs such as `python3 - << 'EOF'` and use Python `json` module for data exchange.
 
 ## Steps
 
-1. Call the Skill tool with `writing-for-agents` for the writing style guide.
+### 1. Scope and confirm conversations
 
-2. Read the primary sources for the session the user specifies. This may mean searching through session logs on this machine. If the user doesn't specify a session, default to the current one.
+1. Scan session transcripts in the active session log directory for timestamps, user turn counts, inline comments, non-zero command exits, and initial prompts.
+2. Select main user conversations in the requested scope that contain follow-up user turns, inline comments, or non-zero command exits. Exclude child subagent sessions and single-turn side questions that lack follow-up feedback.
+3. When the prompt omits a scope or matched conversations exceed five, output a chat response displaying a markdown table with candidate identifiers, dates, turn counts, and initial prompt excerpts. Conclude with a single line asking the user to confirm the target conversations, then halt and wait for the user reply.
+4. Save confirmed conversation metadata to `candidates.json` in the session scratch directory.
 
-3. Look for candidates for improvement in these categories.
+Completion criterion: Confirmed target conversations saved in `candidates.json`.
 
-- **Navigation**: how easy was it for the agent to find the right files? Are there hidden dependencies between files? Would a **navigation pointer** make it easier? _Use when_ the session took a long time to find a piece of information.
-- **Automated checks**: are there automated checks that could catch errors the agent made? Linting, typing, tests, filesystem linters? Read the repo's own check command first (its `package.json`/build-tool `lint`/`check` scripts, its CI workflow), so a check that already exists but sits unwired or silently broken is the finding, not a reinvention. A repo with no **guardrail** (no pre-commit hook and no CI job running its lint/typecheck/test command) is itself a finding: an un-linted repo is a standing missed opportunity, not a neutral default. _Use when_ the agent made a mistake an automated check could have caught, or the repo has no guardrail at all.
-- **Coding standards**: should the **reviewer agent** be given a new rule to enforce? Should an existing rule be removed or clarified? Classify the violation first: a **mechanical** one (a fixed syntactic pattern, a banned API, an import shape, a file-location rule) gets a deterministic check, full stop: a custom rule in the repo's own linter, a new pre-commit hook, or a new CI job, whichever the repo's language and existing guardrail make cheapest. Default to building the check over writing the rule. Reserve `CODING_STANDARDS.md` for genuine **judgement calls** (cross-file consistency, "matches the surrounding style," anything no guardrail could ever substitute for). _Use when_ the reviewer agent failed to catch a mistake.
-- **Global AGENTS.md**: are there any steering instructions that should be moved to coding standards (or automated checks) instead? _Use when_ the AGENTS.md file is particularly large - in the repo OR the user's global scope.
-- **Tool economy**: did the agent make expensive tool calls that could be streamlined? Is there any custom tooling (CLI's, MCP's) that is particularly token-inefficient? _Use when_ the agent made an expensive tool call.
-- **No-ops**: look for instructions in steering files that don't modify the agent's behavior. _Use when_ the steering files are large and unwieldy.
-- **Information access**: look for opportunities to increase the agent's access to information. Teeing dev server logs, readonly access to third-party services. _Use when_ a crucial piece of information was not available to the agent.
+### 2. Extract problems in batched subagents
 
-4. Present these candidates to the user, in order of severity.
+The main agent manages a sliding window of batch subagents:
 
-## Reference
+1. Read `candidates.json` and partition confirmed conversations into chronological batches of up to five conversations per batch.
+2. Spawn up to five batch subagents in parallel. Pass each subagent its batch number, assigned conversation IDs, transcript paths, session scratch directory path, and instructions to execute Step 2 extraction.
+3. As each subagent finishes, spawn the next queued batch subagent until all batches complete.
+4. Maintain silence during reactive background notifications while subagents run. Do not output chat progress messages. When awakened by a subagent completion notification:
+   - If queued batches remain, spawn the next queued batch subagent.
+   - If all batches have already been spawned and other subagents are still in flight, **immediately yield execution without calling tools** (do not call `manage_subagents`, poll scratch files, or tail logs). The reactive system resumes execution automatically when remaining subagents complete.
 
-### Implementation vs Review
+Each batch subagent executes this extraction process at depth one without spawning subagents:
 
-Remember that all work goes through two stages: implementation and review. The implementation agent has the most **context pressure**. They are responsible for exploration, writing code, and debugging failures.
+1. Parse assigned transcripts in a single Python pass (filtering for user prompts, tool errors, non-zero command exits, repetitive tool loops, and inline comments) to extract candidate problems, avoiding piecemeal line-by-line tool queries. Read full transcript logs (`transcript_full.jsonl`) only when a compact entry truncates necessary detail.
+2. Write every distinct problem to `batch-<N>.json` in the session scratch directory and return the JSON array using this schema:
 
-The review agent has the least context pressure - it receives a diff, so no exploration needed. It often does not need to write code or debug.
+```json
+[
+  {
+    "area": "agent | tooling | workflow",
+    "observation": "Exact failure mode or friction, citing conversation ID, step numbers, tool calls, and triggering assistant action.",
+    "impact": "Measured token cost, wasted turns, or failed attempts.",
+    "user_notes": "Complete verbatim user corrections and inline comments from the transcript."
+  }
+]
+```
 
-This means that the review agent should be responsible for imposing coding standards, not the implementation agent.
+Classify every extracted problem into one of three areas:
 
-### Files
+- **Agent.** Instruction drift, ignored rules, hallucinated context, unprompted scope expansion, broken links, premature actions, or repetitive tool loops.
+- **Tooling.** Failing checks, redundant hooks, broken scripts, flawed skill instructions, invalid CLI flags, missing container binaries, or harness task-runner friction.
+- **Workflow.** Diagnostic prompts missing error context, compound prompts that chain review, fixes, commits, and pull requests into a single turn, monolithic commits, or branch habits that cause rework. Treat brief approval replies on reviewed artifacts as normal progression.
 
-You have access to several files in the repo:
+Completion criterion: Every batch subagent finishes and writes its `batch-<N>.json` problem list.
 
-- `CLAUDE.md`/`AGENTS.md`: these files are pushed to the context window of any agent working in this repo. They should be used incredibly sparingly, usually only for **navigation pointers** to other files.
-- `CODING_STANDARDS.md`: this file is read during review, not implementation. Add **navigation pointers** to docs folders if the standards file gets more than 1,000 lines long.
-- Docs: use docs as references files, pointed to by other files. Look for existing docs before writing new ones.
-- Skills: use skills for docs (since their description goes into the agent's context window), or for user-invoked commands. Follow the advice in the `writing-for-agents` skill.
+### 3. Verify and write problem report
+
+1. Merge and deduplicate all `batch-<N>.json` findings in chronological order into `merged_findings.json` using Python `json` module.
+2. Aggregate recurring patterns and verify candidate problems against four sources of truth:
+   - **Git history.** Check recent commit log and diffs with `git log -n 20 --stat` and `git show <sha>` to filter resolved issues.
+   - **Pull requests and issues.** Check merged fixes and open issue checklists with `gh pr list --state all --limit 15` and `gh issue list --state all --limit 15`.
+   - **Repository configuration.** Read `.agents/`, `CONTRIBUTING.md`, `package.json`, `lefthook.yml`, and `.github/workflows/` to distinguish intentional rules from defects.
+   - **Package registry and CLI help.** Check versions and flags with `bun info <package>` and `<cli> --help`.
+3. Retain verified problems that remain unresolved. Exclude resolved issues and omit solution proposals from the report.
+4. Write the report to a unique file at `.scratch/retro/retrospective-<timestamp>.md` with a timestamp formatted as `YYYYMMDD-HHMMSS`. Group findings into three sections: **Agent problems**, **Codebase, tooling, and environment problems**, and **Developer workflow and prompting problems**. State the verified problem, transcript evidence, and impact for each item.
+5. In the chat response, provide a brief pointer to the generated `.scratch/retro/retrospective-<timestamp>.md` file.
+
+Completion criterion: Unique report file `.scratch/retro/retrospective-<timestamp>.md` written and referenced in chat.

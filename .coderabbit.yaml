@@ -50,9 +50,9 @@ reviews:
       - name: "Feature-Sliced Design (FSD) Layer Purity"
         mode: "error"
         instructions: >-
-          Verify that frontend code under `apps/frontend/src` strictly follows FSD v2.1:
-          1. Imports flow strictly downwards: app -> pages -> widgets -> features -> entities -> shared.
-          2. Slices in the same layer must NEVER import directly from each other.
+          Verify that frontend code under `apps/frontend/src` strictly follows architectural boundaries:
+          1. Imports flow strictly downwards: app -> pages -> shared.
+          2. Slices in the same layer must not import directly from each other.
           3. Slices must be imported only through their public API entry point (`index.ts`).
       - name: "No Hardcoded Secrets or Credentials"
         mode: "error"
@@ -93,7 +93,7 @@ reviews:
       instructions: >-
         This package is a Next.js App Router frontend governed by strict Feature-Sliced Design (v2.1).
         Enforce the following:
-        1. FSD Hierarchy: layers strictly descend (app -> pages -> widgets -> features -> entities -> shared).
+        1. FSD Hierarchy: layers strictly descend (app -> pages -> shared).
            Never import from an upper layer into a lower layer.
         2. Encapsulation: Access slices strictly through their public API (`index.ts`). Never import internal files.
         3. UI & Styling: Use `@base-ui/react` primitives for accessible UI components.
@@ -191,10 +191,11 @@ knowledge_base:
     enabled: true
     filePatterns:
       - ".agents/AGENTS.md"
-      - ".agents/GLOSSARY.md"
+      - "GLOSSARY-MAP.md"
+      - "docs/glossary/*"
       - ".agents/rules/*"
       - "CONTRIBUTING.md"
-      - ".agents/docs/adr/*"
+      - "docs/adr/*"
   learnings:
     scope: "local"
     approval_delay: 0

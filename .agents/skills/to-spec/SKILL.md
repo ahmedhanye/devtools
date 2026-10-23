@@ -10,7 +10,7 @@ Synthesize conversation context and codebase understanding into a spec, confirmi
 
 ## Process
 
-1. Explore the repository to understand the current state of the codebase, if you have not already. Use vocabulary from `.agents/GLOSSARY.md` throughout the spec, and respect any ADRs in `.agents/docs/adr/`.
+1. Explore the repository to understand the current state of the codebase, if you have not already. Use vocabulary from `GLOSSARY-MAP.md` (and context glossaries under `docs/glossary/`) throughout the spec, and respect any ADRs in `docs/adr/`.
 
 Completion criterion: Target packages identified, glossary vocabulary cross-referenced, and relevant ADRs checked.
 

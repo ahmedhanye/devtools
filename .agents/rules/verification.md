@@ -1,6 +1,5 @@
 ---
-trigger:
-  - "**"
+trigger: "{apps/**,packages/**,site/**,scripts/**,.github/**,package.json,bun.lock}"
 description: Change-scoped verification commands and quality checks for modified files.
 ---
 
@@ -8,23 +7,23 @@ description: Change-scoped verification commands and quality checks for modified
 
 Rules for selecting verification commands tailored to changed files and enforcing verification parity.
 
-## The Verification Ladder
+## Verification tiers
 
-Agents and developers must follow the verification ladder before committing, pushing, or requesting review:
+Follow verification tiers before committing, pushing, or requesting review:
 
-1. **Pre-Commit Staged Quality Gate (<1s)**:
-   Executed automatically by Lefthook `pre-commit` across staged files. Auto-fixes Oxlint lint rules, formats code and docs with Prettier, validates React quality with `react-doctor --staged`, and checks staged secrets without whole-repo overhead.
-2. **Fast Verification Gate (<5s)**:
+1. **Pre-commit staged checks (<1s):**
+   Executed automatically by Lefthook `pre-commit` across staged files. Runs Oxlint autofixes, Prettier formatting, `react-doctor --staged`, and staged secret checks.
+2. **Fast verification gate (<5s):**
    ```bash
    bun run verify:fast
    ```
-   Runs Oxlint, Prettier check, workspace typechecks, and Fallow dead-code analysis across the entire repository. Used for rapid feedback during iterative coding.
-3. **Workspace Test Run**:
+   Runs Oxlint, Prettier check, workspace typechecks, Fallow dead-code analysis, and agent rule verification (bun run lint:agents) across the monorepo.
+3. **Workspace test run:**
    ```bash
-   bun --filter <package-name> test
+   bun --filter @devtools/<package> test
    ```
-   Runs targeted tests during iterative development and TDD red-green cycles.
-4. **Canonical Local Verification Gate (On-Demand & Pre-PR)**:
+   Runs targeted tests during iterative development and TDD cycles.
+4. **Canonical local verification gate (on-demand & pre-PR):**
    ```bash
    bun run verify
    ```
@@ -37,8 +36,8 @@ Agents and developers must follow the verification ladder before committing, pus
 During iterative development, run verification commands matching modified files to stay fast:
 
 1. **Determine changed files** using `git status --short` or `git diff --name-only main`.
-2. **Execute the matching scoped commands**. All scoped checks must pass with exit code 0.
-3. **Mandate `bun run verify` for cross-cutting changes and final review**: Run the full verification suite whenever changes modify root configurations (`package.json`, `bun.lock`, `tsconfig*.json`, `bunfig.toml`, `lefthook.yml`, `.oxlintrc.json`, `.fallowrc.json`), cross-package contracts, touch multiple workspaces simultaneously, or prior to finalizing work.
+2. **Execute matching scoped commands**. All scoped checks must pass with exit code 0.
+3. **Run `bun run verify` for cross-cutting changes**: Run the full verification suite whenever changes modify root configurations (`package.json`, `bun.lock`, `tsconfig*.json`, `bunfig.toml`, `lefthook.yml`, `.oxlintrc.json`, `.fallowrc.json`), cross-package contracts, touch multiple workspaces simultaneously, or prior to finalizing work.
 
 ## Verification matrix
 
@@ -50,13 +49,13 @@ During iterative development, run verification commands matching modified files 
 | `site/content/**`                            | Documentation content | `bunx prettier --check site/content/**`<br>`bun --filter @devtools/site typecheck`<br>`bun --filter @devtools/site build`                                                                                                                                               |
 | `site/**` (site application code)            | Site workspace        | `bunx oxlint site/src/**`<br>`bunx prettier --check site/**`<br>`bun --filter @devtools/site typecheck`<br>`bun --filter @devtools/site test`<br>`bun --filter @devtools/site build`                                                                                    |
 | `scripts/**`                                 | Internal scripts      | `bunx oxlint scripts/`<br>`bunx prettier --check scripts/`<br>`bun test scripts/`                                                                                                                                                                                       |
-| `.agents/**`, repository docs (`*.md`)       | Docs and guidelines   | `bunx prettier --check .agents/** *.md`                                                                                                                                                                                                                                 |
+| `.agents/**`, repository docs (`*.md`)       | Docs and guidelines   | `bun run lint:agents`<br>`bunx prettier --check .agents/** *.md`                                                                                                                                                                                                        |
 | Cross-cutting changes / pre-PR review        | Full verification     | `bun run verify`                                                                                                                                                                                                                                                        |
 
-## Agent Quality Guardrails
+## Quality guardrails
 
 To prevent regressions and recurring review findings:
 
-- **No `process.exit()` in business logic**: Command handlers and library functions must return numeric exit codes (`Promise<number>`) or throw typed errors. Use Commander's `.exitOverride()` so CLI parsing errors are testable without killing the test runner.
-- **Isolate host environment in unit tests**: Do not probe host binaries or ambient filesystem state without mock seams.
-- **Platform seams**: Code branching on `platform()` or OS-specific paths must accept a seam (e.g., `seam?: { platform?: () => string }`) to allow deterministic verification on any runner.
+- **Exit codes in business logic:** Command handlers and library functions must return numeric exit codes (`Promise<number>`) or throw typed errors. Use Commander's `.exitOverride()` so CLI parsing errors are testable without killing the test runner.
+- **Isolate host environment in unit tests:** Accept filesystem and execution seams rather than probing host binaries or ambient filesystem state directly.
+- **Platform seams:** Code branching on `platform()` or OS-specific paths must accept a seam (e.g., `seam?: { platform?: () => string }`) to allow deterministic verification on any runner.

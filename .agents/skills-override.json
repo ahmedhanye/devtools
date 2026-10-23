@@ -14,20 +14,10 @@
     "path": "skills/productivity/handoff/SKILL.md",
     "commit": "0f5e033ebc47b142f5ffa56a582ede6d9d9bada3"
   },
-  "implement": {
-    "source": "mattpocock/skills",
-    "path": "skills/engineering/implement/SKILL.md",
-    "commit": "6d6a5b9072f47ee7ba1d972d8ce0ee98b7ed4394"
-  },
   "improve-codebase-architecture": {
     "source": "mattpocock/skills",
     "path": "skills/engineering/improve-codebase-architecture/SKILL.md",
     "commit": "d80fa0f4ebe0c5714af0adf8670336065233ecc6"
-  },
-  "prototype": {
-    "source": "mattpocock/skills",
-    "path": "skills/engineering/prototype/SKILL.md",
-    "commit": "c612defa9e5cf9372262d0279eb124993ba77b71"
   },
   "research": {
     "source": "mattpocock/skills",

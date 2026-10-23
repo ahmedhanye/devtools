@@ -9,10 +9,9 @@ Author technical documentation for the documentation platform (`site/`, `@devtoo
 
 ## Context pointers
 
-- **Diátaxis blueprints**: Read [.agents/skills/documentation-authoring/references/diataxis-quadrants.md](.agents/skills/documentation-authoring/references/diataxis-quadrants.md) for quadrant specifications, structural templates, and content boundaries.
-- **Fumadocs reference**: Read [.agents/skills/documentation-authoring/references/fumadocs-features.md](.agents/skills/documentation-authoring/references/fumadocs-features.md) for MDX components, Shiki code highlighting, styling tokens, accessibility standards, and compilation diagnostics.
-- **Verification rules**: Consult [.agents/rules/verification.md](.agents/rules/verification.md) for compiler verification commands and test invariants.
-- **Domain vocabulary**: Read [.agents/GLOSSARY.md](.agents/GLOSSARY.md) for platform terminology standards.
+- **Diátaxis blueprints**: Read [references/diataxis-quadrants.md](references/diataxis-quadrants.md) for quadrant specifications, structural templates, and content boundaries.
+- **Fumadocs reference**: Read [references/fumadocs-features.md](references/fumadocs-features.md) for MDX components, Shiki code highlighting, styling tokens, accessibility standards, and compilation diagnostics.
+- **Verification rules**: Consult [../../rules/verification.md](../../rules/verification.md) for compiler verification commands and test invariants.
 
 ## Authoring workflow
 
@@ -44,7 +43,7 @@ description: Configure runtime parameters and start the local background daemon.
 
 ### 3. Structure document headings and sections
 
-1. Apply the required section structure for the target quadrant defined in [.agents/skills/documentation-authoring/references/diataxis-quadrants.md](.agents/skills/documentation-authoring/references/diataxis-quadrants.md).
+1. Apply the required section structure for the target quadrant defined in [references/diataxis-quadrants.md](references/diataxis-quadrants.md).
 2. Start body headings with level 2 (`##`). Fumadocs generates the level 1 heading from frontmatter `title`.
 3. Apply sentence case to all headings.
 4. Maintain strict hierarchy without skipping levels (`##` followed by `###`, never `####` directly under `##`).
@@ -52,7 +51,7 @@ description: Configure runtime parameters and start the local background daemon.
 
 ### 4. Author MDX content with Fumadocs components
 
-1. Consult [.agents/skills/documentation-authoring/references/fumadocs-features.md](.agents/skills/documentation-authoring/references/fumadocs-features.md) for component usage, syntax highlighting, and layout patterns.
+1. Consult [references/fumadocs-features.md](references/fumadocs-features.md) for component usage, syntax highlighting, and layout patterns.
 2. Specify language tags on every fenced code block (`bash`, `ts`, `tsx`, `json`, `yaml`, `text`).
 3. Add `title="path/to/file"` on code blocks representing repository files or terminal commands.
 4. Maintain visual rhythm. Prevent continuous prose walls exceeding three paragraphs by using `<Steps>`, `<Tabs>`, `<Cards>`, `<Files>`, `<TypeTable>`, or Mermaid diagrams.
@@ -69,6 +68,6 @@ description: Configure runtime parameters and start the local background daemon.
 
 ### 6. Verify documentation changes
 
-1. Run the change-scoped verification commands defined in [.agents/rules/verification.md](.agents/rules/verification.md) for documentation content.
-2. Resolve any MDX compilation, broken link, or syntax diagnostics using the troubleshooting guide in [.agents/skills/documentation-authoring/references/fumadocs-features.md](.agents/skills/documentation-authoring/references/fumadocs-features.md).
-3. Completion criterion: Verification commands specified in [.agents/rules/verification.md](.agents/rules/verification.md) exit with code 0 without errors or broken links.
+1. Run the change-scoped verification commands defined in [../../rules/verification.md](../../rules/verification.md) for documentation content.
+2. Resolve any MDX compilation, broken link, or syntax diagnostics using the troubleshooting guide in [references/fumadocs-features.md](references/fumadocs-features.md).
+3. Completion criterion: Verification commands specified in [../../rules/verification.md](../../rules/verification.md) exit with code 0 without errors or broken links.

@@ -15,4 +15,4 @@ Prepare the workspace and branch for an issue. Follow `CONTRIBUTING.md`.
 3. Checkout and update `main` (`git checkout main && git pull origin main`).
 4. Create and checkout native linked branch (`gh issue develop <number> --checkout`).
 5. Assign issue to `@me` (`gh issue edit <number> --add-assignee @me`).
-6. Set ticket and parent Spec to `In Progress` in Project #8 following `CONTRIBUTING.md`.
+6. Set ticket and parent Spec to `In Progress` following `CONTRIBUTING.md`.
