@@ -67,10 +67,12 @@ jobs:
             code:
               - 'apps/**'
               - 'packages/**'
+              - 'site/**'
+              - 'scripts/**'
               - 'package.json'
               - 'bun.lock'
               - 'bunfig.toml'
-              - 'tsconfig.base.json'
+              - 'tsconfig*.json'
               - '.github/**'
 
   dependency-audit:
@@ -126,9 +128,10 @@ jobs:
         with:
           egress-policy: block
           allowed-endpoints: >
-            ghcr.io:443
+            api.github.com:443
             github.com:443
-            pkg-containers.githubusercontent.com:443
+            objects.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
             *.actions.githubusercontent.com:443
             *.blob.core.windows.net:443
             *.githubapp.com:443
@@ -139,19 +142,43 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Install TruffleHog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v3.99.2 --repo trufflesecurity/trufflehog --pattern 'trufflehog_3.99.2_linux_amd64.tar.gz'
+          echo "3c7b0d1dc4278294269bfdd7594bca8bb28c78da0a4a06ad202ded37b48deca4  trufflehog_3.99.2_linux_amd64.tar.gz" | sha256sum -c -
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf trufflehog_3.99.2_linux_amd64.tar.gz -C "$HOME/.local/bin" trufflehog
+          rm trufflehog_3.99.2_linux_amd64.tar.gz
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
       - name: TruffleHog OSS (Incremental PR Scan)
         if: github.event_name == 'pull_request'
-        uses: trufflesecurity/trufflehog@e76dff8a7e57d6df0c60ad8cbf5d5cba505a8fc9 # v3.99.2
-        with:
-          base: ${{ github.event.repository.default_branch }}
-          head: HEAD
-          extra_args: --no-verification --results=verified,unverified --exclude-paths=.github/trufflehog-exclude.txt
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          trufflehog git file://. \
+            --since-commit "$BASE" \
+            --branch "$HEAD" \
+            --fail \
+            --no-update \
+            --github-actions \
+            --no-verification \
+            --results=verified,unverified \
+            --exclude-paths=.github/trufflehog-exclude.txt
 
       - name: TruffleHog OSS (Full History Scan)
         if: github.event_name != 'pull_request'
-        uses: trufflesecurity/trufflehog@e76dff8a7e57d6df0c60ad8cbf5d5cba505a8fc9 # v3.99.2
-        with:
-          extra_args: --no-verification --results=verified,unverified --exclude-paths=.github/trufflehog-exclude.txt
+        run: |
+          trufflehog git file://. \
+            --fail \
+            --no-update \
+            --github-actions \
+            --no-verification \
+            --results=verified,unverified \
+            --exclude-paths=.github/trufflehog-exclude.txt
 
   codeql:
     name: CodeQL SAST Analysis
