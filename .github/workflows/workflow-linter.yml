@@ -1,10 +1,22 @@
 name: Workflow Lint & Security
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/**"
+      - ".github/actions/**"
+      - ".github/dependabot.yml"
+      - ".github/zizmor.yml"
+      - "scripts/**/*.sh"
+      - ".agents/**/*.sh"
   pull_request:
     paths:
       - ".github/workflows/**"
       - ".github/actions/**"
+      - ".github/dependabot.yml"
+      - ".github/zizmor.yml"
       - "scripts/**/*.sh"
       - ".agents/**/*.sh"
 
@@ -13,7 +25,7 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   actionlint:

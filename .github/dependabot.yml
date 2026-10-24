@@ -1,17 +1,13 @@
 version: 2
 updates:
   - package-ecosystem: "bun"
-    directories:
-      - "/"
-      - "/apps/*"
-      - "/packages/*"
-      - "/site"
+    directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
       time: "04:00"
       timezone: "Etc/UTC"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
     commit-message:
       prefix: "chore(deps)"
     groups:
@@ -31,7 +27,7 @@ updates:
       day: "monday"
       time: "04:00"
       timezone: "Etc/UTC"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
     commit-message:
       prefix: "chore(ci)"
     groups:
