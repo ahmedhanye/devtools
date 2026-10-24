@@ -21,7 +21,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.55.0",
-    "next": "^16.4.1",
+    "next": "^16.4.2",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "tailwind-merge": "^3.7.0"
@@ -36,7 +36,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "@vitest/coverage-v8": "^5.0.5",
-    "happy-dom": "^21.0.1",
+    "happy-dom": "^21.0.3",
     "postcss": "^8.5.29",
     "react-doctor": "^0.9.18",
     "steiger": "^0.7.0",
