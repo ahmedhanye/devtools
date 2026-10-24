@@ -1,17 +1,13 @@
 version: 2
 updates:
   - package-ecosystem: "bun"
-    directories:
-      - "/"
-      - "/apps/*"
-      - "/packages/*"
-      - "/site"
+    directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
       time: "04:00"
       timezone: "Etc/UTC"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
     commit-message:
       prefix: "chore(deps)"
     groups:
@@ -23,6 +19,9 @@ updates:
           - "patch"
     cooldown:
       default-days: 7
+      semver-major-days: 14
+      semver-minor-days: 7
+      semver-patch-days: 3
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -31,7 +30,7 @@ updates:
       day: "monday"
       time: "04:00"
       timezone: "Etc/UTC"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
     commit-message:
       prefix: "chore(ci)"
     groups:
@@ -43,3 +42,6 @@ updates:
           - "patch"
     cooldown:
       default-days: 7
+      semver-major-days: 14
+      semver-minor-days: 7
+      semver-patch-days: 3
