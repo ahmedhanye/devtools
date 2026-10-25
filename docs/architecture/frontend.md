@@ -9,9 +9,9 @@ Architecture, Feature-Sliced Design (FSD) v2.1 structure, Next.js App Router bou
 ```text
 apps/frontend/src/
 ├── app/                  # Next.js App Router adapters, providers, route entrypoints
-├── pages/                # Full-page compositions and page-scoped state
-├── features/             # User interactions carrying business value (e.g. browser-install)
-├── entities/             # Business domain entities (e.g. service, browser-executable)
+├── pages/                # Full-page compositions and page-scoped state (e.g. dashboard/ui/page.tsx)
+├── features/             # User interactions carrying business value (created on demand via Pages First rule)
+├── entities/             # Business domain entities (created on demand via Pages First rule)
 └── shared/               # Reusable UI primitives, utility libraries, design system tokens
 ```
 

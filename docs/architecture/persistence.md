@@ -43,4 +43,4 @@ Per [ADR 0001](../adr/0001-embedded-database-foundation.md), SQLite connections 
    - Resolves to `:memory:` in automated test environments (`NODE_ENV === "test"` or `BUN_ENV === "test"`).
    - Resolves to `<repo_root>/.devtools/devtools.db` in local workspace development (`NODE_ENV !== "production"`).
    - Defaults to `~/.devtools/devtools.db` under the user's home directory in production.
-2. **In-memory test isolation**: Unit test suites instantiate databases using `createDb({ path: ":memory:" })` or `createSqliteConnection(":memory:")`. This creates an ephemeral, lightning-fast database in RAM that requires zero disk cleanup and eliminates cross-test state pollution. In-memory databases automatically omit WAL pragma execution.
+2. **In-memory test isolation**: Unit test suites instantiate databases using `createDb(":memory:")` or `createConnection(":memory:")`. This creates an ephemeral, lightning-fast database in RAM that requires zero disk cleanup and eliminates cross-test state pollution. In-memory databases automatically omit WAL pragma execution.

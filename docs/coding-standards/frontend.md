@@ -9,9 +9,9 @@ Architectural invariants, Feature-Sliced Design (FSD) v2.1 patterns, React 19 ru
 ```text
 apps/frontend/src/
 ├── app/                  # Next.js App Router adapters, providers, route entrypoints
-├── pages/                # Full-page compositions and page-scoped state
-├── features/             # User interactions carrying business value (e.g. auth, browser-install)
-├── entities/             # Business domain entities (e.g. service, browser-executable)
+├── pages/                # Full-page compositions and page-scoped state (e.g. dashboard/ui/page.tsx)
+├── features/             # User interactions carrying business value (created on demand via Pages First rule)
+├── entities/             # Business domain entities (created on demand via Pages First rule)
 └── shared/               # Reusable UI primitives, utility libraries, design system tokens
 ```
 
@@ -22,7 +22,17 @@ apps/frontend/src/
    - Do **not** extract components, hooks, or queries to `features` or `entities` prematurely.
    - Extract code only when it is actively reused across multiple distinct pages, has an independent reason to change, and serves a focused responsibility.
 3. **Public API boundary**: Every slice must export its public interface exclusively through its root `index.ts` file. Deep imports into slice internals (e.g. `import ... from "@/features/browser-install/ui/button"`) are prohibited.
-4. **App Router boundary adapters**: Route entrypoint files in `src/app/` (`page.next.tsx`, `layout.next.tsx`) are thin routing adapters configured via `pageExtensions: ["next.tsx", "next.ts"]`. They declare layout metadata, global providers, and parameter parsing, delegating feature orchestration immediately to FSD page components in `src/pages/<page>/`.
+4. **App Router boundary adapters**: Route entrypoint files in `src/app/` (`page.next.tsx`, `layout.next.tsx`) are thin routing adapters configured via `pageExtensions: ["next.tsx", "next.ts"]`. They declare layout metadata, global providers, and parameter parsing, delegating feature orchestration immediately to FSD page components in `src/pages/<page>/ui/page.tsx`.
+
+## UI testing and Storybook-first presentation
+
+1. **No `*.test.tsx` files or `tests/` directories for UI components**: Authoring unit test files (`*.test.tsx`) with `@testing-library/react` assertions for presentational components is prohibited in `apps/frontend`. Unit tests (`*.test.ts`) are strictly reserved for pure utility functions and non-visual hooks in `src/shared/lib/`.
+2. **Storybook (`*.stories.tsx`) as the single source of truth**: All UI presentation, states, variants, and interactive behaviors are declared exclusively in co-located Storybook stories (`component.stories.tsx`).
+3. **Automated Storybook test execution & diff coverage**: Vitest is configured in `apps/frontend/vitest.config.ts` to automatically execute `src/**/*.stories.{ts,tsx}` in `happy-dom` via Storybook Portable Stories (`composeStories` from `@storybook/react`), executing story mounts and `play()` functions directly under `@vitest/coverage-v8`.
+4. **Co-location structure**: Every presentational component must co-locate its story file and barrel exports:
+   - `component.tsx` (component implementation)
+   - `component.stories.tsx` (states, variants, and interaction tests)
+   - `index.ts` (public segment export)
 
 ## Naming conventions and file structure
 

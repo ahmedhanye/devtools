@@ -9,10 +9,10 @@ Architecture, route design, security boundaries, and validation contracts for `a
 ```text
 apps/api/
 ├── src/
+│   ├── middleware/
+│   │   └── security.ts        # Loopback origin, CORS, & CSRF protection middleware
 │   ├── routes/
-│   │   ├── health.ts          # Health probe & uptime endpoint
-│   │   ├── browser.ts         # Browser resolution & status endpoints
-│   │   └── services.ts        # Service state & telemetry endpoints
+│   │   └── health.ts          # Health probe & uptime endpoint
 │   ├── index.ts               # Hono app factory & middleware registration
 │   └── server.ts              # Standalone HTTP server runner
 └── tests/                     # Socketless in-memory test suites
@@ -23,7 +23,6 @@ Instead of exporting an ambient singleton, `apps/api` exposes a factory function
 ```ts
 export interface CreateAppOptions {
   basePath?: string;
-  db?: DatabaseInstance;
 }
 
 export function createApp(options: CreateAppOptions = {}): Hono {

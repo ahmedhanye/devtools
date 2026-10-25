@@ -145,5 +145,7 @@ Test suites must execute concurrently and deterministically without cross-test p
 - **`packages/core` (`bun:test`)**: Validate Zod schema bounds, `.strict()` rejection of unrecognized properties, and default value resolution.
 - **`packages/db` (`bun:test`)**: Verify migration idempotency (running `runMigrations` multiple times succeeds cleanly) and database constraint enforcement.
 - **`apps/cli` (`bun:test`)**: Verify command flag precedence (CLI flags > environment variables > config defaults), route guards (HTTP 403 on directory traversal attempts), and clean signal termination (`SIGTERM`/`SIGINT`).
-- **`apps/frontend` (`vitest` with `happy-dom` & `@testing-library/react`)**: Verify asynchronous hook state transitions (`idle` -> `loading` -> `success`), accessible element interactions (`screen.getByRole`), and skeleton slot rendering (`data-slot="skeleton"`).
+- **`apps/frontend` (`vitest` with `happy-dom` & Storybook stories)**:
+  - **Zero UI `*.test.tsx` files**: Presentation components are tested exclusively through co-located Storybook stories (`*.stories.tsx`). Vitest discovers and executes stories in `happy-dom` using Storybook Portable Stories (`composeStories` from `@storybook/react`), executing both render states and `play()` interaction steps under `@vitest/coverage-v8`.
+  - **Shared logic & hooks (`*.test.ts`)**: Pure utilities and hydration-safe React hooks in `src/shared/lib/` are tested with Vitest and `@testing-library/react` (`renderHook`).
 - **`site` (`bun:test`)**: Verify Fumadocs page loader query symmetry (`source.getPages()`), catch-all route metadata generation, and search route filtering.

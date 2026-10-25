@@ -32,13 +32,13 @@ Architectural guidelines, boundary rules, and development practices for shared d
 2. **Centralized configuration modules**: Isolate all environment variable resolution into a single `config.ts` file per package.
 3. **Injectable environment seams**: Every configuration resolver must accept an optional `options.env` parameter:
    ```ts
-   export interface ResolveDatabaseOptions {
+   export interface ResolveDatabasePathOptions {
      env?: Record<string, string | undefined>;
      customPath?: string;
    }
 
    export function resolveDatabasePath(
-     options: ResolveDatabaseOptions = {},
+     options: ResolveDatabasePathOptions = {},
    ): string {
      const env = options.env ?? process.env;
      const envPath =

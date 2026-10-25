@@ -9,14 +9,13 @@ Architecture, Chromium resolution waterfall algorithm, binary verification, and 
 ```text
 packages/browser/
 ├── src/
-│   ├── browser/
-│   │   ├── detector.ts        # Executable verification & path detection
-│   │   ├── installer.ts       # Chrome for Testing downloader & unpacker
-│   │   ├── types.ts           # Browser resolution & probe contracts
-│   │   ├── errors.ts          # Actionable domain error classes
-│   │   └── waterfall.ts       # 3-tier Chromium resolution waterfall
 │   ├── config.ts              # Cache directory resolution & env seams
-│   └── index.ts               # Public library entrypoint
+│   ├── detector.ts            # Executable verification & path detection
+│   ├── errors.ts              # Actionable domain error classes
+│   ├── index.ts               # Public library entrypoint
+│   ├── installer.ts           # Chrome for Testing downloader & unpacker
+│   ├── types.ts               # Browser resolution & probe contracts
+│   └── waterfall.ts           # 3-tier Chromium resolution waterfall
 └── tests/                     # Unit test suites with dependency injection
 ```
 
