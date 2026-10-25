@@ -2,20 +2,37 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
+/**
+ * Per-file diff coverage metrics computed by {@link calculateDiffCoverage}.
+ */
 export interface FileDiffCoverage {
+  /** Normalized repository-relative path of the modified file. */
   file: string;
+  /** Number of modified or added executable source lines in the file. */
   modifiedExecutable: number;
+  /** Number of modified executable lines with at least one LCOV execution hit. */
   covered: number;
+  /** Percentage (`0–100`) of modified executable lines covered. */
   percent: number;
+  /** 1-based line numbers of modified executable lines that received `0` hits. */
   uncoveredLines: number[];
 }
 
+/**
+ * Aggregate diff coverage verification result returned by {@link calculateDiffCoverage}.
+ */
 export interface DiffCoverageResult {
+  /** Total modified executable lines across all testable files in the git diff. */
   totalModifiedExecutableLines: number;
+  /** Total modified executable lines covered by tests. */
   coveredModifiedLines: number;
+  /** Aggregate diff coverage percentage (`0–100`). */
   diffCoveragePercent: number;
+  /** Whether `diffCoveragePercent >= threshold`. */
   passed: boolean;
+  /** Required minimum diff coverage percentage threshold. */
   threshold: number;
+  /** Per-file diff coverage breakdowns. */
   fileResults: FileDiffCoverage[];
 }
 
@@ -27,14 +44,14 @@ function normalizePath(filePath: string): string {
 }
 
 /**
- * Determines whether a file path represents a testable source code file.
+ * Determines whether a file path represents a testable runtime source code file.
  */
 function isTestableSourceFile(filePath: string): boolean {
   const normalized = normalizePath(filePath);
   if (!/\.(ts|tsx|js|jsx|mjs|cjs)$/.test(normalized)) {
     return false;
   }
-  if (
+  return !(
     normalized.includes(".test.") ||
     normalized.includes(".spec.") ||
     normalized.endsWith(".d.ts") ||
@@ -42,14 +59,15 @@ function isTestableSourceFile(filePath: string): boolean {
     normalized.includes(".stories.") ||
     /\.config\.[a-z]+$/.test(normalized) ||
     normalized.startsWith("scripts/")
-  ) {
-    return false;
-  }
-  return true;
+  );
 }
 
 /**
- * Checks whether source code contains only type definitions and emits no runtime JavaScript statements.
+ * Checks whether TypeScript/JSX source text contains only type definitions and emits no runtime JavaScript statements.
+ *
+ * @param sourceText - Raw TypeScript or TSX source string.
+ * @param filePath - Optional file path used to select the `"ts"` or `"tsx"` transpiler loader. Defaults to `"file.ts"`.
+ * @returns `true` if transpiling the source produces no executable statements.
  */
 export function isTypeOnlySource(
   sourceText: string,
@@ -73,7 +91,10 @@ export function isTypeOnlySource(
 }
 
 /**
- * Checks whether a repository file consists exclusively of type definitions.
+ * Checks whether a repository file on disk consists exclusively of TypeScript type definitions.
+ *
+ * @param filePath - Path to the source file to inspect.
+ * @returns `true` if the file exists and emits no runtime statements when transpiled.
  */
 export function isTypeOnlyFile(filePath: string): boolean {
   if (!fs.existsSync(filePath)) {
@@ -88,8 +109,25 @@ export function isTypeOnlyFile(filePath: string): boolean {
 }
 
 /**
- * Parses LCOV content into a map of:
- * normalizedFilePath -> (lineNumber -> hitCount)
+ * Records a single `DA:<line>,<hits>` LCOV directive into `currentLines`.
+ */
+function recordLcovDaLine(
+  line: string,
+  currentLines: Map<number, number>,
+): void {
+  const parts = line.slice(3).split(",");
+  const lineNum = Number.parseInt(parts[0] ?? "", 10);
+  const hits = Number.parseInt(parts[1] ?? "", 10);
+  if (!Number.isNaN(lineNum) && !Number.isNaN(hits)) {
+    currentLines.set(lineNum, (currentLines.get(lineNum) ?? 0) + hits);
+  }
+}
+
+/**
+ * Parses LCOV report content into a nested map of `normalizedFilePath -> (lineNumber -> hitCount)`.
+ *
+ * @param lcovContent - Raw LCOV text content.
+ * @returns Map associating each normalized file path with its line execution counts.
  */
 export function parseLcov(
   lcovContent: string,
@@ -111,12 +149,7 @@ export function parseLcov(
       currentLines = result.get(currentFile) ?? new Map<number, number>();
       result.set(currentFile, currentLines);
     } else if (line.startsWith("DA:") && currentFile) {
-      const parts = line.slice(3).split(",");
-      const lineNum = Number.parseInt(parts[0] ?? "", 10);
-      const hits = Number.parseInt(parts[1] ?? "", 10);
-      if (!Number.isNaN(lineNum) && !Number.isNaN(hits)) {
-        currentLines.set(lineNum, (currentLines.get(lineNum) ?? 0) + hits);
-      }
+      recordLcovDaLine(line, currentLines);
     } else if (line === "end_of_record") {
       currentFile = null;
     }
@@ -126,8 +159,49 @@ export function parseLcov(
 }
 
 /**
- * Parses unified git diff text and returns a map of:
- * normalizedFilePath -> array of modified/added line numbers in HEAD
+ * Extracts the normalized new-file target path from a `+++ b/<path>` diff header line.
+ */
+function parsePlusHeaderFile(line: string): string | null {
+  const target = line.slice(4).trim();
+  if (target === "/dev/null" || target === "b/dev/null") {
+    return null;
+  }
+  const cleaned = target.startsWith("b/") ? target.slice(2) : target;
+  return normalizePath(cleaned);
+}
+
+/**
+ * Parses the starting new-file line number from a unified diff hunk header (`@@ -a,b +c,d @@`).
+ */
+function parseHunkStartLine(line: string): number | null {
+  const match = line.match(
+    /^@@\s+-[0-9]+(?:,[0-9]+)?\s+\+([0-9]+)(?:,([0-9]+))?\s+@@/,
+  );
+  return match?.[1] ? Number.parseInt(match[1], 10) : null;
+}
+
+/**
+ * Processes a single content line inside an active unified diff hunk and returns the updated new-file line number.
+ */
+function applyDiffHunkContentLine(
+  line: string,
+  fileLines: number[],
+  currentLineInNew: number,
+): number {
+  if (line.startsWith("\\") || line.startsWith("-")) {
+    return currentLineInNew;
+  }
+  if (line.startsWith("+")) {
+    fileLines.push(currentLineInNew);
+  }
+  return currentLineInNew + 1;
+}
+
+/**
+ * Parses unified `git diff` output and returns a map of `normalizedFilePath -> addedOrModifiedLineNumbers`.
+ *
+ * @param diffText - Unified git diff text (`git diff -U0`).
+ * @returns Map of normalized file paths to arrays of 1-based modified line numbers in `HEAD`.
  */
 export function parseGitDiff(diffText: string): Map<string, number[]> {
   const result = new Map<string, number[]>();
@@ -146,52 +220,90 @@ export function parseGitDiff(diffText: string): Map<string, number[]> {
       currentFile = null;
       inHunk = false;
     } else if (line.startsWith("+++ ") && !inHunk) {
-      const target = line.slice(4).trim();
-      if (target === "/dev/null" || target === "b/dev/null") {
-        currentFile = null;
-      } else {
-        const cleaned = target.startsWith("b/") ? target.slice(2) : target;
-        currentFile = normalizePath(cleaned);
-        if (!result.has(currentFile)) {
-          result.set(currentFile, []);
-        }
+      currentFile = parsePlusHeaderFile(line);
+      if (currentFile && !result.has(currentFile)) {
+        result.set(currentFile, []);
       }
     } else if (line.startsWith("@@ ")) {
-      // e.g. @@ -10,3 +10,4 @@ or @@ -1 +1 @@
       inHunk = true;
-      const match = line.match(
-        /^@@\s+-[0-9]+(?:,[0-9]+)?\s+\+([0-9]+)(?:,([0-9]+))?\s+@@/,
-      );
-      if (match && match[1]) {
-        currentLineInNew = Number.parseInt(match[1], 10);
-      }
+      currentLineInNew = parseHunkStartLine(line) ?? currentLineInNew;
     } else if (currentFile && inHunk) {
-      if (line.startsWith("\\")) {
-        // e.g. "\ No newline at end of file"; metadata line, does not represent source lines
-        continue;
-      }
-      if (line.startsWith("+")) {
-        const list = result.get(currentFile)!;
-        list.push(currentLineInNew);
-        currentLineInNew++;
-      } else if (line.startsWith("-")) {
-        // Line removed from old version; does not advance new file line counter
-      } else {
-        // Context line
-        currentLineInNew++;
-      }
+      currentLineInNew = applyDiffHunkContentLine(
+        line,
+        result.get(currentFile)!,
+        currentLineInNew,
+      );
     }
   }
 
   return result;
 }
 
+/**
+ * Optional seam overrides for {@link calculateDiffCoverage}.
+ */
 export interface DiffCoverageOptions {
+  /** Custom callback determining whether a file path contains only TypeScript type declarations. */
   isTypeOnly?: (filePath: string) => boolean;
 }
 
 /**
- * Computes diff coverage by matching added/modified lines in git diff against LCOV execution data.
+ * Computes diff coverage for a single file against its LCOV line map.
+ */
+function evaluateSingleFileDiff(
+  file: string,
+  modifiedLines: number[],
+  fileLcov: Map<number, number> | undefined,
+  checkTypeOnly: (filePath: string) => boolean,
+): FileDiffCoverage | null {
+  if (!fileLcov) {
+    if (checkTypeOnly(file) || modifiedLines.length === 0) {
+      return null;
+    }
+    return {
+      file,
+      modifiedExecutable: modifiedLines.length,
+      covered: 0,
+      percent: 0,
+      uncoveredLines: [...modifiedLines],
+    };
+  }
+
+  let fileExecutable = 0;
+  let fileCovered = 0;
+  const uncovered: number[] = [];
+
+  for (const lineNum of modifiedLines) {
+    if (!fileLcov.has(lineNum)) continue;
+    fileExecutable++;
+    if ((fileLcov.get(lineNum) ?? 0) > 0) {
+      fileCovered++;
+    } else {
+      uncovered.push(lineNum);
+    }
+  }
+
+  if (fileExecutable === 0) {
+    return null;
+  }
+
+  return {
+    file,
+    modifiedExecutable: fileExecutable,
+    covered: fileCovered,
+    percent: Number(((fileCovered / fileExecutable) * 100).toFixed(2)),
+    uncoveredLines: uncovered,
+  };
+}
+
+/**
+ * Computes diff coverage by matching added/modified lines in a git diff against LCOV execution data.
+ *
+ * @param diffMap - Map of normalized file paths to modified 1-based line numbers.
+ * @param lcovMap - Map of normalized file paths to LCOV line hit counts.
+ * @param threshold - Minimum required diff coverage percentage (`0–100`). Defaults to `100`.
+ * @param options - Optional type-only file detector seam.
+ * @returns Aggregate and per-file {@link DiffCoverageResult}.
  */
 export function calculateDiffCoverage(
   diffMap: Map<string, number[]>,
@@ -205,56 +317,18 @@ export function calculateDiffCoverage(
   const checkTypeOnly = options?.isTypeOnly ?? isTypeOnlyFile;
 
   for (const [file, modifiedLines] of diffMap.entries()) {
-    if (!isTestableSourceFile(file)) {
-      continue;
-    }
+    if (!isTestableSourceFile(file)) continue;
 
-    const fileLcov = lcovMap.get(file);
-
-    if (!fileLcov) {
-      if (checkTypeOnly(file)) {
-        continue;
-      }
-      if (modifiedLines.length > 0) {
-        totalModifiedExecutableLines += modifiedLines.length;
-        fileResults.push({
-          file,
-          modifiedExecutable: modifiedLines.length,
-          covered: 0,
-          percent: 0,
-          uncoveredLines: [...modifiedLines],
-        });
-      }
-      continue;
-    }
-
-    let fileExecutable = 0;
-    let fileCovered = 0;
-    const uncovered: number[] = [];
-
-    for (const lineNum of modifiedLines) {
-      if (fileLcov.has(lineNum)) {
-        fileExecutable++;
-        const hits = fileLcov.get(lineNum) ?? 0;
-        if (hits > 0) {
-          fileCovered++;
-        } else {
-          uncovered.push(lineNum);
-        }
-      }
-    }
-
-    if (fileExecutable > 0) {
-      totalModifiedExecutableLines += fileExecutable;
-      coveredModifiedLines += fileCovered;
-      const percent = Number(((fileCovered / fileExecutable) * 100).toFixed(2));
-      fileResults.push({
-        file,
-        modifiedExecutable: fileExecutable,
-        covered: fileCovered,
-        percent,
-        uncoveredLines: uncovered,
-      });
+    const item = evaluateSingleFileDiff(
+      file,
+      modifiedLines,
+      lcovMap.get(file),
+      checkTypeOnly,
+    );
+    if (item) {
+      totalModifiedExecutableLines += item.modifiedExecutable;
+      coveredModifiedLines += item.covered;
+      fileResults.push(item);
     }
   }
 
@@ -267,20 +341,21 @@ export function calculateDiffCoverage(
           ),
         );
 
-  const passed = diffCoveragePercent >= threshold;
-
   return {
     totalModifiedExecutableLines,
     coveredModifiedLines,
     diffCoveragePercent,
-    passed,
+    passed: diffCoveragePercent >= threshold,
     threshold,
     fileResults,
   };
 }
 
 /**
- * Formats a clean GitHub Markdown summary table of diff coverage.
+ * Formats a GitHub-flavored Markdown summary table for a {@link DiffCoverageResult}.
+ *
+ * @param result - Computed diff coverage result.
+ * @returns Formatted Markdown report string.
  */
 export function generateMarkdownSummary(result: DiffCoverageResult): string {
   const statusEmoji = result.passed ? "✅" : "❌";
@@ -308,117 +383,196 @@ export function generateMarkdownSummary(result: DiffCoverageResult): string {
   return md;
 }
 
+/**
+ * Configuration options and injectable I/O seams for {@link verifyDiffCoverage}.
+ */
 export interface VerifyDiffCoverageOptions {
+  /** Base git ref to diff against. Defaults to `"origin/main"`. */
   baseRef?: string;
+  /** Head git ref to diff. Defaults to `"HEAD"`. */
   headRef?: string;
+  /** Path to the unified LCOV file. Defaults to `"coverage/lcov.info"`. */
   lcovPath?: string;
+  /** Minimum required diff coverage percentage (`0–100`). Defaults to `100`. */
   threshold?: number;
+  /** Optional file path where the Markdown summary report should be written. */
   outputFile?: string | null;
+  /** Injectable git command runner for unit testing. */
   gitCommand?: (args: string[]) => {
     status: number | null;
     stdout?: string;
     stderr?: string;
   };
+  /** Injectable stdout logger. */
   log?: (msg: string) => void;
+  /** Injectable stderr logger. */
   error?: (msg: string) => void;
+  /** Injectable warning logger. */
   warn?: (msg: string) => void;
+  /** Injectable file reader. */
   readFile?: (path: string, encoding: "utf8") => string;
+  /** Injectable file writer. */
   writeFile?: (path: string, content: string, encoding: "utf8") => void;
+  /** Injectable file existence check. */
   fileExists?: (path: string) => boolean;
+  /** Injectable directory creator. */
   mkdir?: (path: string, options: { recursive: boolean }) => void;
 }
 
+type GitCmdFn = NonNullable<VerifyDiffCoverageOptions["gitCommand"]>;
+
 /**
- * Runs diff coverage verification against the base ref and coverage report.
- * Fails closed immediately if the diff cannot be computed against the base ref.
+ * Resolves the merge-base commit SHA or falls back to `baseRef`.
+ */
+function resolveMergeBase(
+  baseRef: string,
+  headRef: string,
+  gitCommand: GitCmdFn,
+): string {
+  const mbCmd = gitCommand(["merge-base", baseRef, headRef]);
+  const trimmed = mbCmd.stdout?.trim();
+  return mbCmd.status === 0 && trimmed ? trimmed : baseRef;
+}
+
+/**
+ * Determines the `git diff` target arguments based on working-tree cleanliness.
+ */
+function selectDiffTargetArgs(
+  baseRef: string,
+  headRef: string,
+  mergeBaseRef: string,
+  gitCommand: GitCmdFn,
+): string[] {
+  if (headRef !== "HEAD") {
+    return [`${baseRef}...${headRef}`];
+  }
+  const status = gitCommand(["status", "--porcelain"]);
+  return status.status === 0 && status.stdout?.trim()
+    ? [mergeBaseRef]
+    : [`${baseRef}...${headRef}`];
+}
+
+/**
+ * Resolves the unified git diff text between `baseRef` and `headRef`.
+ */
+function resolveGitDiffOutput(
+  baseRef: string,
+  headRef: string,
+  gitCommand: GitCmdFn,
+): { ok: true; diffText: string } | { ok: false; errorDetail: string } {
+  const mergeBaseRef = resolveMergeBase(baseRef, headRef, gitCommand);
+  const diffArgs = selectDiffTargetArgs(
+    baseRef,
+    headRef,
+    mergeBaseRef,
+    gitCommand,
+  );
+  const gitDiffCmd = gitCommand(["diff", "-U0", ...diffArgs]);
+
+  if (gitDiffCmd.status !== 0) {
+    return {
+      ok: false,
+      errorDetail: gitDiffCmd.stderr || gitDiffCmd.stdout || "unknown error",
+    };
+  }
+
+  const primaryDiff = gitDiffCmd.stdout || "";
+  if (primaryDiff.trim()) {
+    return { ok: true, diffText: primaryDiff };
+  }
+
+  const workingDiff = gitCommand(["diff", "-U0", mergeBaseRef]);
+  return {
+    ok: true,
+    diffText:
+      workingDiff.status === 0 && workingDiff.stdout ? workingDiff.stdout : "",
+  };
+}
+
+/**
+ * Normalizes defaulted ref and threshold options for {@link verifyDiffCoverage}.
+ */
+function resolveVerifyConfig(options: VerifyDiffCoverageOptions) {
+  return {
+    baseRef: options.baseRef || "origin/main",
+    headRef: options.headRef || "HEAD",
+    lcovPath: options.lcovPath || "coverage/lcov.info",
+    threshold: options.threshold ?? 100,
+    outputFile: options.outputFile ?? null,
+  };
+}
+
+/**
+ * Normalizes defaulted I/O callbacks for {@link verifyDiffCoverage}.
+ */
+function resolveVerifyIo(options: VerifyDiffCoverageOptions) {
+  return {
+    log: options.log ?? console.log,
+    error: options.error ?? console.error,
+    fileExists: options.fileExists ?? fs.existsSync,
+    readFile: options.readFile ?? fs.readFileSync,
+    writeFile: options.writeFile ?? fs.writeFileSync,
+    mkdir: options.mkdir ?? fs.mkdirSync,
+    gitCommand:
+      options.gitCommand ??
+      ((args: string[]) => spawnSync("git", args, { encoding: "utf8" })),
+  };
+}
+
+/**
+ * Runs diff coverage verification against the base git ref and unified LCOV report.
+ *
+ * @remarks
+ * Fails closed (`1`) immediately if the LCOV report is missing or if `git diff` cannot be computed.
+ *
+ * @param options - Diff coverage verification configuration and I/O seams.
+ * @returns Numeric exit code (`0` when coverage meets threshold, `1` on failure).
  */
 export function verifyDiffCoverage(
   options: VerifyDiffCoverageOptions = {},
 ): number {
-  const baseRef = options.baseRef || "origin/main";
-  const headRef = options.headRef || "HEAD";
-  const lcovPath = options.lcovPath || "coverage/lcov.info";
-  const threshold = options.threshold ?? 100;
-  const outputFile = options.outputFile ?? null;
+  const cfg = resolveVerifyConfig(options);
+  const io = resolveVerifyIo(options);
 
-  const log = options.log ?? console.log;
-  const error = options.error ?? console.error;
-  const fileExists = options.fileExists ?? fs.existsSync;
-  const readFile = options.readFile ?? fs.readFileSync;
-  const writeFile = options.writeFile ?? fs.writeFileSync;
-  const mkdir = options.mkdir ?? fs.mkdirSync;
-  const gitCommand =
-    options.gitCommand ??
-    ((args: string[]) =>
-      spawnSync("git", args, {
-        encoding: "utf8",
-      }));
-
-  if (!fileExists(lcovPath)) {
-    error(
-      `Error: LCOV coverage file not found at "${lcovPath}". Run "bun run test:coverage" first.`,
+  if (!io.fileExists(cfg.lcovPath)) {
+    io.error(
+      `Error: LCOV coverage file not found at "${cfg.lcovPath}". Run "bun run test:coverage" first.`,
     );
     return 1;
   }
 
-  const lcovContent = readFile(lcovPath, "utf8");
-  const lcovMap = parseLcov(lcovContent);
+  const lcovMap = parseLcov(io.readFile(cfg.lcovPath, "utf8"));
+  const diffOutcome = resolveGitDiffOutput(
+    cfg.baseRef,
+    cfg.headRef,
+    io.gitCommand,
+  );
 
-  let mergeBaseRef = baseRef;
-  const mbCmd = gitCommand(["merge-base", baseRef, headRef]);
-  if (mbCmd.status === 0 && mbCmd.stdout && mbCmd.stdout.trim()) {
-    mergeBaseRef = mbCmd.stdout.trim();
-  }
-
-  let diffArgs = [`${baseRef}...${headRef}`];
-  if (headRef === "HEAD") {
-    const status = gitCommand(["status", "--porcelain"]);
-    if (
-      status.status === 0 &&
-      status.stdout &&
-      status.stdout.trim().length > 0
-    ) {
-      diffArgs = [mergeBaseRef];
-    }
-  }
-
-  const gitDiffCmd = gitCommand(["diff", "-U0", ...diffArgs]);
-
-  let diffText = "";
-  if (gitDiffCmd.status === 0) {
-    diffText = gitDiffCmd.stdout || "";
-    // If diff between baseRef and headRef is empty, check working tree against mergeBaseRef
-    if (!diffText.trim()) {
-      const workingDiff = gitCommand(["diff", "-U0", mergeBaseRef]);
-      if (workingDiff.status === 0 && workingDiff.stdout) {
-        diffText = workingDiff.stdout;
-      }
-    }
-  } else {
-    const cleanBase = baseRef.replace(/^origin\//, "");
-    error(
-      `Error: Could not diff against "${baseRef}...${headRef}". ` +
+  if (!diffOutcome.ok) {
+    const cleanBase = cfg.baseRef.replace(/^origin\//, "");
+    io.error(
+      `Error: Could not diff against "${cfg.baseRef}...${cfg.headRef}". ` +
         `Ensure the base ref exists locally (e.g. run "git fetch origin ${cleanBase}").\n` +
-        `Git error: ${gitDiffCmd.stderr || gitDiffCmd.stdout || "unknown error"}`,
+        `Git error: ${diffOutcome.errorDetail}`,
     );
     return 1;
   }
 
-  const diffMap = parseGitDiff(diffText);
-  const result = calculateDiffCoverage(diffMap, lcovMap, threshold);
+  const diffMap = parseGitDiff(diffOutcome.diffText);
+  const result = calculateDiffCoverage(diffMap, lcovMap, cfg.threshold);
   const summary = generateMarkdownSummary(result);
 
-  log(summary);
+  io.log(summary);
 
-  if (outputFile) {
-    mkdir(path.dirname(outputFile), { recursive: true });
-    writeFile(outputFile, summary, "utf8");
-    log(`Coverage summary written to ${outputFile}`);
+  if (cfg.outputFile) {
+    io.mkdir(path.dirname(cfg.outputFile), { recursive: true });
+    io.writeFile(cfg.outputFile, summary, "utf8");
+    io.log(`Coverage summary written to ${cfg.outputFile}`);
   }
 
   if (!result.passed) {
-    error(
-      `Diff coverage ${result.diffCoveragePercent.toFixed(2)}% is below required ${threshold}%.`,
+    io.error(
+      `Diff coverage ${result.diffCoveragePercent.toFixed(2)}% is below required ${cfg.threshold}%.`,
     );
     return 1;
   }
@@ -427,38 +581,52 @@ export function verifyDiffCoverage(
 }
 
 /**
- * CLI Runner. Returns a numeric exit code (0 for success, non-zero for failure).
+ * Parses CLI flag arguments for `verify-diff-coverage.ts`.
  */
-async function runCli(): Promise<number> {
-  const args = process.argv.slice(2);
-  let baseRef = process.env.BASE_REF || "origin/main";
-  let headRef = "HEAD";
-  let lcovPath = "coverage/lcov.info";
-  let threshold = 100;
-  let outputFile: string | null = null;
+function parseCliOptions(args: string[]): VerifyDiffCoverageOptions {
+  const opts: VerifyDiffCoverageOptions = {
+    baseRef: process.env.BASE_REF || "origin/main",
+    headRef: "HEAD",
+    lcovPath: "coverage/lcov.info",
+    threshold: 100,
+    outputFile: null,
+  };
+
+  const flagHandlers: Record<string, (val: string) => void> = {
+    "--base": (val) => {
+      opts.baseRef = val;
+    },
+    "--head": (val) => {
+      opts.headRef = val;
+    },
+    "--lcov": (val) => {
+      opts.lcovPath = val;
+    },
+    "--min": (val) => {
+      opts.threshold = Number.parseFloat(val);
+    },
+    "--output": (val) => {
+      opts.outputFile = val;
+    },
+  };
 
   for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === "--base" && args[i + 1]) {
-      baseRef = args[++i]!;
-    } else if (arg === "--head" && args[i + 1]) {
-      headRef = args[++i]!;
-    } else if (arg === "--lcov" && args[i + 1]) {
-      lcovPath = args[++i]!;
-    } else if (arg === "--min" && args[i + 1]) {
-      threshold = Number.parseFloat(args[++i]!);
-    } else if (arg === "--output" && args[i + 1]) {
-      outputFile = args[++i]!;
+    const handler = flagHandlers[args[i] ?? ""];
+    const nextVal = args[i + 1];
+    if (handler && nextVal) {
+      handler(nextVal);
+      i++;
     }
   }
 
-  return verifyDiffCoverage({
-    baseRef,
-    headRef,
-    lcovPath,
-    threshold,
-    outputFile,
-  });
+  return opts;
+}
+
+/**
+ * CLI Runner. Returns a numeric exit code (`0` for success, non-zero for failure).
+ */
+async function runCli(): Promise<number> {
+  return verifyDiffCoverage(parseCliOptions(process.argv.slice(2)));
 }
 
 if (import.meta.main) {
