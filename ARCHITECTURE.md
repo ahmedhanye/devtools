@@ -46,6 +46,7 @@ graph TD
   Frontend --> Core
   DB --> Core
   DB --> SQLiteFile
+  Browser --> Core
   Browser --> CfT
   BrowserClient --> CLI
   CLI -.->|Serves Static UI Assets| Frontend

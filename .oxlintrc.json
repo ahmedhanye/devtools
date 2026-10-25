@@ -21,7 +21,19 @@
       }
     ],
     "typescript/ban-tslint-comment": "deny",
-    "jsdoc/check-tag-names": "deny",
+    "jsdoc/check-tag-names": [
+      "deny",
+      {
+        "definedTags": [
+          "remarks",
+          "defaultValue",
+          "packageDocumentation",
+          "internal",
+          "beta",
+          "alpha"
+        ]
+      }
+    ],
     "jsdoc/check-property-names": "deny",
     "jsdoc/check-access": "deny",
     "jsdoc/empty-tags": "deny",
@@ -95,8 +107,8 @@
     },
     {
       "files": [
-        "**/packages/browser/src/browser/detector.ts",
-        "**/packages/browser/src/browser/waterfall.ts"
+        "**/packages/browser/src/detector.ts",
+        "**/packages/browser/src/waterfall.ts"
       ],
       "rules": {
         "no-await-in-loop": "off"

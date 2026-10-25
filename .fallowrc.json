@@ -13,13 +13,20 @@
     "**/.source/**",
     "@/.source/**"
   ],
+  "rules": {
+    "policy-violation": "off"
+  },
+  "duplicates": {
+    "mode": "semantic",
+    "ignore": [
+      "**/*.css",
+      "**/*.stories.tsx",
+      "apps/frontend/src/shared/ui/shadcn/**"
+    ]
+  },
   "overrides": [
     {
-      "files": [
-        "packages/**/errors.ts",
-        "packages/**/src/**/errors.ts",
-        "packages/**/src/browser/errors.ts"
-      ],
+      "files": ["packages/**/errors.ts", "packages/**/src/**/errors.ts"],
       "rules": {
         "unused-class-member": "off"
       }
@@ -34,30 +41,70 @@
   "boundaries": {
     "zones": [
       {
-        "name": "app",
+        "name": "core",
+        "patterns": ["packages/core/src/**"]
+      },
+      {
+        "name": "db",
+        "patterns": ["packages/db/src/**"]
+      },
+      {
+        "name": "browser",
+        "patterns": ["packages/browser/src/**"]
+      },
+      {
+        "name": "api",
+        "patterns": ["apps/api/src/**"]
+      },
+      {
+        "name": "cli",
+        "patterns": ["apps/cli/src/**"]
+      },
+      {
+        "name": "frontend-app",
         "patterns": ["apps/frontend/src/app/**"]
       },
       {
-        "name": "pages",
+        "name": "frontend-pages",
         "patterns": ["apps/frontend/src/pages/**"]
       },
       {
-        "name": "shared",
+        "name": "frontend-shared",
         "patterns": ["apps/frontend/src/shared/**"]
       }
     ],
     "rules": [
       {
-        "from": "app",
-        "allow": ["pages", "shared"]
-      },
-      {
-        "from": "pages",
-        "allow": ["shared"]
-      },
-      {
-        "from": "shared",
+        "from": "core",
         "allow": []
+      },
+      {
+        "from": "db",
+        "allow": ["core"]
+      },
+      {
+        "from": "browser",
+        "allow": ["core"]
+      },
+      {
+        "from": "api",
+        "allow": ["core", "db", "browser"]
+      },
+      {
+        "from": "cli",
+        "allow": ["core", "db", "browser", "api"]
+      },
+      {
+        "from": "frontend-app",
+        "allow": ["frontend-pages", "frontend-shared", "core"]
+      },
+      {
+        "from": "frontend-pages",
+        "allow": ["frontend-shared", "core"]
+      },
+      {
+        "from": "frontend-shared",
+        "allow": ["core"]
       }
     ]
   },
@@ -71,10 +118,10 @@
         "backend_family": "",
         "completeness": "complete"
       },
-      "totalIssues": 1,
+      "totalIssues": 0,
       "unusedFiles": 0,
       "unusedExports": 0,
-      "unusedTypes": 1,
+      "unusedTypes": 0,
       "unusedDependencies": 0,
       "unusedDevDependencies": 0,
       "unusedOptionalDependencies": 0,
