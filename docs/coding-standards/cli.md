@@ -58,6 +58,7 @@ CLI errors must guide the user directly to a resolution:
    await runCli(process.argv);
    ```
    - Export all CLI commands and runner functions from `src/index.ts` (e.g. `runCli`, `createProgram`, `startDaemon`). This enables integration test suites to invoke CLI commands directly in-process.
+   - Use Commander's `.exitOverride()` so CLI parsing errors throw rather than terminating the test runner or process abruptly.
 4. **Action dependency injection**:
    - CLI action functions should accept an optional `deps` parameter for external dependencies (e.g. browser probe functions, API clients) to allow hermetic unit testing without spawning OS subprocesses.
 
@@ -65,4 +66,4 @@ CLI errors must guide the user directly to a resolution:
 
 1. **Unified loopback daemon**: Commands that start local services (e.g. `devtools web`) boot a single Bun HTTP daemon process serving API routes on `/api/*` and pre-rendered frontend static assets on root paths.
 2. **Ephemeral port binding**: The daemon must accept `--port 0` to let the operating system assign an available port dynamically, eliminating port conflicts in test suites and local development.
-3. **Graceful signal termination**: Listen for `SIGINT` and `SIGTERM` signals. When received, stop the HTTP server gracefully, drain active connections, close SQLite database handles, and exit cleanly with code `0`.
+3. **Graceful signal termination & database closing**: Listen for `SIGINT` and `SIGTERM` signals. When received, stop the HTTP server gracefully, drain active connections, close SQLite database handles cleanly (checkpointing WAL journals), and exit cleanly with code `0`.

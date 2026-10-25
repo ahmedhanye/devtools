@@ -22,7 +22,7 @@ apps/frontend/src/
    - Do **not** extract components, hooks, or queries to `features` or `entities` prematurely.
    - Extract code only when it is actively reused across multiple distinct pages, has an independent reason to change, and serves a focused responsibility.
 3. **Public API boundary**: Every slice must export its public interface exclusively through its root `index.ts` file. Deep imports into slice internals (e.g. `import ... from "@/features/browser-install/ui/button"`) are prohibited.
-4. **App Router boundary adapters**: Route entrypoint files in `src/app/` (`page.tsx`, `layout.tsx`) are thin routing adapters. They declare layout metadata, global providers, and parameter parsing, delegating feature orchestration immediately to FSD page components in `src/pages/<page>/`.
+4. **App Router boundary adapters**: Route entrypoint files in `src/app/` (`page.next.tsx`, `layout.next.tsx`) are thin routing adapters configured via `pageExtensions: ["next.tsx", "next.ts"]`. They declare layout metadata, global providers, and parameter parsing, delegating feature orchestration immediately to FSD page components in `src/pages/<page>/`.
 
 ## Naming conventions and file structure
 
@@ -44,9 +44,10 @@ apps/frontend/src/
 ## Browser boundaries and hydration safety
 
 1. **Tear-free client hydration**: Guard client-only subtrees with `useIsMounted()` from `@/shared/lib`, utilizing `useSyncExternalStore` to prevent hydration mismatches without cascading re-renders.
-2. **Static search parameter access**: Read client search parameters through `useNativeSearchParams()` from `@/shared/lib` to preserve static prerendering without wrapping pages in top-level Suspense boundaries.
+2. **Static search parameter access**: Read client search parameters through `useNativeSearchParams()` from `@/shared/lib` utilizing `useSyncExternalStore` (subscribing to `popstate` events) to preserve static prerendering without wrapping pages in top-level Suspense boundaries or triggering unneeded state cascades.
 3. **Browser global guards**: Guard all access to browser globals (`window`, `document`, `localStorage`, `sessionStorage`) with `typeof window !== "undefined"`. Provide in-memory fallbacks when evaluating on the server.
 4. **Loading skeletons and slots**: Render explicit loading skeletons on initial load using `data-slot="skeleton"`. Defer telemetry and live data rendering to verified async fetch results.
+5. **Headless UI and design system linting**: Use `@base-ui/react` headless primitives with the `render` prop pattern (avoiding Radix-specific `asChild` assumptions). Enforce design system rules via `@shadcn/lint` in `apps/frontend/.oxlintrc.json` (`shadcn/no-raw-colors`, `shadcn/no-restyle`, `shadcn/no-arbitrary-values`, `shadcn/no-inline-styles`).
 
 ## Asynchronous lifecycles
 

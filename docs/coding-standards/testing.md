@@ -135,9 +135,10 @@ Asserting that a constant equals its assigned literal tests language assignment 
 Test suites must execute concurrently and deterministically without cross-test pollution or dependence on machine-specific state:
 
 1. **Ephemeral ports (`port: 0`)**: Server and daemon integration tests must bind to ephemeral port `0` (`startDaemon({ port: 0 })`). The operating system assigns a free socket, preventing port collisions in concurrent test runs.
-2. **In-memory SQLite (`:memory:`)**: Database tests use in-memory SQLite databases (`url: ":memory:"`) to guarantee isolation, eliminate disk cleanup steps, and prevent database locking errors.
+2. **In-memory SQLite (`:memory:`)**: Database tests use in-memory SQLite databases (`path: ":memory:"`) to guarantee isolation, eliminate disk cleanup steps, and prevent database locking errors. In-memory databases bypass WAL pragma initialization.
 3. **Socketless HTTP testing**: Test Hono API endpoints in-memory using `app.request()` rather than spinning up live TCP servers.
 4. **Dependency injection seams**: Test external boundary logic (such as browser file probes or network downloads) by injecting mock seams into functions rather than executing live external network calls.
+5. **100% diff coverage gate**: Pull requests enforce a mandatory 100% diff coverage gate on all modified executable lines via `scripts/verify-diff-coverage.ts`, ensuring zero untested regressions reach `main`. Type-only additions are detected and handled hermetically.
 
 ## Workspace testing patterns
 

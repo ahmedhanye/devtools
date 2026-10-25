@@ -31,8 +31,8 @@ All UI components, fetching logic, and state management begin inside `src/pages/
 
 `apps/frontend` operates in static export mode:
 
-- `next.config.ts` sets `output: "export"`.
-- During build, Next.js generates static HTML, CSS, and client JavaScript bundles into `apps/frontend/out`.
+- `next.config.ts` sets `output: "export"` and `distDir: "dist"`.
+- During build, Next.js generates static HTML, CSS, and client JavaScript bundles into `apps/frontend/dist`.
 - The CLI loopback daemon (`startDaemon`) serves these pre-rendered files on root HTTP paths (`/`), enabling single-process deployment without running an active Node/Next.js server in production.
 
 ## Hydration safety and browser boundaries

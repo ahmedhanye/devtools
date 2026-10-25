@@ -29,7 +29,7 @@ All workspaces inherit compiler settings from [tsconfig.base.json](../../tsconfi
    // Public package export: explicit parameter and return types
    export function parsePort(input: string | undefined): number {
      const resolved = Number(input);
-     return Number.isInteger(resolved) && resolved > 0 ? resolved : 4318;
+     return Number.isInteger(resolved) && resolved > 0 ? resolved : 4000;
    }
    ```
 
@@ -40,11 +40,13 @@ All workspaces inherit compiler settings from [tsconfig.base.json](../../tsconfi
    ```ts
    import { z } from "zod";
 
-   export const DaemonConfigSchema = z.object({
-     port: z.number().int().min(0).max(65535).default(4318),
-     host: z.string().default("127.0.0.1"),
-     staticDir: z.string().optional(),
-   });
+   export const DaemonConfigSchema = z
+     .object({
+       port: z.number().int().min(0).max(65535).default(4000),
+       host: z.string().default("127.0.0.1"),
+       staticDir: z.string().optional(),
+     })
+     .strict();
 
    export type DaemonConfig = z.infer<typeof DaemonConfigSchema>;
    ```

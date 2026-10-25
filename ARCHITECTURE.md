@@ -9,10 +9,10 @@ DevTools is a developer tooling monorepo providing utilities across command-line
 1. **Three-tier monorepo composition**: Code is partitioned into deployable applications (`apps/*`), shared headless domain packages (`packages/*`), and a documentation platform (`site/`).
 2. **Strict unidirectional dependencies**: Headless packages (`packages/*`) never import from applications (`apps/*`) or documentation (`site/`). `@devtools/core` is a zero-dependency foundation; `@devtools/db` and `@devtools/browser` consume `@devtools/core`. Consuming applications depend on packages via Bun workspace protocols (`"workspace:*"`). Sibling applications never cross-import source files directly.
 3. **Buildless development with direct source exports**: Internal packages declare direct source exports (`"exports": { ".": "./src/index.ts" }`). Consuming workspaces resolve TypeScript source files directly via `moduleResolution: "bundler"`, eliminating build steps during development.
-4. **Unified loopback daemon host**: The local daemon (`devtools web`) consolidates backend API services (`apps/api` mounted on `/api/*`) and pre-rendered Next.js static assets (`apps/frontend/out`) into a single Bun process listening on one port.
+4. **Unified loopback daemon host**: The local daemon (`devtools web`) consolidates backend API services (`apps/api` mounted on `/api/*`) and pre-rendered Next.js static assets (`apps/frontend/dist`) into a single Bun process listening on one port.
 5. **Crash-resilient embedded persistence**: Local state is stored in an embedded SQLite database (`bun:sqlite`) using Drizzle ORM with Write-Ahead Logging (`WAL` mode) and startup migration execution per [ADR 0001](docs/adr/0001-embedded-database-foundation.md).
 6. **Centralized configuration seams**: Domain packages isolate environment variable resolution into `config.ts` modules accepting injectable `options.env` seams for hermetic test execution per [ADR 0002](docs/adr/0002-package-configuration-and-environment-seams.md).
-7. **4-tier Chromium resolution waterfall**: Automated browser resolution evaluates explicit overrides, local managed cache, system installations, and tool caches before offering actionable remediation.
+7. **3-tier Chromium resolution waterfall**: Automated browser resolution evaluates explicit overrides, local managed cache and system installations, before offering actionable terminal remediation.
 8. **Feature-Sliced Design frontend**: The web dashboard is structured around FSD v2.1 layers (`app` -> `pages` -> `features` -> `entities` -> `shared`) with thin Next.js App Router boundary adapters.
 
 ## Component interaction model
@@ -69,7 +69,7 @@ Detailed architecture guides live under `docs/architecture/`:
 ### Package architectures
 
 - [Persistence and database architecture](docs/architecture/persistence.md): `packages/db` architecture, embedded SQLite engine, WAL mode, Drizzle ORM schema, and startup migration execution.
-- [Browser automation architecture](docs/architecture/browser.md): `packages/browser` architecture, 4-tier Chromium resolution waterfall algorithm, managed Chrome for Testing cache, and binary verification.
+- [Browser automation architecture](docs/architecture/browser.md): `packages/browser` architecture, 3-tier Chromium resolution waterfall algorithm, managed Chrome for Testing cache, and binary verification.
 
 ## Core runtime lifecycles
 
@@ -85,13 +85,13 @@ sequenceDiagram
   participant API as apps/api (Hono Router)
   participant UI as apps/frontend (Static Assets)
 
-  User->>CLI: devtools web --port 4318
+  User->>CLI: devtools web --port 4000
   CLI->>Daemon: startDaemon({ port, host, staticDir })
   Daemon->>DB: runMigrations(db)
   DB-->>Daemon: Schema migrations applied (WAL mode active)
   Daemon->>API: createApp({ basePath: '/api' })
   Daemon->>Daemon: Bun.serve({ fetch: (req) => API or Static })
-  Daemon-->>User: Listening on http://127.0.0.1:4318
+  Daemon-->>User: Listening on http://127.0.0.1:4000
   User->>Daemon: GET /api/health
   Daemon->>API: Route to /health
   API-->>User: 200 OK (HealthResponseSchema)

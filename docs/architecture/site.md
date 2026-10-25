@@ -37,10 +37,10 @@ The route handler at `site/src/app/api/search/route.ts` serves fast client-side 
 
 Two dedicated routes provide formatted plain text documentation for AI agents and language models:
 
-- `/docs/llms.txt`: Summary catalog of documentation pages and section titles.
-- `/docs/llms-full.txt`: Full concatenated text of all documentation content.
+- `/llms.txt`: Summary catalog of documentation pages and section titles (`site/src/app/llms.txt/route.ts`).
+- `/llms-full.txt`: Complete concatenated text of all documentation content (`site/src/app/llms-full.txt/route.ts`).
 
-Both routes consume `docsLlms` from `site/src/lib/docs-llms.ts`, configured via `llms(source, { ... })` from `fumadocs-core/source`.
+Both routes consume `getLlmsIndex()` and `getLlmsFull()` from `site/src/lib/docs-llms.ts`, configured via `llms(source, { ... })` from `fumadocs-core/source`.
 
 ## Interactive diagram rendering
 

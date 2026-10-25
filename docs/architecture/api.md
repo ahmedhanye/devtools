@@ -41,9 +41,9 @@ This factory enables the CLI loopback daemon to mount routes under `/api` in-pro
 
 Because DevTools operates on developer workstations, `apps/api` enforces loopback isolation:
 
-1. **Host binding**: Listens on `127.0.0.1` or `localhost` by default. Never exposes endpoints to public interfaces without explicit user flags.
-2. **CORS policy**: Cross-Origin Resource Sharing is locked down to loopback origins (`http://localhost:*`, `http://127.0.0.1:*`).
-3. **Cross-site request protection**: Verifies request origins on mutating HTTP verbs (POST, PUT, DELETE, PATCH) to prevent malicious websites running in the developer's browser from issuing cross-origin commands against the local daemon.
+1. **Host binding**: Listens on `127.0.0.1`, `localhost`, or `[::1]` by default. Never exposes endpoints to public interfaces without explicit user flags.
+2. **CORS policy**: Cross-Origin Resource Sharing is locked down to loopback origins (`http://localhost:*`, `http://127.0.0.1:*`, `http://[::1]:*`).
+3. **Cross-site request forgery protection**: Verifies request origins on mutating HTTP verbs (POST, PUT, DELETE, PATCH) by rejecting non-loopback `Origin` headers, checking `Sec-Fetch-Site: cross-site`, and requiring explicit JSON content types. This prevents malicious external websites running in the developer's browser from issuing cross-origin commands against the local daemon.
 
 ## Request validation and response contracts
 

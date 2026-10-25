@@ -51,13 +51,13 @@ sequenceDiagram
   participant API as apps/api (Hono Router)
   participant UI as apps/frontend (Static Assets)
 
-  User->>CLI: devtools web --port 4318
+  User->>CLI: devtools web --port 4000
   CLI->>Daemon: startDaemon({ port, host, staticDir })
   Daemon->>DB: runMigrations(db)
   DB-->>Daemon: Schema migrations applied (WAL mode active)
   Daemon->>API: createApp({ basePath: '/api' })
   Daemon->>Daemon: Bun.serve({ fetch: (req) => API or Static })
-  Daemon-->>User: Listening on http://127.0.0.1:4318
+  Daemon-->>User: Listening on http://127.0.0.1:4000
   User->>Daemon: GET /api/health
   Daemon->>API: Route to /health
   API-->>User: 200 OK (HealthResponseSchema)
@@ -71,14 +71,14 @@ sequenceDiagram
 `startDaemon` creates a `Bun.serve()` server that inspects incoming HTTP request URLs:
 
 1. **API Requests (`/api/*`)**: Handled in-process by the Hono application instance created via `createApp({ basePath: "/api" })` from `@devtools/api`.
-2. **Static Frontend Assets (`/*`)**: Handled by `serveStaticAsset`, which resolves pre-rendered Next.js static files from `apps/frontend/out` or candidate distribution directories.
+2. **Static Frontend Assets (`/*`)**: Handled by `serveStaticAsset`, which resolves pre-rendered Next.js static files from `apps/frontend/dist` or candidate distribution directories.
 3. **Security path traversal guard**: Requests containing path traversal sequences (`../`) are intercepted and rejected with HTTP 403 Forbidden.
 
 ### Port resolution and ephemeral binding
 
 The daemon accepts `--port <number>`:
 
-- Default port: `4318` (or resolved via `DEVTOOLS_PORT`).
+- Default port: `4000` (or resolved via `PORT`).
 - Ephemeral port: When `--port 0` is supplied, the operating system assigns a free socket dynamically (`daemon.port`). Integration tests use this mechanism to prevent port collision in concurrent CI runners.
 
 ### Graceful shutdown and signal termination

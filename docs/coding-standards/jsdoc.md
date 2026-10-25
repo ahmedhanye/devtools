@@ -28,19 +28,19 @@ Document exported functions, interfaces, schemas, and complex module seams using
  * compatible executable is discovered, an actionable remediation error is raised.
  *
  * @param options - Configuration options and optional dependency injection seams.
- * @returns The resolved executable path and detected browser version metadata.
+ * @returns The resolved executable path, detected browser version metadata, and source.
  * @throws {@link BrowserNotFoundError} When no compatible browser executable can be located.
  * @throws {@link InvalidBrowserPathError} When an explicit override path points to an invalid binary.
  *
  * @example
  * ```ts
- * const resolution = await resolveBrowserExecutable({
- *   channel: "stable",
+ * const resolution = await resolveBrowserPath({
+ *   chromePath: "/usr/bin/google-chrome",
  * });
  * console.log(`Found Chrome at ${resolution.executablePath}`);
  * ```
  */
-export async function resolveBrowserExecutable(
+export async function resolveBrowserPath(
   options: ResolveBrowserOptions = {},
 ): Promise<BrowserResolution> {
   // ...

@@ -34,18 +34,28 @@ Architectural guidelines, boundary rules, and development practices for shared d
    ```ts
    export interface ResolveDatabaseOptions {
      env?: Record<string, string | undefined>;
-     cwd?: string;
+     customPath?: string;
    }
 
    export function resolveDatabasePath(
      options: ResolveDatabaseOptions = {},
    ): string {
      const env = options.env ?? process.env;
-     if (env.DEVTOOLS_DB_PATH) {
-       return env.DEVTOOLS_DB_PATH;
+     const envPath =
+       options.customPath ?? env.DEVTOOLS_DB_PATH ?? env.DATABASE_URL;
+     if (envPath) {
+       return envPath === ":memory:"
+         ? ":memory:"
+         : resolve(process.cwd(), envPath);
      }
-     const baseDir = options.cwd ?? process.cwd();
-     return join(baseDir, ".devtools", "devtools.db");
+     if (env.NODE_ENV === "test" || env.BUN_ENV === "test") {
+       return ":memory:";
+     }
+     if (env.NODE_ENV !== "production") {
+       const root = findWorkspaceRoot() ?? process.cwd();
+       return resolve(root, ".devtools", "devtools.db");
+     }
+     return join(homedir(), ".devtools", "devtools.db");
    }
    ```
 4. **Static verification**: Oxlint enforces this boundary across `packages/**/src/**` by denying `node/no-process-env`, allowing exceptions exclusively in designated `config.ts` modules.

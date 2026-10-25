@@ -14,15 +14,15 @@ packages/browser/
 │   │   ├── installer.ts       # Chrome for Testing downloader & unpacker
 │   │   ├── types.ts           # Browser resolution & probe contracts
 │   │   ├── errors.ts          # Actionable domain error classes
-│   │   └── waterfall.ts       # 4-tier Chromium resolution waterfall
+│   │   └── waterfall.ts       # 3-tier Chromium resolution waterfall
 │   ├── config.ts              # Cache directory resolution & env seams
 │   └── index.ts               # Public library entrypoint
 └── tests/                     # Unit test suites with dependency injection
 ```
 
-## The 4-tier Chromium resolution waterfall
+## The 3-tier Chromium resolution waterfall
 
-When DevTools requires a Chromium browser executable (for headless scraping, automation, or testing), it resolves the binary path using a 4-tier waterfall algorithm:
+When DevTools requires a Chromium browser executable (for headless scraping, automation, or testing), it resolves the binary path using a 3-tier waterfall algorithm:
 
 ```mermaid
 flowchart TD
@@ -40,19 +40,18 @@ flowchart TD
 ### Waterfall evaluation tiers
 
 1. **Tier 1: Explicit override**:
-   - Checks CLI flag `--chrome-path` or environment variable `DEVTOOLS_CHROME_PATH`.
+   - Checks CLI flag `--chrome-path` or environment variable `DEVTOOLS_CHROME_PATH` (followed by `CHROME_PATH`).
    - If present, verifies executable permissions and version output. Throws `InvalidBrowserPathError` if invalid.
-2. **Tier 2: Managed cache probe**:
-   - Inspects the local cache directory (`~/.devtools/browsers/` or resolved via `DEVTOOLS_BROWSERS_DIR`).
-   - If an installed Chrome for Testing binary is present and executable, it is selected immediately.
-3. **Tier 3: System and tool probes**:
-   - Probes known operating system paths for existing Google Chrome, Microsoft Edge, Brave, or Chromium installations.
-   - Probes Playwright/Puppeteer cache directories (`~/.cache/ms-playwright/`, `~/.cache/puppeteer/`).
-4. **Tier 4: Actionable terminal remediation**:
-   - If no compatible binary is discovered, throws `BrowserNotFoundError` detailing exactly which probes failed and instructing the user to run `devtools browser install`.
+2. **Tier 2: Managed cache & system discovery**:
+   - Probes the local managed cache directory (`~/.devtools/browsers/` or resolved via `DEVTOOLS_BROWSERS_DIR`).
+   - Probes known operating system paths for existing Google Chrome or Chromium installations.
+   - Probes alternative Chromium browsers (Microsoft Edge, Brave).
+   - Probes test tool cache directories (Playwright, Puppeteer).
+3. **Tier 3: Terminal remediation stop**:
+   - If no compatible binary is discovered, throws `BrowserNotFoundError` detailing actionable remediation instructing the user to run `devtools browser install`.
 
 ## Binary verification and cache management
 
-1. **Executable verification**: `verifyBrowserExecutable` ensures candidate binaries have execute permissions (`X_OK`), runs a smoke test invocation (`--version`) with a strict execution timeout, and extracts version metadata.
-2. **Managed installation**: `installBrowserExecutable` downloads the matching Chrome for Testing build archive from Google's official endpoints, verifies SHA256 checksums, unzips the payload into `~/.devtools/browsers/<version>/`, and sets executable permissions on the binary.
+1. **Executable verification**: `verifyBrowserExecutable` ensures candidate binaries have execute permissions (`X_OK`), runs a smoke test invocation (`--version` or PowerShell ProductVersion on Windows) with a strict execution timeout, and extracts version metadata.
+2. **Managed installation**: `installBrowser` resolves the latest stable build ID for `chrome-headless-shell`, invokes `@puppeteer/browsers` to download and unpack into `~/.devtools/browsers/`, and returns the installed executable path.
 3. **Hermetic testing seam**: `waterfall.ts` accepts an optional `deps: WaterfallDependencies` seam to inject mock file probes and version testers, enabling deterministic testing without requiring physical browser downloads during CI runs.

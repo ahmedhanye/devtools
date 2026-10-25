@@ -24,9 +24,12 @@ Engineering standards and conventions for the HTTP API application in `apps/api`
 
 ## Security and loopback boundaries
 
-1. **Loopback isolation**: As a local developer tool, the API binds to loopback interfaces (`127.0.0.1` or `localhost`) by default. Never bind to public network interfaces (`0.0.0.0`) without explicit user opt-in flags.
+1. **Loopback isolation**: As a local developer tool, the API binds to loopback interfaces (`127.0.0.1`, `localhost`, or `[::1]`) by default. Never bind to public network interfaces (`0.0.0.0`) without explicit user opt-in flags.
 2. **CORS policy**: Restrict Cross-Origin Resource Sharing (CORS) to loopback origins. Reject incoming requests with external or unexpected `Origin` headers.
-3. **Loopback origin verification middleware**: Verify that mutating requests (POST, PUT, DELETE, PATCH) originate from the local dashboard to protect against Cross-Site Request Forgery (CSRF) from malicious external websites visited in the developer's browser.
+3. **CSRF & loopback origin verification middleware**: CORS prevents unauthorized browsers from reading response bodies, but does not block cross-origin requests (such as `POST` requests sent with `mode: "no-cors"` or HTML form posts) from executing server actions. The API must verify request headers on mutating HTTP verbs (`POST`, `PUT`, `DELETE`, `PATCH`):
+   - Reject any request where the `Origin` header is present and does not resolve to a loopback address (`http://localhost:*`, `http://127.0.0.1:*`, `http://[::1]:*`).
+   - Inspect `Sec-Fetch-Site` when available and deny `cross-site` requests.
+   - Enforce explicit `Content-Type: application/json` on mutation payloads to prevent simple cross-origin form submissions.
 
 ## Request and response validation
 
