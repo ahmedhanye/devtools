@@ -1,7 +1,12 @@
-// Core DB client, connection, config, and migrator
+/**
+ * Embedded SQLite persistence layer, Drizzle ORM schemas, and migration utilities.
+ *
+ * @packageDocumentation
+ */
 export {
   createDb,
   getDb,
+  closeDb,
   resetDb,
   db,
   type DevtoolsDb,
@@ -16,7 +21,7 @@ export {
 export {
   resolveDatabasePath,
   findWorkspaceRoot,
-  type DatabaseConfig,
+  type ResolveDatabasePathOptions,
 } from "./config";
 export { runMigrations, type MigrationOptions } from "./migrator";
 

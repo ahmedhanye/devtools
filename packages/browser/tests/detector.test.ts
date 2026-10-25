@@ -9,7 +9,7 @@ import {
   probeSystemInstallations,
   probeToolCaches,
   verifyBrowserExecutable,
-} from "../src/browser/detector";
+} from "../src/detector";
 
 describe("Browser Detector & Executable Verification", () => {
   const testDir = join(

@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
+  closeDb,
+  createConnection,
   createDb,
   createSqliteConnection,
   db,
@@ -81,6 +83,17 @@ describe("Database Configuration & Path Resolution", () => {
     const repoRoot = resolve(__dirname, "../../..");
     const nestedDir = join(__dirname, "../src/schema");
     expect(findWorkspaceRoot(nestedDir)).toBe(repoRoot);
+  });
+
+  it("findWorkspaceRoot handles malformed package.json and returns null outside a workspace", () => {
+    const isolatedDir = join(tmpdir(), `devtools-isolated-${Date.now()}`);
+    mkdirSync(isolatedDir, { recursive: true });
+    Bun.write(join(isolatedDir, "package.json"), "{ invalid json");
+    try {
+      expect(findWorkspaceRoot(isolatedDir)).toBeNull();
+    } finally {
+      rmSync(isolatedDir, { recursive: true, force: true });
+    }
   });
 
   it("anchors development database to workspace root even when running from nested cwd", () => {
@@ -206,12 +219,29 @@ describe("Migrations & Database Client Operations", () => {
     expect(deleted).toBeUndefined();
   });
 
-  it("supports getDb() singleton and resetDb()", () => {
+  it("supports getDb() singleton, closeDb(), and resetDb()", () => {
     resetDb();
     const db1 = getDb();
     const db2 = getDb();
     expect(db1).toBe(db2);
+    closeDb();
+    const db3 = getDb();
+    expect(db3).not.toBe(db1);
     resetDb();
+  });
+
+  it("resolves production default path when NODE_ENV is production", () => {
+    const resolved = resolveDatabasePath({
+      env: { NODE_ENV: "production" },
+    });
+    expect(resolved).toContain(".devtools");
+    expect(resolved.endsWith("devtools.db")).toBe(true);
+  });
+
+  it("createConnection alias works identically to createSqliteConnection", () => {
+    const conn = createConnection({ path: ":memory:" });
+    expect(conn).toBeDefined();
+    conn.close();
   });
 
   it("proxies db export dynamically and re-instantiates cleanly after resetDb()", () => {

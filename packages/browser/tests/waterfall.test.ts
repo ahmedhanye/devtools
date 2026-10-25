@@ -2,11 +2,8 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import {
-  BrowserNotFoundError,
-  InvalidBrowserPathError,
-} from "../src/browser/errors";
-import { getBrowserStatus, resolveBrowserPath } from "../src/browser/waterfall";
+import { BrowserNotFoundError, InvalidBrowserPathError } from "../src/errors";
+import { getBrowserStatus, resolveBrowserPath } from "../src/waterfall";
 
 describe("Browser Resolution Waterfall", () => {
   const testDir = join(
