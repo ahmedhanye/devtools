@@ -257,6 +257,7 @@ describe("CLI Browser Command Surface", () => {
         { path: testDir },
         {
           installBrowser: async (opts) => {
+            opts?.onProgress?.(0, 0);
             opts?.onProgress?.(50, 100);
             return {
               executablePath: mockInstalledPath,

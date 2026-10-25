@@ -194,4 +194,92 @@ describe("CLI Command Structure & Parser Unit Tests", () => {
   test("runWebCommand exports correctly as a callable async function", () => {
     expect(typeof runWebCommand).toBe("function");
   });
+
+  test("runWebCommand resolves port conflicts across interactive and non-interactive flows", async () => {
+    const blocker = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch: () => new Response("occupied"),
+    });
+    const occupiedPort = blocker.port ?? 0;
+
+    const origLog = console.log;
+    const origErr = console.error;
+    const origExit = process.exit;
+    console.log = () => {};
+    console.error = () => {};
+    process.exit = ((code?: number) => {
+      throw new Error(`exit:${code}`);
+    }) as unknown as typeof process.exit;
+
+    try {
+      // 0. Default interactive check when isInteractive is not provided
+      await expect(
+        runWebCommand(
+          { port: occupiedPort, host: "127.0.0.1" },
+          { confirm: async () => false },
+        ),
+      ).rejects.toThrow("exit:1");
+
+      // 1. Non-interactive conflict exits 1
+      await expect(
+        runWebCommand(
+          { port: occupiedPort, host: "127.0.0.1" },
+          { isInteractive: () => false },
+        ),
+      ).rejects.toThrow("exit:1");
+
+      // 2. Interactive conflict with no available port in range exits 1
+      await expect(
+        runWebCommand(
+          { port: occupiedPort, host: "127.0.0.1" },
+          {
+            isInteractive: () => true,
+            findNextAvailablePort: () => null,
+          },
+        ),
+      ).rejects.toThrow("exit:1");
+
+      // 3. Interactive conflict declined by user exits 1
+      await expect(
+        runWebCommand(
+          { port: occupiedPort, host: "127.0.0.1" },
+          {
+            isInteractive: () => true,
+            confirm: async () => false,
+          },
+        ),
+      ).rejects.toThrow("exit:1");
+
+      // 4. Interactive conflict prompt error exits 1
+      await expect(
+        runWebCommand(
+          { port: occupiedPort, host: "127.0.0.1" },
+          {
+            isInteractive: () => true,
+            confirm: async () => {
+              throw new Error("cancelled");
+            },
+          },
+        ),
+      ).rejects.toThrow("exit:1");
+
+      // 5. Interactive conflict accepted boots daemon on next available port
+      const instance = await runWebCommand(
+        { port: occupiedPort, host: "127.0.0.1" },
+        {
+          isInteractive: () => true,
+          confirm: async () => true,
+        },
+      );
+      expect(instance).toBeDefined();
+      expect(instance?.port).not.toBe(occupiedPort);
+      await instance?.stop();
+    } finally {
+      console.log = origLog;
+      console.error = origErr;
+      process.exit = origExit;
+      blocker.stop(true);
+    }
+  });
 });

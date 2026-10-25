@@ -1,26 +1,45 @@
-import {
-  getBrowserStatus,
-  installBrowser,
-  type BrowserStatus,
+import type {
+  BrowserStatus,
+  getBrowserStatus as GetBrowserStatusFn,
+  installBrowser as InstallBrowserFn,
 } from "@devtools/browser";
 import { Command } from "commander";
 import pc from "picocolors";
 
+/**
+ * CLI flag options for `devtools browser status`.
+ */
 export interface BrowserStatusOptions {
+  /** Emit machine-readable JSON output instead of human-formatted text. */
   json?: boolean;
+  /** Explicit browser executable path to verify (`--chrome-path`). */
   chromePath?: string;
+  /** Custom managed browser cache directory (`--path`). */
   path?: string;
 }
 
+/**
+ * CLI flag options for `devtools browser install`.
+ */
 export interface BrowserInstallOptions {
+  /** Custom target directory to download and unpack the browser into (`--path`). */
   path?: string;
 }
 
+/**
+ * Executes the `devtools browser status` command, printing browser resolution details
+ * in either human-readable or `--json` format and exiting with code `1` if unresolved.
+ *
+ * @param options - Parsed CLI status options.
+ * @param deps - Optional injected `getBrowserStatus` implementation for unit testing.
+ */
 export async function runBrowserStatusCommand(
   options: BrowserStatusOptions = {},
-  deps?: { getBrowserStatus?: typeof getBrowserStatus },
+  deps?: { getBrowserStatus?: typeof GetBrowserStatusFn },
 ): Promise<void> {
-  const doStatus = deps?.getBrowserStatus ?? getBrowserStatus;
+  const doStatus =
+    deps?.getBrowserStatus ??
+    (await import("@devtools/browser")).getBrowserStatus;
   const status: BrowserStatus = await doStatus({
     chromePath: options.chromePath,
     cacheDir: options.path,
@@ -45,32 +64,48 @@ export async function runBrowserStatusCommand(
   }
 }
 
+/**
+ * Creates a deduplicated stderr progress callback for interactive TTY sessions.
+ */
+function createDownloadProgressReporter(
+  isTTY: boolean,
+): (downloadedBytes: number, totalBytes: number) => void {
+  let lastPercent = -1;
+  return (downloadedBytes: number, totalBytes: number) => {
+    if (!isTTY || totalBytes <= 0) {
+      return;
+    }
+    const percent = Math.floor((downloadedBytes / totalBytes) * 100);
+    if (percent !== lastPercent) {
+      lastPercent = percent;
+      process.stderr.write(`\rDownloading chrome-headless-shell: ${percent}%`);
+    }
+  };
+}
+
+/**
+ * Executes the `devtools browser install` command, provisioning `chrome-headless-shell@stable`
+ * into the managed browser cache and reporting progress to `stderr`.
+ *
+ * @param options - Parsed CLI install options.
+ * @param deps - Optional injected `installBrowser` implementation for unit testing.
+ */
 export async function runBrowserInstallCommand(
   options: BrowserInstallOptions = {},
-  deps?: { installBrowser?: typeof installBrowser },
+  deps?: { installBrowser?: typeof InstallBrowserFn },
 ): Promise<void> {
   const isTTY = Boolean(process.stderr.isTTY);
-  const doInstall = deps?.installBrowser ?? installBrowser;
+  const doInstall =
+    deps?.installBrowser ?? (await import("@devtools/browser")).installBrowser;
 
   console.error(
     pc.cyan("Installing Chrome for Testing (chrome-headless-shell@stable)..."),
   );
 
   try {
-    let lastPercent = -1;
     const installed = await doInstall({
       cacheDir: options.path,
-      onProgress: (downloadedBytes, totalBytes) => {
-        if (isTTY && totalBytes > 0) {
-          const percent = Math.floor((downloadedBytes / totalBytes) * 100);
-          if (percent !== lastPercent) {
-            lastPercent = percent;
-            process.stderr.write(
-              `\rDownloading chrome-headless-shell: ${percent}%`,
-            );
-          }
-        }
-      },
+      onProgress: createDownloadProgressReporter(isTTY),
     });
 
     if (isTTY) {
@@ -92,6 +127,12 @@ export async function runBrowserInstallCommand(
   }
 }
 
+/**
+ * Registers the `devtools browser` subcommand hierarchy (`status` and `install`) on a Commander program.
+ *
+ * @param program - Root Commander `Command` instance.
+ * @returns Configured `browser` subcommand instance.
+ */
 export function registerBrowserCommands(program: Command): Command {
   const browser = program
     .command("browser")
