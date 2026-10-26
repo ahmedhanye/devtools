@@ -32,4 +32,26 @@ describe("useNativeSearchParams hook", () => {
     expect(triggered).toBe(true);
     unsubscribe();
   });
+
+  it("safely falls back during SSR or when window globals are unavailable", () => {
+    const originalAddEventListener = window.addEventListener;
+    const originalLocation = window.location;
+    try {
+      // @ts-expect-error simulating SSR
+      delete window.addEventListener;
+      // @ts-expect-error simulating SSR
+      delete window.location;
+      expect(getSearchParamsSnapshot()).toBe("");
+      const unsubscribe = subscribeToSearchParams(() => {});
+      expect(typeof unsubscribe).toBe("function");
+      unsubscribe();
+    } finally {
+      window.addEventListener = originalAddEventListener;
+      Object.defineProperty(window, "location", {
+        value: originalLocation,
+        writable: true,
+        configurable: true,
+      });
+    }
+  });
 });

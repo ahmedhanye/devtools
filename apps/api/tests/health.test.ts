@@ -109,9 +109,10 @@ describe("Health API Endpoint (/api/health) & Security Boundaries", () => {
   test("enforces CSRF and loopback origin verification on mutating verbs", async () => {
     const customApp = createApp();
     customApp.post("/mutate", async (c) => {
-      const body = await c.req.json();
+      const body = await c.req.json().catch(() => null);
       return c.json({ ok: true, received: body }, 200);
     });
+    customApp.delete("/mutate", (c) => c.json({ ok: true }, 200));
 
     // 1. Rejects Sec-Fetch-Site: cross-site
     const crossSiteRes = await customApp.request("/api/mutate", {
@@ -163,6 +164,16 @@ describe("Health API Endpoint (/api/health) & Security Boundaries", () => {
       body: JSON.stringify({ test: 1 }),
     });
     expect(validRes.status).toBe(200);
+
+    // 5. Accepts mutating request without body
+    const emptyBodyRes = await customApp.request("/api/mutate", {
+      method: "DELETE",
+      headers: {
+        Origin: "http://127.0.0.1:4000",
+        "Sec-Fetch-Site": "same-origin",
+      },
+    });
+    expect(emptyBodyRes.status).toBe(200);
   });
 
   test("formatError includes optional details when provided", () => {

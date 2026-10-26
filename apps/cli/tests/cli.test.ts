@@ -40,10 +40,11 @@ describe("CLI Subprocess Integration Tests", () => {
       expect(exitCode).toBe(0);
 
       const stdout = await new Response(proc.stdout).text();
+      const stderr = await new Response(proc.stderr).text();
       expect(stdout).toContain(
         `DevTools daemon listening on http://127.0.0.1:${port}`,
       );
-      expect(stdout).toContain("Received SIGTERM. Shutting down");
+      expect(stderr).toContain("Received SIGTERM. Shutting down");
     } finally {
       proc.kill();
     }
@@ -67,8 +68,8 @@ describe("CLI Subprocess Integration Tests", () => {
       const exitCode = await proc.exited;
       expect(exitCode).toBe(0);
 
-      const stdout = await new Response(proc.stdout).text();
-      expect(stdout).toContain("Received SIGINT. Shutting down");
+      const stderr = await new Response(proc.stderr).text();
+      expect(stderr).toContain("Received SIGINT. Shutting down");
     } finally {
       proc.kill();
     }
@@ -280,6 +281,33 @@ describe("CLI Command Structure & Parser Unit Tests", () => {
       console.error = origErr;
       process.exit = origExit;
       blocker.stop(true);
+    }
+  });
+
+  test("runWebCommand registers shutdown handler and logs to stderr on signal", async () => {
+    const origErr = console.error;
+    const origExit = process.exit;
+    let logged = "";
+    console.error = (msg: string) => {
+      logged += msg;
+    };
+    let exitCalled = false;
+    process.exit = ((_code?: number) => {
+      exitCalled = true;
+      return undefined as never;
+    }) as unknown as typeof process.exit;
+
+    try {
+      const instance = await runWebCommand({ port: 0, host: "127.0.0.1" });
+      expect(instance).toBeDefined();
+
+      process.emit("SIGTERM", "SIGTERM");
+      await new Promise((r) => setTimeout(r, 50));
+      expect(logged).toContain("Received SIGTERM. Shutting down");
+      expect(exitCalled).toBe(true);
+    } finally {
+      console.error = origErr;
+      process.exit = origExit;
     }
   });
 });

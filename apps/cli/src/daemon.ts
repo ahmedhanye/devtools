@@ -212,7 +212,9 @@ export function startDaemon(options: StartDaemonOptions = {}): DaemonInstance {
   }
 
   console.error(
-    pc.dim(`Persistence initialized: SQLite (${resolveDatabasePath()})`),
+    pc.dim(
+      `Persistence initialized: SQLite (${resolveDatabasePath({ env: options.env })})`,
+    ),
   );
 
   const api = createApp({ basePath: "/api" });

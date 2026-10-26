@@ -55,6 +55,20 @@ describe("useIsMobile", () => {
     expect(getServerMobileSnapshot()).toBe(false);
   });
 
+  it("safely falls back during SSR or when window.matchMedia is unavailable", () => {
+    const originalMatchMedia = window.matchMedia;
+    try {
+      // @ts-expect-error simulating SSR
+      delete window.matchMedia;
+      expect(getMobileSnapshot()).toBe(false);
+      const unsubscribe = subscribeMobileMedia(() => {});
+      expect(typeof unsubscribe).toBe("function");
+      unsubscribe();
+    } finally {
+      window.matchMedia = originalMatchMedia;
+    }
+  });
+
   it("subscribes and unsubscribes via subscribeMobileMedia", () => {
     const addEventListener = vi.fn();
     const removeEventListener = vi.fn();

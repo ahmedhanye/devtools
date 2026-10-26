@@ -51,7 +51,7 @@ async function promptPortChange(
       default: true,
     });
     if (!accepted) {
-      console.log(pc.yellow("Aborted server start."));
+      console.error(pc.yellow("Aborted server start."));
       process.exit(1);
     }
     return nextPort;
@@ -152,7 +152,7 @@ export async function runWebCommand(
   const handleShutdown = async (signal: string) => {
     if (shuttingDown) return;
     shuttingDown = true;
-    console.log(
+    console.error(
       pc.yellow(`\nReceived ${signal}. Shutting down DevTools daemon...`),
     );
     await instance.stop();

@@ -1,6 +1,7 @@
 import { type EnvMap, RuntimeConfigSchema } from "@devtools/core";
 import type { Server } from "bun";
-import { app } from "./index";
+import type { Hono } from "hono";
+import { createApp } from "./index";
 
 /**
  * Options for configuring and booting the standalone `@devtools/api` HTTP server.
@@ -14,6 +15,12 @@ export interface StartServerOptions {
   hostname?: string;
   /** Optional environment variable map overriding `process.env`. */
   env?: EnvMap;
+  /**
+   * Optional pre-configured Hono application instance.
+   * Defaults to creating an isolated instance via {@link createApp}.
+   */
+  // biome-ignore lint/suspicious/noExplicitAny: Hono router schema generics
+  app?: Hono<any, any, any>;
 }
 
 /**
@@ -65,9 +72,10 @@ export function resolveServerConfig(options: StartServerOptions = {}): {
  */
 export function startServer(options: StartServerOptions = {}): ServerInstance {
   const config = resolveServerConfig(options);
+  const activeApp = options.app ?? createApp();
 
   const server = Bun.serve({
-    fetch: app.fetch,
+    fetch: activeApp.fetch,
     port: config.port,
     hostname: config.host,
   });

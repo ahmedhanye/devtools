@@ -92,6 +92,6 @@ describe("documentation shell and catch-all route seam", () => {
         React.createElement(RootDocsLayout, null, pageElement),
       ),
     );
-    expect(html).toContain("group-reference");
+    expect(html).toContain("--reference-color");
   });
 });

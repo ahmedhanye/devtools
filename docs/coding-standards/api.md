@@ -52,7 +52,9 @@ Engineering standards and conventions for the HTTP API application in `apps/api`
    - `200 OK`: Successful read or update operation.
    - `201 Created`: Successful creation of a new entity.
    - `400 Bad Request`: Malformed JSON or syntax failure.
+   - `403 Forbidden`: Request blocked by loopback protection or cross-site request security policy.
    - `404 Not Found`: Resource does not exist.
+   - `415 Unsupported Media Type`: Payload missing required `application/json` Content-Type on mutating verbs.
    - `422 Unprocessable Entity`: Schema validation error for request fields.
    - `500 Internal Server Error`: Unhandled server-side failure.
 

@@ -12,6 +12,9 @@ const MOBILE_MEDIA_QUERY = `(max-width: ${MOBILE_BREAKPOINT - 1}px)`;
  * @returns Cleanup function removing the media query listener.
  */
 export function subscribeMobileMedia(callback: () => void): () => void {
+  if (typeof window === "undefined" || !window.matchMedia) {
+    return () => {};
+  }
   const mql = window.matchMedia(MOBILE_MEDIA_QUERY);
   mql.addEventListener("change", callback);
   return () => mql.removeEventListener("change", callback);
@@ -20,9 +23,12 @@ export function subscribeMobileMedia(callback: () => void): () => void {
 /**
  * Reads the current client viewport mobile state from `window.matchMedia`.
  *
- * @returns `true` if the viewport width is below `768px`, `false` otherwise.
+ * @returns `true` if the viewport width is below `768px`, `false` otherwise or during SSR.
  */
 export function getMobileSnapshot(): boolean {
+  if (typeof window === "undefined" || !window.matchMedia) {
+    return false;
+  }
   return window.matchMedia(MOBILE_MEDIA_QUERY).matches;
 }
 

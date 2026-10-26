@@ -90,9 +90,16 @@ function isExecutable(filePath: string): boolean {
 
 /**
  * Builds the command vector used to query a candidate browser's version string.
+ *
+ * @param executablePath - Filesystem path to the candidate browser binary.
+ * @param platformName - Optional OS platform override (`"linux"`, `"darwin"`, `"win32"`). Defaults to `platform()`.
+ * @returns Command array vector for execution.
  */
-function buildVersionCommand(executablePath: string): string[] {
-  const isWin = platform() === "win32";
+export function buildVersionCommand(
+  executablePath: string,
+  platformName: string = platform(),
+): string[] {
+  const isWin = platformName === "win32";
   const lowerPath = executablePath.toLowerCase();
   const isWindowsGuiBinary =
     isWin && lowerPath.endsWith(".exe") && !lowerPath.includes("headless");
@@ -131,6 +138,7 @@ function safeKillProcess(proc?: ReturnType<typeof Bun.spawn>): void {
 export async function verifyBrowserExecutable(
   executablePath: string,
   timeoutMs = 3000,
+  spawnFn: typeof Bun.spawn = Bun.spawn,
 ): Promise<VerificationResult> {
   if (!isExecutable(executablePath)) {
     return { valid: false };
@@ -145,7 +153,7 @@ export async function verifyBrowserExecutable(
       stdout: string;
     }>((resolve, reject) => {
       try {
-        proc = Bun.spawn(buildVersionCommand(executablePath), {
+        proc = spawnFn(buildVersionCommand(executablePath), {
           stdout: "pipe",
           stderr: "ignore",
         });
@@ -225,8 +233,16 @@ export async function probeManagedCache(
     return null;
   }
 
+  const getInstalled =
+    (envOrSeam &&
+      typeof envOrSeam === "object" &&
+      "getInstalledBrowsers" in envOrSeam &&
+      // biome-ignore lint/suspicious/noExplicitAny: test seam injection
+      (envOrSeam as any).getInstalledBrowsers) ||
+    getInstalledBrowsers;
+
   try {
-    const installed = await getInstalledBrowsers({ cacheDir: targetDir });
+    const installed = await getInstalled({ cacheDir: targetDir });
     for (const browser of installed) {
       if (browser.executablePath && existsSync(browser.executablePath)) {
         const check = await verifyBrowserExecutable(

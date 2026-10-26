@@ -9,6 +9,9 @@ import { useMemo, useSyncExternalStore } from "react";
  * @returns Cleanup function removing the `popstate` listener.
  */
 export function subscribeToSearchParams(callback: () => void): () => void {
+  if (typeof window === "undefined" || !window.addEventListener) {
+    return () => {};
+  }
   window.addEventListener("popstate", callback);
   return () => window.removeEventListener("popstate", callback);
 }
@@ -16,9 +19,12 @@ export function subscribeToSearchParams(callback: () => void): () => void {
 /**
  * Reads the current raw query string (`window.location.search`) on the client.
  *
- * @returns Raw search string from `window.location.search`.
+ * @returns Raw search string from `window.location.search`, or `""` during SSR.
  */
 export function getSearchParamsSnapshot(): string {
+  if (typeof window === "undefined" || !window.location) {
+    return "";
+  }
   return window.location.search;
 }
 
