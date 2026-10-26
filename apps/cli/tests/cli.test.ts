@@ -40,10 +40,11 @@ describe("CLI Subprocess Integration Tests", () => {
       expect(exitCode).toBe(0);
 
       const stdout = await new Response(proc.stdout).text();
+      const stderr = await new Response(proc.stderr).text();
       expect(stdout).toContain(
         `DevTools daemon listening on http://127.0.0.1:${port}`,
       );
-      expect(stdout).toContain("Received SIGTERM. Shutting down");
+      expect(stderr).toContain("Received SIGTERM. Shutting down");
     } finally {
       proc.kill();
     }
@@ -67,8 +68,8 @@ describe("CLI Subprocess Integration Tests", () => {
       const exitCode = await proc.exited;
       expect(exitCode).toBe(0);
 
-      const stdout = await new Response(proc.stdout).text();
-      expect(stdout).toContain("Received SIGINT. Shutting down");
+      const stderr = await new Response(proc.stderr).text();
+      expect(stderr).toContain("Received SIGINT. Shutting down");
     } finally {
       proc.kill();
     }
@@ -193,5 +194,173 @@ describe("CLI Command Structure & Parser Unit Tests", () => {
 
   test("runWebCommand exports correctly as a callable async function", () => {
     expect(typeof runWebCommand).toBe("function");
+  });
+
+  test("runWebCommand resolves port conflicts across interactive and non-interactive flows", async () => {
+    const blocker = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch: () => new Response("occupied"),
+    });
+    const occupiedPort = blocker.port ?? 0;
+
+    const origLog = console.log;
+    const origErr = console.error;
+    const origExit = process.exit;
+    let errOutput = "";
+    console.log = () => {};
+    console.error = (msg: string) => {
+      errOutput += msg;
+    };
+    process.exit = ((code?: number) => {
+      throw new Error(`exit:${code}`);
+    }) as unknown as typeof process.exit;
+
+    try {
+      // 0. Default interactive check when isInteractive is not provided
+      await expect(
+        runWebCommand(
+          { port: occupiedPort, host: "127.0.0.1" },
+          { confirm: async () => false },
+        ),
+      ).rejects.toThrow("exit:1");
+
+      // 1. Non-interactive conflict exits 1
+      await expect(
+        runWebCommand(
+          { port: occupiedPort, host: "127.0.0.1" },
+          { isInteractive: () => false },
+        ),
+      ).rejects.toThrow("exit:1");
+
+      // 2. Interactive conflict with no available port in range exits 1
+      await expect(
+        runWebCommand(
+          { port: occupiedPort, host: "127.0.0.1" },
+          {
+            isInteractive: () => true,
+            findNextAvailablePort: () => null,
+          },
+        ),
+      ).rejects.toThrow("exit:1");
+
+      // 3. Interactive conflict declined by user exits 1
+      await expect(
+        runWebCommand(
+          { port: occupiedPort, host: "127.0.0.1" },
+          {
+            isInteractive: () => true,
+            confirm: async () => false,
+          },
+        ),
+      ).rejects.toThrow("exit:1");
+
+      // 4. Interactive conflict prompt error exits 1 with stderr diagnostic
+      errOutput = "";
+      await expect(
+        runWebCommand(
+          { port: occupiedPort, host: "127.0.0.1" },
+          {
+            isInteractive: () => true,
+            confirm: async () => {
+              throw new Error("prompt rejected");
+            },
+          },
+        ),
+      ).rejects.toThrow("exit:1");
+      expect(errOutput).toContain(
+        "Error: Interactive port conflict prompt failed",
+      );
+      expect(errOutput).toContain("prompt rejected");
+
+      // 5. Interactive conflict accepted boots daemon on next available port
+      const instance = await runWebCommand(
+        { port: occupiedPort, host: "127.0.0.1" },
+        {
+          isInteractive: () => true,
+          confirm: async () => true,
+        },
+      );
+      expect(instance).toBeDefined();
+      expect(instance?.port).not.toBe(occupiedPort);
+      await instance?.stop();
+    } finally {
+      console.log = origLog;
+      console.error = origErr;
+      process.exit = origExit;
+      blocker.stop(true);
+    }
+  });
+
+  test("runWebCommand registers shutdown handler and logs to stderr on signal", async () => {
+    const origErr = console.error;
+    const origExit = process.exit;
+    let logged = "";
+    console.error = (msg: string) => {
+      logged += msg;
+    };
+    let exitCalled = false;
+    process.exit = ((_code?: number) => {
+      exitCalled = true;
+      return undefined as never;
+    }) as unknown as typeof process.exit;
+
+    try {
+      const instance = await runWebCommand({ port: 0, host: "127.0.0.1" });
+      expect(instance).toBeDefined();
+
+      process.emit("SIGTERM", "SIGTERM");
+      await new Promise((r) => setTimeout(r, 50));
+      expect(logged).toContain("Received SIGTERM. Shutting down");
+      expect(exitCalled).toBe(true);
+    } finally {
+      console.error = origErr;
+      process.exit = origExit;
+    }
+  });
+
+  test("runWebCommand resolves configuration through options.env seam without reading global process.env", async () => {
+    const origLog = console.log;
+    console.log = () => {};
+    try {
+      const instance = await runWebCommand({
+        env: {
+          PORT: "0",
+          HOST: "127.0.0.1",
+          NODE_ENV: "test",
+        },
+      });
+      expect(instance).toBeDefined();
+      expect(instance?.hostname).toBe("127.0.0.1");
+      await instance?.stop();
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  test("runWebCommand exits 1 on invalid daemon configuration in-process", async () => {
+    const origErr = console.error;
+    const origExit = process.exit;
+    let errMessage = "";
+    console.error = (msg: string) => {
+      errMessage += msg;
+    };
+    process.exit = ((code?: number) => {
+      throw new Error(`exit:${code}`);
+    }) as unknown as typeof process.exit;
+
+    try {
+      await expect(
+        runWebCommand({
+          env: {
+            PORT: "99999",
+          },
+        }),
+      ).rejects.toThrow("exit:1");
+      expect(errMessage).toContain("expected number to be <=65535");
+    } finally {
+      console.error = origErr;
+      process.exit = origExit;
+    }
   });
 });

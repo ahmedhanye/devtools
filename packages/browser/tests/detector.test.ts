@@ -3,13 +3,14 @@ import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
+  buildVersionCommand,
   getManagedCacheDir,
   probeAlternativeBrowsers,
   probeManagedCache,
   probeSystemInstallations,
   probeToolCaches,
   verifyBrowserExecutable,
-} from "../src/browser/detector";
+} from "../src/detector";
 
 describe("Browser Detector & Executable Verification", () => {
   const testDir = join(
@@ -102,6 +103,21 @@ describe("Browser Detector & Executable Verification", () => {
   test("probeSystemInstallations returns array without throwing even if none found", async () => {
     const installations = await probeSystemInstallations();
     expect(Array.isArray(installations)).toBe(true);
+
+    const mockExe = join(testDir, "mock-system-chrome");
+    writeFileSync(mockExe, "#!/bin/sh\nexit 0\n");
+    chmodSync(mockExe, 0o755);
+
+    const hit = await probeSystemInstallations(() => [
+      mockExe,
+      join(testDir, "nonexistent-system-chrome"),
+    ]);
+    expect(hit).toEqual([mockExe]);
+
+    const errorResult = await probeSystemInstallations(() => {
+      throw new Error("Launcher lookup failure");
+    });
+    expect(errorResult).toEqual([]);
   });
 
   test("probeAlternativeBrowsers returns array of existing browser paths", async () => {
@@ -339,5 +355,104 @@ describe("Browser Detector & Executable Verification", () => {
       },
     });
     expect(darwinCandidates).toBeArray();
+  });
+
+  test("buildVersionCommand builds PowerShell command for Windows GUI binaries", () => {
+    const cmd = buildVersionCommand(
+      "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+      "win32",
+    );
+    expect(cmd[0]).toBe("powershell");
+    expect(cmd[4]).toContain("VersionInfo.ProductVersion");
+  });
+
+  test("verifyBrowserExecutable handles spawn failures and stream rejection", async () => {
+    const validScript = join(testDir, "echo-version.sh");
+    writeFileSync(validScript, '#!/bin/sh\necho "130.0.0"\n');
+    chmodSync(validScript, 0o755);
+
+    // spawn throwing
+    const resSpawnFail = await verifyBrowserExecutable(
+      validScript,
+      1000,
+      (() => {
+        throw new Error("spawn failed");
+      }) as any,
+    );
+    expect(resSpawnFail.valid).toBe(false);
+
+    // proc.exited rejecting
+    const resStreamReject = await verifyBrowserExecutable(
+      validScript,
+      1000,
+      (() => ({
+        stdout: null,
+        exited: Promise.reject(new Error("proc exit error")),
+        kill: () => {},
+      })) as any,
+    );
+    expect(resStreamReject.valid).toBe(false);
+  });
+
+  test("probeManagedCache discovers installed browsers via getInstalledBrowsers seam", async () => {
+    const validExe = join(testDir, "cached-chrome.sh");
+    writeFileSync(validExe, '#!/bin/sh\necho "Chrome 130.0.0"\n');
+    chmodSync(validExe, 0o755);
+
+    const invalidExe = join(testDir, "invalid-cached-chrome.sh");
+    writeFileSync(invalidExe, "#!/bin/sh\nexit 1\n");
+    chmodSync(invalidExe, 0o755);
+
+    const hit = await probeManagedCache(testDir, {
+      getInstalledBrowsers: async () => [
+        {
+          executablePath: "/nonexistent/path/to/browser",
+          buildId: "000.0.0",
+          browser: "chrome" as any,
+        },
+        {
+          executablePath: invalidExe,
+          buildId: "111.0.0",
+          browser: "chrome" as any,
+        },
+        {
+          executablePath: validExe,
+          buildId: "130.0.0",
+          browser: "chrome" as any,
+        },
+      ],
+    } as any);
+
+    expect(hit).toBeDefined();
+    expect(hit?.path).toBe(validExe);
+    expect(hit?.version).toBe("Chrome 130.0.0");
+  });
+
+  test("probeToolCaches skips non-chromium Playwright directory entries and discovers chromium", async () => {
+    const customPw = join(testDir, "ms-playwright-mixed");
+    mkdirSync(join(customPw, "firefox-100"), { recursive: true });
+
+    const chromeDir = join(customPw, "chromium-1000", "chrome-linux");
+    mkdirSync(chromeDir, { recursive: true });
+    const mockExe = join(chromeDir, "chrome");
+    writeFileSync(mockExe, "#!/bin/sh\nexit 0\n");
+    chmodSync(mockExe, 0o755);
+
+    const headlessDir = join(
+      customPw,
+      "chromium_headless_shell-2000",
+      "chrome-linux",
+    );
+    mkdirSync(headlessDir, { recursive: true });
+    const mockHeadless = join(headlessDir, "headless_shell");
+    writeFileSync(mockHeadless, "#!/bin/sh\nexit 0\n");
+    chmodSync(mockHeadless, 0o755);
+
+    const candidates = await probeToolCaches(join(testDir, "home"), {
+      PLAYWRIGHT_BROWSERS_PATH: customPw,
+    });
+    expect(candidates).toBeArray();
+    expect(candidates.some((c) => c.path === mockExe)).toBe(true);
+    expect(candidates.some((c) => c.path === mockHeadless)).toBe(true);
   });
 });

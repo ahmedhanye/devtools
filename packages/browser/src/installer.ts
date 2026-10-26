@@ -9,19 +9,36 @@ import {
 import { getManagedCacheDir } from "./detector";
 import type { InstallBrowserOptions, InstalledBrowser } from "./types";
 
+/**
+ * Alias for {@link InstalledBrowser} representing the return payload of `@puppeteer/browsers` installation.
+ */
 export type InstallResult = InstalledBrowser;
 
+/**
+ * Injectable dependency seam for {@link installBrowser} allowing unit tests to mock
+ * network build resolution and archive downloads.
+ */
 export interface BrowserInstallerDependencies {
+  /** Overrides `@puppeteer/browsers` `resolveBuildId` network lookup. */
   resolveBuildId?: (
     browser: Browser,
     platform: ReturnType<typeof detectBrowserPlatform>,
     tag: string,
   ) => Promise<string>;
+  /** Overrides `@puppeteer/browsers` `install` archive download and extraction. */
   install?: (
     options: InstallOptions & { unpack?: true },
   ) => Promise<InstallResult>;
 }
 
+/**
+ * Downloads and unpacks the `stable` build of `chrome-headless-shell` into the managed DevTools browser cache.
+ *
+ * @param options - Optional cache directory override and download progress callback.
+ * @param deps - Optional dependency injection seam for testing without network I/O.
+ * @returns Metadata describing the installed browser executable, build ID, and browser type.
+ * @throws {Error} If the current OS/architecture platform is unsupported or archive download fails.
+ */
 export async function installBrowser(
   options?: InstallBrowserOptions,
   deps?: BrowserInstallerDependencies,

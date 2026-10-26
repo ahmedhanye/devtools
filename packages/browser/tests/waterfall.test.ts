@@ -2,11 +2,8 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import {
-  BrowserNotFoundError,
-  InvalidBrowserPathError,
-} from "../src/browser/errors";
-import { getBrowserStatus, resolveBrowserPath } from "../src/browser/waterfall";
+import { BrowserNotFoundError, InvalidBrowserPathError } from "../src/errors";
+import { getBrowserStatus, resolveBrowserPath } from "../src/waterfall";
 
 describe("Browser Resolution Waterfall", () => {
   const testDir = join(
@@ -286,5 +283,61 @@ describe("Browser Resolution Waterfall", () => {
     expect(capturedEnv?.DEVTOOLS_BROWSERS_DIR).toBe("");
     expect(res.executablePath).toBe(mockHeadless);
     expect(res.source).toBe("managed-cache");
+  });
+
+  test("getBrowserStatus handles unexpected errors gracefully", async () => {
+    const status = await getBrowserStatus(
+      {},
+      {
+        probeManagedCache: async () => {
+          throw new Error("Unexpected disk corruption");
+        },
+      },
+    );
+    expect(status.found).toBe(false);
+    if (!status.found) {
+      expect(status.error).toBe("Unexpected disk corruption");
+    }
+
+    const stringStatus = await getBrowserStatus(
+      {},
+      {
+        probeManagedCache: async () => {
+          throw "Raw string failure";
+        },
+      },
+    );
+    expect(stringStatus.found).toBe(false);
+    if (!stringStatus.found) {
+      expect(stringStatus.error).toBe("Raw string failure");
+    }
+  });
+
+  test("resolveFromCandidates skips candidates that validate without a version string and resolves next candidate", async () => {
+    const noVersionPath = join(testDir, "no-version.sh");
+    writeFileSync(noVersionPath, "#!/bin/sh\nexit 0\n");
+    chmodSync(noVersionPath, 0o755);
+
+    const validCandidatePath = join(testDir, "valid-candidate.sh");
+    writeFileSync(validCandidatePath, '#!/bin/sh\necho "132.0.0"\n');
+    chmodSync(validCandidatePath, 0o755);
+
+    const res = await resolveBrowserPath(
+      {},
+      {
+        probeSystemInstallations: async () => [
+          noVersionPath,
+          validCandidatePath,
+        ],
+        verifyBrowserExecutable: async (p) =>
+          p === validCandidatePath
+            ? { valid: true, version: "132.0.0" }
+            : { valid: true, version: "" },
+        probeManagedCache: async () => null,
+        probeAlternativeBrowsers: async () => [],
+      },
+    );
+    expect(res.executablePath).toBe(validCandidatePath);
+    expect(res.version).toBe("132.0.0");
   });
 });

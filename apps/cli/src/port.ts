@@ -1,3 +1,14 @@
+/**
+ * Probes whether a TCP port is currently available for binding on the specified hostname.
+ *
+ * @remarks
+ * Port `0` (ephemeral OS-assigned port) is always treated as available.
+ * Ports outside the valid `1–65535` range return `false`.
+ *
+ * @param port - TCP port number to probe.
+ * @param hostname - Interface hostname or IP address to test binding against. Defaults to `"127.0.0.1"`.
+ * @returns `true` if a temporary socket can bind to `hostname:port`, `false` otherwise.
+ */
 export function isPortAvailable(
   port: number,
   hostname: string = "127.0.0.1",
@@ -23,6 +34,14 @@ export function isPortAvailable(
   }
 }
 
+/**
+ * Scans sequentially upward from `startPort + 1` to locate the next available TCP port.
+ *
+ * @param startPort - Occupied port number from which the upward scan begins.
+ * @param hostname - Interface hostname or IP address to test binding against. Defaults to `"127.0.0.1"`.
+ * @param maxAttempts - Maximum number of sequential ports to probe. Defaults to `100`.
+ * @returns First available TCP port number, or `null` if none is found within range.
+ */
 export function findNextAvailablePort(
   startPort: number,
   hostname: string = "127.0.0.1",
