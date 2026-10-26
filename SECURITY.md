@@ -28,7 +28,7 @@ If you are unable to use the GitHub Advisory interface, contact repository maint
 Please include the following information in your report:
 
 1. **Type of Issue:** Vulnerability type (for example, command injection, path traversal, privilege escalation, credential exposure).
-2. **Affected Components:** Affected packages or services (`@devtools/cli`, `@devtools/api`, `@devtools/frontend`, `@devtools/core`, `@devtools/db`, or repository workflows).
+2. **Affected Components:** Affected packages or services (`@devtools/cli`, `@devtools/api`, `@devtools/frontend`, `@devtools/core`, `@devtools/db`, `@devtools/browser`, or repository workflows).
 3. **Environment:** OS, architecture, and Bun version (`bun --version`).
 4. **Proof of Concept (PoC):** Step-by-step instructions or minimal code reproducing the vulnerability.
 5. **Impact Assessment:** Plausible attack scenarios and consequences.
