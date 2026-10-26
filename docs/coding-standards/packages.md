@@ -64,3 +64,20 @@ Architectural guidelines, boundary rules, and development practices for shared d
 
 1. **Depth as leverage**: Follow deep module principles: expose a minimal, stable public surface area that conceals substantial internal complexity (such as SQLite connection pooling, WAL mode initialization, or Chromium binary resolution).
 2. **Seam discipline**: Introduce seams (e.g. dependency injection for file probes or network calls) only where testing or genuine variation requires it. Avoid speculative abstractions or single-use interfaces.
+
+## Workspace package scaffolding
+
+When adding or removing a workspace package under `apps/*` or `packages/*`:
+
+1. **Review boundaries**: Update `.coderabbit.yaml` (`reviews.path_instructions`) with architectural boundaries and domain review contracts for the package.
+2. **Architecture boundary zones**: Update `.fallowrc.json` with new architecture boundary zones and import rules if the package introduces new structural layers.
+3. **TypeScript configuration**: Configure `tsconfig.json` in the package to extend `tsconfig.base.json` and declare inter-workspace dependencies using the `workspace:*` protocol.
+
+## Telemetry suppression for dependencies
+
+When introducing or updating a tool, CLI, or library:
+
+1. **Audit telemetry**: Check whether the package collects telemetry, crash reports, or usage analytics.
+2. **Native configuration**: Disable telemetry through native configuration files when supported (such as `core.disableTelemetry` in Storybook).
+3. **Environment kill switches**: Add the package kill switch environment variable to `.env.example` and `.github/workflows/*.yml`.
+4. **Standard privacy flags**: Honor `DO_NOT_TRACK=1` alongside tool-specific kill switches.

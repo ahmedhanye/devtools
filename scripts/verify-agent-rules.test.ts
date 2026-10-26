@@ -354,7 +354,7 @@ unquoted colon: in: here
       const files = discoverAgentFiles();
       expect(files.length).toBeGreaterThan(0);
       expect(
-        files.some((f) => f.includes(".agents/rules/dependencies.md")),
+        files.some((f) => f.includes(".agents/rules/verification.md")),
       ).toBe(true);
 
       const result = verifyAgentRules();
@@ -364,7 +364,7 @@ unquoted colon: in: here
     });
 
     it("filters and validates specific target files", () => {
-      const target = [".agents/rules/dependencies.md"];
+      const target = [".agents/rules/verification.md"];
       const result = verifyAgentRules(target);
       expect(result.scannedCount).toBe(1);
       expect(result.findings).toHaveLength(0);
