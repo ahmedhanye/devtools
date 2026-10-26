@@ -10,8 +10,12 @@ import { z } from "zod";
 export const API_ERROR_CODES = {
   /** The client request payload, headers, or query parameters failed validation. */
   BAD_REQUEST: "BAD_REQUEST",
+  /** Access to the requested resource is denied (e.g. cross-origin restriction). */
+  FORBIDDEN: "FORBIDDEN",
   /** The requested API endpoint or domain resource does not exist. */
   NOT_FOUND: "NOT_FOUND",
+  /** The request media format is unsupported (e.g. missing JSON content-type). */
+  UNSUPPORTED_MEDIA_TYPE: "UNSUPPORTED_MEDIA_TYPE",
   /** An unhandled exception occurred while processing the request. */
   INTERNAL_ERROR: "INTERNAL_ERROR",
   /** A required subsystem or backing dependency is temporarily unavailable. */

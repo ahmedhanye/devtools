@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
@@ -88,7 +88,7 @@ describe("Database Configuration & Path Resolution", () => {
   it("findWorkspaceRoot handles malformed package.json and returns null outside a workspace", () => {
     const isolatedDir = join(tmpdir(), `devtools-isolated-${Date.now()}`);
     mkdirSync(isolatedDir, { recursive: true });
-    Bun.write(join(isolatedDir, "package.json"), "{ invalid json");
+    writeFileSync(join(isolatedDir, "package.json"), "{ invalid json");
     try {
       expect(findWorkspaceRoot(isolatedDir)).toBeNull();
     } finally {

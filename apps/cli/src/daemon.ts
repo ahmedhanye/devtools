@@ -2,7 +2,12 @@ import { existsSync, statSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { createApp } from "@devtools/api";
 import { type EnvMap, RuntimeConfigSchema } from "@devtools/core";
-import { closeDb, db, resolveDatabasePath, runMigrations } from "@devtools/db";
+import {
+  closeDb,
+  getDb,
+  resolveDatabasePath,
+  runMigrations,
+} from "@devtools/db";
 import type { Server } from "bun";
 import pc from "picocolors";
 
@@ -202,8 +207,11 @@ export function startDaemon(options: StartDaemonOptions = {}): DaemonInstance {
     );
   }
 
+  const dbPath = resolveDatabasePath({ env: options.env });
+  const daemonDb = getDb({ path: dbPath, env: options.env });
+
   try {
-    runMigrations(db);
+    runMigrations(daemonDb);
   } catch (error) {
     throw new Error(
       `Fatal: failed to initialize persistence database: ${error instanceof Error ? error.message : String(error)}`,
@@ -211,11 +219,7 @@ export function startDaemon(options: StartDaemonOptions = {}): DaemonInstance {
     );
   }
 
-  console.error(
-    pc.dim(
-      `Persistence initialized: SQLite (${resolveDatabasePath({ env: options.env })})`,
-    ),
-  );
+  console.error(pc.dim(`Persistence initialized: SQLite (${dbPath})`));
 
   const api = createApp({ basePath: "/api" });
 

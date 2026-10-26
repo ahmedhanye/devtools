@@ -1,5 +1,6 @@
 import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import type { Database } from "bun:sqlite";
+import type { EnvMap } from "@devtools/core";
 import { createSqliteConnection } from "./connection";
 import * as schema from "./schema";
 
@@ -21,16 +22,20 @@ export interface CreateDbOptions {
   path?: string;
   /** Optional pre-configured `bun:sqlite` `Database` handle. */
   connection?: Database;
+  /** Optional environment variable map overriding `process.env`. */
+  env?: EnvMap;
 }
 
 /**
  * Instantiates a new Drizzle ORM database client bound to a `bun:sqlite` connection.
  *
- * @param options - Connection path or pre-existing SQLite handle options.
+ * @param options - Connection path, environment seam, or pre-existing SQLite handle options.
  * @returns Fresh {@link DevtoolsDb} client instance.
  */
 export function createDb(options: CreateDbOptions = {}): DevtoolsDb {
-  const sqlite = options.connection ?? createSqliteConnection(options.path);
+  const sqlite =
+    options.connection ??
+    createSqliteConnection({ path: options.path, env: options.env });
   return drizzle({ client: sqlite, schema });
 }
 
@@ -44,11 +49,14 @@ let devtoolsSqliteConnection: Database | null = null;
  * Creates the underlying SQLite connection on first invocation. Call {@link closeDb}
  * or {@link resetDb} to release the singleton handle.
  *
+ * @param options - Optional connection path or environment seam used if the singleton is initialized.
  * @returns Shared {@link DevtoolsDb} singleton instance.
  */
-export function getDb(): DevtoolsDb {
+export function getDb(options: CreateDbOptions = {}): DevtoolsDb {
   if (!devtoolsDbInstance) {
-    devtoolsSqliteConnection = createSqliteConnection();
+    devtoolsSqliteConnection =
+      options.connection ??
+      createSqliteConnection({ path: options.path, env: options.env });
     devtoolsDbInstance = drizzle({ client: devtoolsSqliteConnection, schema });
   }
   return devtoolsDbInstance;

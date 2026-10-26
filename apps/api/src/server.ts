@@ -19,8 +19,7 @@ export interface StartServerOptions {
    * Optional pre-configured Hono application instance.
    * Defaults to creating an isolated instance via {@link createApp}.
    */
-  // biome-ignore lint/suspicious/noExplicitAny: Hono router schema generics
-  app?: Hono<any, any, any>;
+  app?: Hono;
 }
 
 /**

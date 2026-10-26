@@ -1,9 +1,10 @@
+import pkg from "../../../package.json";
 import { z } from "zod";
 
 /**
- * Canonical semantic version for the DevTools runtime, API, and CLI.
+ * Canonical semantic version for the DevTools runtime, API, and CLI derived from the root manifest.
  */
-export const APP_VERSION = "0.1.0";
+export const APP_VERSION: string = pkg.version;
 
 /**
  * Standard read-only or mutable environment variable dictionary used across

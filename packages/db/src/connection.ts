@@ -1,4 +1,5 @@
 import { Database } from "bun:sqlite";
+import type { EnvMap } from "@devtools/core";
 import { resolveDatabasePath } from "./config";
 
 /**
@@ -15,6 +16,10 @@ export interface ConnectionOptions {
    * @defaultValue false
    */
   readonly?: boolean;
+  /**
+   * Optional environment variable map overriding `process.env`.
+   */
+  env?: EnvMap;
 }
 
 /**
@@ -38,7 +43,10 @@ export function createSqliteConnection(
       ? { path: dbPathOrOptions }
       : (dbPathOrOptions ?? {});
 
-  const resolvedPath = resolveDatabasePath(options.path);
+  const resolvedPath = resolveDatabasePath({
+    customPath: options.path,
+    env: options.env,
+  });
   const sqlite = new Database(resolvedPath, {
     create: !options.readonly,
     readonly: options.readonly,

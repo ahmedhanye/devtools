@@ -112,8 +112,12 @@ export function createLoopbackProtectionMiddleware(): MiddlewareHandler {
     if (MUTATING_METHODS.has(c.req.method)) {
       const violation = evaluateMutatingRequestViolation(c);
       if (violation) {
+        const errorCode =
+          violation.status === 403
+            ? API_ERROR_CODES.FORBIDDEN
+            : API_ERROR_CODES.UNSUPPORTED_MEDIA_TYPE;
         return c.json(
-          formatError(API_ERROR_CODES.BAD_REQUEST, violation.message),
+          formatError(errorCode, violation.message),
           violation.status,
         );
       }

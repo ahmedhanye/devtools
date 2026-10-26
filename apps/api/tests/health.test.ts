@@ -127,7 +127,7 @@ describe("Health API Endpoint (/api/health) & Security Boundaries", () => {
     const crossSiteErr = ApiErrorResponseSchema.parse(
       await crossSiteRes.json(),
     );
-    expect(crossSiteErr.error.code).toBe(API_ERROR_CODES.BAD_REQUEST);
+    expect(crossSiteErr.error.code).toBe(API_ERROR_CODES.FORBIDDEN);
 
     // 2. Rejects non-loopback Origin header
     const badOriginRes = await customApp.request("/api/mutate", {
@@ -139,6 +139,10 @@ describe("Health API Endpoint (/api/health) & Security Boundaries", () => {
       body: JSON.stringify({ test: 1 }),
     });
     expect(badOriginRes.status).toBe(403);
+    const badOriginErr = ApiErrorResponseSchema.parse(
+      await badOriginRes.json(),
+    );
+    expect(badOriginErr.error.code).toBe(API_ERROR_CODES.FORBIDDEN);
 
     // 3. Rejects non-JSON Content-Type when body is present
     const formContentRes = await customApp.request("/api/mutate", {
@@ -151,6 +155,12 @@ describe("Health API Endpoint (/api/health) & Security Boundaries", () => {
       body: "hello=world",
     });
     expect(formContentRes.status).toBe(415);
+    const formContentErr = ApiErrorResponseSchema.parse(
+      await formContentRes.json(),
+    );
+    expect(formContentErr.error.code).toBe(
+      API_ERROR_CODES.UNSUPPORTED_MEDIA_TYPE,
+    );
 
     // 4. Accepts valid loopback JSON POST
     const validRes = await customApp.request("/api/mutate", {
