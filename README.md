@@ -9,6 +9,7 @@ Developer tooling monorepo providing development utilities and workflows across 
 - **`apps/frontend`** (`@devtools/frontend`): Web dashboard and user interface built with Next.js.
 - **`packages/core`** (`@devtools/core`): Shared domain models, configuration schemas, and utilities.
 - **`packages/db`** (`@devtools/db`): Database persistence schemas and migration utilities.
+- **`packages/browser`** (`@devtools/browser`): Chromium provisioning, resolution waterfall, and managed cache.
 - **`site`** (`@devtools/site`): Documentation platform and guides built with Fumadocs.
 
 ## Quick Start

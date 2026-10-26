@@ -9,7 +9,7 @@ Releases are automated via Google Release Please, driven directly by commit type
 - `fix:` triggers a patch release (`v0.0.X`).
 - `feat:` triggers a minor release (`v0.X.0`).
 - `feat!:` or `BREAKING CHANGE:` triggers a major release (`vX.0.0`).
-- `chore:`, `docs:`, `test:`, `refactor:`, `style:` do not trigger automated version bumps unless accompanied by breaking changes.
+- `chore:`, `docs:`, `style:`, `refactor:`, `perf:`, `test:`, `build:`, `ci:`, `revert:` do not trigger automated version bumps unless accompanied by breaking changes.
 
 ## Release pull request workflow
 

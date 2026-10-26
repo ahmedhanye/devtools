@@ -16,9 +16,13 @@ Commit messages follow the Conventional Commits specification:
 - `fix`: Patches a bug or defect.
 - `chore`: Maintenance, dependencies, or toolchain updates.
 - `docs`: Documentation changes only.
-- `test`: Adding or refactoring test suites.
-- `refactor`: Code change that neither fixes a bug nor adds a feature.
 - `style`: Formatting or cosmetic changes with zero logic impact.
+- `refactor`: Code change that neither fixes a bug nor adds a feature.
+- `perf`: Performance improvement.
+- `test`: Adding or refactoring test suites.
+- `build`: Changes affecting the build system or internal dependencies.
+- `ci`: Changes to CI/CD workflows and automation scripts.
+- `revert`: Reverts a previous commit.
 
 ### Clean commit subjects
 
