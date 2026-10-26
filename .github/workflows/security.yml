@@ -5,8 +5,6 @@ on:
     branches:
       - main
   pull_request:
-    branches:
-      - main
   schedule:
     - cron: "0 4 * * 1" # Weekly Monday audit at 04:00 UTC
 
@@ -36,14 +34,6 @@ jobs:
       dependencies: ${{ steps.filter.outputs.dependencies }}
       code: ${{ steps.filter.outputs.code }}
     steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
-        with:
-          egress-policy: block
-          allowed-endpoints: >
-            api.github.com:443
-            github.com:443
-
       - name: Checkout repository (push only)
         if: github.event_name == 'push'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -84,20 +74,6 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
-        with:
-          egress-policy: block
-          allowed-endpoints: >
-            api.deps.dev:443
-            api.github.com:443
-            github.com:443
-            registry.npmjs.org:443
-            release-assets.githubusercontent.com:443
-            *.actions.githubusercontent.com:443
-            *.blob.core.windows.net:443
-            *.githubapp.com:443
-
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -123,19 +99,6 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
-        with:
-          egress-policy: block
-          allowed-endpoints: >
-            api.github.com:443
-            github.com:443
-            objects.githubusercontent.com:443
-            release-assets.githubusercontent.com:443
-            *.actions.githubusercontent.com:443
-            *.blob.core.windows.net:443
-            *.githubapp.com:443
-
       - name: Checkout full git history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -190,20 +153,6 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
-        with:
-          egress-policy: block
-          allowed-endpoints: >
-            api.github.com:443
-            github.com:443
-            objects.githubusercontent.com:443
-            release-assets.githubusercontent.com:443
-            results-receiver.actions.githubusercontent.com:443
-            *.actions.githubusercontent.com:443
-            *.blob.core.windows.net:443
-            *.githubapp.com:443
-
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

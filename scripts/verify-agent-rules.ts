@@ -2,24 +2,45 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { YAML } from "bun";
 
+/**
+ * Structured lint finding produced when validating `.agents/` rules, skills, or instructions.
+ */
 export interface Finding {
+  /** Repository-relative path to the file containing the violation. */
   file: string;
+  /** 1-based line number where the violation occurred, if applicable. */
   line?: number;
+  /** Machine-readable rule identifier (for example, `"rule/trigger-required"`). */
   rule: string;
+  /** Actionable human-readable explanation of the violation. */
   message: string;
+  /** Severity level (`"error"` blocks verification; `"warning"` is advisory). */
   severity: "error" | "warning";
 }
 
+/**
+ * Result of parsing optional `---` YAML frontmatter from a Markdown document.
+ */
 export interface ParsedFrontmatter {
+  /** Whether the document begins with a `---` frontmatter block. */
   exists: boolean;
+  /** Parsed YAML key-value map, or `null` when absent or malformed. */
   data: Record<string, unknown> | null;
+  /** Markdown body content following the closing `---` delimiter. */
   body: string;
+  /** Diagnostic syntax error message when YAML parsing fails. */
   error?: string;
+  /** Approximate 1-based line number of the YAML syntax error. */
   errorLine?: number;
 }
 
+/**
+ * Schema of the root `skills-lock.json` file tracking vendor-managed skills.
+ */
 export interface SkillsLock {
+  /** Lockfile schema version. */
   version?: number;
+  /** Map of skill directory names to upstream source metadata. */
   skills?: Record<
     string,
     {
@@ -35,20 +56,38 @@ const MACHINE_PATH_REGEX =
   /(?:file:\/\/\/(?!path\/to\/)[a-zA-Z0-9_\-./]+|(?<=^|[\s"'`([<{])(?:\/home\/|\/Users\/)[a-zA-Z0-9_\-./]+)/g;
 const MARKDOWN_LINK_REGEX = /\[([^\]]*)\]\(([^)]+)\)/g;
 
+const SKIPPED_LINK_PREFIXES = [
+  "http://",
+  "https://",
+  "mailto:",
+  "file://",
+  "#",
+  "data:",
+  "/docs/",
+  "/path/to/",
+  "path/to/",
+] as const;
+
 /**
- * Normalizes a path to be repository-relative using forward slashes.
+ * Normalizes a filesystem path to be repository-relative using forward slashes.
+ *
+ * @param filePath - Absolute or relative path to normalize.
+ * @param repoRoot - Repository root directory. Defaults to `process.cwd()`.
+ * @returns Repository-relative path string with `/` separators.
  */
 export function toRepoRelative(
   filePath: string,
   repoRoot: string = process.cwd(),
 ): string {
   const abs = isAbsolute(filePath) ? filePath : resolve(repoRoot, filePath);
-  const rel = relative(repoRoot, abs).replace(/\\/g, "/");
-  return rel;
+  return relative(repoRoot, abs).replace(/\\/g, "/");
 }
 
 /**
- * Parses YAML frontmatter delimited by `---`.
+ * Parses YAML frontmatter delimited by `---` at the start of a Markdown document.
+ *
+ * @param content - Raw Markdown file content.
+ * @returns {@link ParsedFrontmatter} containing parsed metadata, body text, or syntax error details.
  */
 export function parseFrontmatter(content: string): ParsedFrontmatter {
   const trimmed = content.trimStart();
@@ -56,15 +95,10 @@ export function parseFrontmatter(content: string): ParsedFrontmatter {
     return { exists: false, data: null, body: content };
   }
 
-  // Find closing delimiter (--- on its own line)
   const lines = content.split("\n");
-  let closingIndex = -1;
-  for (let i = 1; i < lines.length; i++) {
-    if (lines[i].trim() === "---") {
-      closingIndex = i;
-      break;
-    }
-  }
+  const closingIndex = lines.findIndex(
+    (line, idx) => idx > 0 && line.trim() === "---",
+  );
 
   if (closingIndex === -1) {
     return {
@@ -84,7 +118,6 @@ export function parseFrontmatter(content: string): ParsedFrontmatter {
     return { exists: true, data, body };
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    // Attempt to extract line number from parser error if present
     const lineMatch = errorMsg.match(/line (\d+)/i);
     const parsedLine = lineMatch ? Number(lineMatch[1]) + 1 : 2;
     return {
@@ -98,19 +131,21 @@ export function parseFrontmatter(content: string): ParsedFrontmatter {
 }
 
 /**
- * Verifies code fences (``` or ````) are balanced.
+ * Verifies that Markdown code fences (`` ``` `` or ```` ```` ````) are balanced.
+ *
+ * @param content - Raw Markdown file content.
+ * @param filePath - File path used in reported {@link Finding} items.
+ * @returns Array of unclosed code-fence findings (empty when balanced).
  */
 export function checkCodeFences(content: string, filePath: string): Finding[] {
-  const findings: Finding[] = [];
   const lines = content.split("\n");
   let insideFence = false;
   let fenceMarker = "";
   let openLine = 0;
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const match = line.match(/^(\s*)(`{3,})/);
-    if (!match) continue;
+    const match = lines[i]!.match(/^(\s*)(`{3,})/);
+    if (!match?.[2]) continue;
 
     const marker = match[2];
     if (!insideFence) {
@@ -123,56 +158,135 @@ export function checkCodeFences(content: string, filePath: string): Finding[] {
     }
   }
 
-  if (insideFence) {
-    findings.push({
+  if (!insideFence) {
+    return [];
+  }
+
+  return [
+    {
       file: filePath,
       line: openLine,
       rule: "code-fence/unclosed",
       message: `Unclosed code fence (${fenceMarker}) opened at line ${openLine}`,
       severity: "error",
-    });
-  }
-
-  return findings;
+    },
+  ];
 }
 
 /**
- * Checks for leaked local absolute machine paths (/home/, /Users/, etc.).
- * Allows explicitly documented fake placeholders (e.g. /path/to/...) or .scratch paths.
+ * Checks for leaked local absolute machine paths (`/home/`, `/Users/`, `file:///`) in tracked files.
+ *
+ * @remarks
+ * Allows `.scratch` references and generic `/path/to/` placeholders.
+ *
+ * @param content - Raw Markdown file content.
+ * @param filePath - File path used in reported {@link Finding} items.
+ * @returns Array of machine-path leak findings.
  */
 export function checkMachinePaths(
   content: string,
   filePath: string,
 ): Finding[] {
-  const findings: Finding[] = [];
-  const lines = content.split("\n");
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+  return content.split("\n").flatMap((line, idx) => {
     const matches = line.match(MACHINE_PATH_REGEX);
-    if (!matches) continue;
-
-    for (const match of matches) {
-      // Allow .scratch references (permitted for ephemeral local session artifacts)
-      if (match.includes(".scratch")) continue;
-      // Allow generic illustrative path templates
-      if (match.includes("/path/to/")) continue;
-
-      findings.push({
+    if (!matches) return [];
+    return matches
+      .filter((m) => !m.includes(".scratch") && !m.includes("/path/to/"))
+      .map((match): Finding => ({
         file: filePath,
-        line: i + 1,
+        line: idx + 1,
         rule: "path-portability/no-absolute-machine-path",
         message: `Found leaked absolute machine path "${match}". Use repository-relative paths instead.`,
+        severity: "error",
+      }));
+  });
+}
+
+/**
+ * Checks whether a Markdown link target should be ignored during local filesystem link verification.
+ */
+function shouldSkipLinkTarget(rawTarget: string): boolean {
+  if (rawTarget === "url" || rawTarget === "path") {
+    return true;
+  }
+  return SKIPPED_LINK_PREFIXES.some((prefix) => rawTarget.startsWith(prefix));
+}
+
+/**
+ * Checks whether a regex match inside `line` is enclosed in inline backticks (`` `[text](url)` ``).
+ */
+function isInlineCodeWrapped(line: string, match: RegExpExecArray): boolean {
+  const matchIndex = match.index ?? 0;
+  const fullMatch = match[0];
+  const beforeChar = matchIndex > 0 ? line[matchIndex - 1] : "";
+  const afterChar = line[matchIndex + fullMatch.length] ?? "";
+  return beforeChar === "`" && afterChar === "`";
+}
+
+/**
+ * Extracts a local filesystem link target from a regex match, or returns `null` when exempt.
+ */
+function extractLocalLinkTarget(
+  line: string,
+  match: RegExpExecArray,
+): { rawTarget: string; cleanTarget: string } | null {
+  if (isInlineCodeWrapped(line, match)) {
+    return null;
+  }
+  const rawTarget = match[2]
+    ?.trim()
+    .split(/\s+["']/)[0]
+    ?.trim();
+  if (!rawTarget || shouldSkipLinkTarget(rawTarget)) {
+    return null;
+  }
+  const cleanTarget = rawTarget.split("#")[0]?.split("?")[0];
+  return cleanTarget ? { rawTarget, cleanTarget } : null;
+}
+
+/**
+ * Validates all Markdown links on a single non-fenced line.
+ */
+function checkLineMarkdownLinks(
+  line: string,
+  lineNumber: number,
+  filePath: string,
+  fileDir: string,
+  repoRoot: string,
+): Finding[] {
+  if (line.includes("for example,") || line.includes("For example,")) {
+    return [];
+  }
+
+  const findings: Finding[] = [];
+  for (const match of line.matchAll(MARKDOWN_LINK_REGEX)) {
+    const extracted = extractLocalLinkTarget(line, match);
+    if (!extracted) continue;
+
+    const resolvedPath = extracted.cleanTarget.startsWith("/")
+      ? join(repoRoot, extracted.cleanTarget)
+      : resolve(fileDir, extracted.cleanTarget);
+
+    if (!existsSync(resolvedPath)) {
+      findings.push({
+        file: filePath,
+        line: lineNumber,
+        rule: "markdown/broken-link",
+        message: `Relative markdown link "${extracted.rawTarget}" points to non-existent path "${toRepoRelative(resolvedPath, repoRoot)}"`,
         severity: "error",
       });
     }
   }
-
   return findings;
 }
 
 /**
- * Validates local relative markdown links point to existing files on disk.
+ * Validates that local relative Markdown links point to existing files on disk.
+ *
+ * @param content - Markdown body content to scan.
+ * @param filePath - Repository-relative path of the Markdown file being checked.
+ * @param repoRoot - Repository root directory. Defaults to `process.cwd()`.
+ * @returns Array of broken-link findings.
  */
 export function checkMarkdownLinks(
   content: string,
@@ -182,87 +296,27 @@ export function checkMarkdownLinks(
   const findings: Finding[] = [];
   const fileDir = dirname(resolve(repoRoot, filePath));
   const lines = content.split("\n");
-  let insideFence = false;
   let fenceMarker = "";
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+    const line = lines[i]!;
     const fenceMatch = line.match(/^(\s*)(`{3,}|~{3,})/);
-    if (fenceMatch) {
+    if (fenceMatch?.[2]) {
       const marker = fenceMatch[2];
-      if (!insideFence) {
-        insideFence = true;
+      if (!fenceMarker) {
         fenceMarker = marker;
       } else if (
         marker.length >= fenceMarker.length &&
         marker[0] === fenceMarker[0]
       ) {
-        insideFence = false;
         fenceMarker = "";
       }
       continue;
     }
-    if (insideFence) continue;
-
-    // Ignore lines that are illustrative examples
-    if (line.includes("for example,") || line.includes("For example,"))
-      continue;
-
-    const matches = Array.from(line.matchAll(MARKDOWN_LINK_REGEX));
-
-    for (const match of matches) {
-      // If the link is wrapped inside inline backticks `[text](url)`, it's a documentation example
-      const fullMatch = match[0];
-      const matchIndex = match.index ?? 0;
-      const beforeChar = matchIndex > 0 ? line[matchIndex - 1] : "";
-      const afterChar =
-        matchIndex + fullMatch.length < line.length
-          ? line[matchIndex + fullMatch.length]
-          : "";
-      if (beforeChar === "`" && afterChar === "`") {
-        continue;
-      }
-
-      const rawTargetWithTitle = match[2]?.trim();
-      const rawTarget = rawTargetWithTitle?.split(/\s+["']/)[0]?.trim();
-      if (!rawTarget) continue;
-
-      // Ignore external URLs, anchors, mailto, URI schemes, image data URIs, or generic examples
-      if (
-        rawTarget.startsWith("http://") ||
-        rawTarget.startsWith("https://") ||
-        rawTarget.startsWith("mailto:") ||
-        rawTarget.startsWith("file://") ||
-        rawTarget.startsWith("#") ||
-        rawTarget.startsWith("data:") ||
-        rawTarget.startsWith("/docs/") ||
-        rawTarget.startsWith("/path/to/") ||
-        rawTarget.startsWith("path/to/") ||
-        rawTarget === "url" ||
-        rawTarget === "path"
-      ) {
-        continue;
-      }
-
-      // Strip query parameters and fragment anchors
-      const cleanTarget = rawTarget.split("#")[0].split("?")[0];
-      if (!cleanTarget) continue;
-
-      // Relative targets resolve from the markdown file's directory.
-      // Root-relative targets (starting with '/') resolve from the repo root.
-      const resolvedPath = cleanTarget.startsWith("/")
-        ? join(repoRoot, cleanTarget)
-        : resolve(fileDir, cleanTarget);
-
-      if (!existsSync(resolvedPath)) {
-        findings.push({
-          file: filePath,
-          line: i + 1,
-          rule: "markdown/broken-link",
-          message: `Relative markdown link "${rawTarget}" points to non-existent path "${toRepoRelative(resolvedPath, repoRoot)}"`,
-          severity: "error",
-        });
-      }
+    if (!fenceMarker) {
+      findings.push(
+        ...checkLineMarkdownLinks(line, i + 1, filePath, fileDir, repoRoot),
+      );
     }
   }
 
@@ -270,15 +324,18 @@ export function checkMarkdownLinks(
 }
 
 /**
- * Checks for prohibited unslop patterns (e.g. em dashes).
+ * Checks for prohibited unslop punctuation patterns (such as em dashes `—`).
+ *
+ * @param content - Raw Markdown file content.
+ * @param filePath - File path used in reported {@link Finding} items.
+ * @returns Array of unslop findings.
  */
 export function checkUnslop(content: string, filePath: string): Finding[] {
   const findings: Finding[] = [];
   const lines = content.split("\n");
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (line.includes("—")) {
+    if (lines[i]!.includes("—")) {
       findings.push({
         file: filePath,
         line: i + 1,
@@ -294,95 +351,191 @@ export function checkUnslop(content: string, filePath: string): Finding[] {
 }
 
 /**
- * Validates a rule file (.agents/rules/*.md).
+ * Validates that a frontmatter block exists and parsed without YAML syntax errors.
  */
-export function validateRuleFile(
+function validateFrontmatterPresence(
+  fm: ParsedFrontmatter,
   filePath: string,
-  content: string,
-  repoRoot: string = process.cwd(),
-): Finding[] {
-  const findings: Finding[] = [];
-  const fm = parseFrontmatter(content);
-
+  prefix: "rule" | "skill",
+  label: string,
+): Finding | null {
   if (!fm.exists) {
-    findings.push({
+    return {
       file: filePath,
       line: 1,
-      rule: "rule/frontmatter-missing",
-      message: "Rule file must include YAML frontmatter delimited by '---'.",
+      rule: `${prefix}/frontmatter-missing`,
+      message: `${label} must include YAML frontmatter delimited by '---'.`,
       severity: "error",
-    });
-    return findings;
+    };
   }
-
   if (fm.error) {
-    findings.push({
+    return {
       file: filePath,
       line: fm.errorLine ?? 1,
-      rule: "rule/frontmatter-syntax",
+      rule: `${prefix}/frontmatter-syntax`,
       message: fm.error,
       severity: "error",
-    });
-    return findings;
+    };
   }
+  return null;
+}
 
-  const data = fm.data ?? {};
+/**
+ * Validates that frontmatter `description` is a string of at least 10 characters.
+ */
+function validateDescriptionField(
+  data: Record<string, unknown>,
+  filePath: string,
+  prefix: "rule" | "skill",
+  label: string,
+): Finding | null {
+  if (
+    typeof data.description === "string" &&
+    data.description.trim().length >= 10
+  ) {
+    return null;
+  }
+  return {
+    file: filePath,
+    line: 3,
+    rule: `${prefix}/description-required`,
+    message: `${label} frontmatter must define a 'description' string with at least 10 characters.`,
+    severity: "error",
+  };
+}
 
-  // Check trigger
+/**
+ * Validates the `trigger` field in a `.agents/rules/*.md` frontmatter map.
+ */
+function validateRuleTriggerField(
+  data: Record<string, unknown>,
+  filePath: string,
+): Finding | null {
   if (!data.trigger) {
-    findings.push({
+    return {
       file: filePath,
       line: 2,
       rule: "rule/trigger-required",
       message:
         "Rule frontmatter must define a 'trigger' string pattern (e.g. 'apps/frontend/**' or '{package.json,bun.lock}').",
       severity: "error",
-    });
-  } else if (Array.isArray(data.trigger)) {
-    findings.push({
+    };
+  }
+  if (Array.isArray(data.trigger)) {
+    return {
       file: filePath,
       line: 2,
       rule: "rule/trigger-must-be-string",
       message:
         "Rule 'trigger' must be a single glob string, not a YAML sequence (array). Use brace expansion instead, for example: trigger: \"{package.json,bun.lock}\"",
       severity: "error",
-    });
-  } else if (typeof data.trigger !== "string" || !data.trigger.trim()) {
-    findings.push({
+    };
+  }
+  if (typeof data.trigger !== "string" || !data.trigger.trim()) {
+    return {
       file: filePath,
       line: 2,
       rule: "rule/trigger-invalid",
       message: "Rule 'trigger' must be a non-empty glob string.",
       severity: "error",
-    });
+    };
+  }
+  return null;
+}
+
+/**
+ * Runs the standard suite of local Markdown body checks (fences, machine paths, links, unslop).
+ */
+function runLocalMarkdownChecks(
+  content: string,
+  bodyForLinks: string,
+  filePath: string,
+  repoRoot: string,
+): Finding[] {
+  return [
+    ...checkCodeFences(content, filePath),
+    ...checkMachinePaths(content, filePath),
+    ...checkMarkdownLinks(bodyForLinks, filePath, repoRoot),
+    ...checkUnslop(content, filePath),
+  ];
+}
+
+/**
+ * Validates a rule file (`.agents/rules/*.md`).
+ *
+ * @param filePath - Repository-relative path to the rule file.
+ * @param content - Raw Markdown content of the rule file.
+ * @param repoRoot - Repository root directory. Defaults to `process.cwd()`.
+ * @returns Array of validation findings.
+ */
+export function validateRuleFile(
+  filePath: string,
+  content: string,
+  repoRoot: string = process.cwd(),
+): Finding[] {
+  const fm = parseFrontmatter(content);
+  const envelopeError = validateFrontmatterPresence(
+    fm,
+    filePath,
+    "rule",
+    "Rule file",
+  );
+  if (envelopeError) {
+    return [envelopeError];
   }
 
-  // Check description
-  if (
-    !data.description ||
-    typeof data.description !== "string" ||
-    data.description.trim().length < 10
-  ) {
-    findings.push({
-      file: filePath,
-      line: 3,
-      rule: "rule/description-required",
-      message:
-        "Rule frontmatter must define a 'description' string with at least 10 characters.",
-      severity: "error",
-    });
-  }
+  const data = fm.data ?? {};
+  const findings: Finding[] = [];
 
-  findings.push(...checkCodeFences(content, filePath));
-  findings.push(...checkMachinePaths(content, filePath));
-  findings.push(...checkMarkdownLinks(fm.body, filePath, repoRoot));
-  findings.push(...checkUnslop(content, filePath));
+  const triggerError = validateRuleTriggerField(data, filePath);
+  if (triggerError) findings.push(triggerError);
 
+  const descError = validateDescriptionField(data, filePath, "rule", "Rule");
+  if (descError) findings.push(descError);
+
+  findings.push(
+    ...runLocalMarkdownChecks(content, fm.body, filePath, repoRoot),
+  );
   return findings;
 }
 
 /**
- * Validates a skill file (.agents/skills/<name>/SKILL.md or reference markdown).
+ * Validates the `name` field in a `SKILL.md` frontmatter map.
+ */
+function validateSkillNameField(
+  data: Record<string, unknown>,
+  filePath: string,
+  isVendor: boolean,
+  skillDirName?: string,
+): Finding | null {
+  if (!data.name || typeof data.name !== "string") {
+    return {
+      file: filePath,
+      line: 2,
+      rule: "skill/name-required",
+      message: "SKILL.md frontmatter must provide a 'name' string.",
+      severity: "error",
+    };
+  }
+  if (!isVendor && skillDirName && data.name !== skillDirName) {
+    return {
+      file: filePath,
+      line: 2,
+      rule: "skill/name-directory-mismatch",
+      message: `Skill name '${data.name}' does not match directory name '${skillDirName}'.`,
+      severity: "error",
+    };
+  }
+  return null;
+}
+
+/**
+ * Validates a skill file (`.agents/skills/<name>/SKILL.md` or supporting reference Markdown).
+ *
+ * @param filePath - Repository-relative path to the skill Markdown file.
+ * @param content - Raw Markdown content of the skill file.
+ * @param options - Vendor status, skill directory name, main-file flag, and repository root options.
+ * @returns Array of validation findings.
  */
 export function validateSkillFile(
   filePath: string,
@@ -394,81 +547,41 @@ export function validateSkillFile(
     repoRoot?: string;
   },
 ): Finding[] {
-  const findings: Finding[] = [];
+  const findings: Finding[] = [...checkCodeFences(content, filePath)];
   const repoRoot = options.repoRoot ?? process.cwd();
   const fm = parseFrontmatter(content);
 
-  // Universal checks: Code fence integrity applies to all skills
-  findings.push(...checkCodeFences(content, filePath));
-
-  // Machine paths and local link graph checks only apply to local skills
-  // (Vendor skills may contain upstream CI paths or external repo links)
   if (!options.isVendor) {
     findings.push(...checkMachinePaths(content, filePath));
   }
 
   if (options.isMainSkillFile) {
-    if (!fm.exists) {
-      findings.push({
-        file: filePath,
-        line: 1,
-        rule: "skill/frontmatter-missing",
-        message: "SKILL.md must include YAML frontmatter delimited by '---'.",
-        severity: "error",
-      });
-      return findings;
-    }
-
-    if (fm.error) {
-      findings.push({
-        file: filePath,
-        line: fm.errorLine ?? 1,
-        rule: "skill/frontmatter-syntax",
-        message: fm.error,
-        severity: "error",
-      });
-      return findings;
+    const envelopeError = validateFrontmatterPresence(
+      fm,
+      filePath,
+      "skill",
+      "SKILL.md",
+    );
+    if (envelopeError) {
+      return [...findings, envelopeError];
     }
 
     const data = fm.data ?? {};
+    const nameError = validateSkillNameField(
+      data,
+      filePath,
+      options.isVendor,
+      options.skillDirName,
+    );
+    if (nameError) findings.push(nameError);
 
-    // Universal validation: Both vendor and local skills must provide name and description
-    if (!data.name || typeof data.name !== "string") {
-      findings.push({
-        file: filePath,
-        line: 2,
-        rule: "skill/name-required",
-        message: "SKILL.md frontmatter must provide a 'name' string.",
-        severity: "error",
-      });
-    } else if (
-      !options.isVendor &&
-      options.skillDirName &&
-      data.name !== options.skillDirName
-    ) {
-      findings.push({
-        file: filePath,
-        line: 2,
-        rule: "skill/name-directory-mismatch",
-        message: `Skill name '${data.name}' does not match directory name '${options.skillDirName}'.`,
-        severity: "error",
-      });
-    }
-
-    if (
-      !data.description ||
-      typeof data.description !== "string" ||
-      data.description.trim().length < 10
-    ) {
-      findings.push({
-        file: filePath,
-        line: 3,
-        rule: "skill/description-required",
-        message:
-          "SKILL.md frontmatter must define a 'description' string with at least 10 characters.",
-        severity: "error",
-      });
-    }
+    const descError = validateDescriptionField(
+      data,
+      filePath,
+      "skill",
+      "SKILL.md",
+    );
+    if (descError) findings.push(descError);
   } else if (fm.exists && fm.error) {
     findings.push({
       file: filePath,
@@ -479,19 +592,21 @@ export function validateSkillFile(
     });
   }
 
-  // Local-only checks: Skip unslop and local link graph checks for vendor skills
   if (!options.isVendor) {
     findings.push(
       ...checkMarkdownLinks(fm.body || content, filePath, repoRoot),
+      ...checkUnslop(content, filePath),
     );
-    findings.push(...checkUnslop(content, filePath));
   }
 
   return findings;
 }
 
 /**
- * Loads vendor skill names dynamically from skills-lock.json.
+ * Loads vendor-managed skill directory names from `skills-lock.json`.
+ *
+ * @param repoRoot - Repository root directory. Defaults to `process.cwd()`.
+ * @returns Set of skill names declared in `skills-lock.json`.
  */
 export function loadVendorSkillNames(
   repoRoot: string = process.cwd(),
@@ -514,7 +629,10 @@ export function loadVendorSkillNames(
 }
 
 /**
- * Collects all candidate rule and skill files under .agents.
+ * Recursively discovers all `.md` files under `.agents/`.
+ *
+ * @param repoRoot - Repository root directory. Defaults to `process.cwd()`.
+ * @returns Array of repository-relative `.md` paths under `.agents/`.
  */
 export function discoverAgentFiles(repoRoot: string = process.cwd()): string[] {
   const discovered: string[] = [];
@@ -538,32 +656,67 @@ export function discoverAgentFiles(repoRoot: string = process.cwd()): string[] {
 }
 
 /**
- * Runs validation across specified or discovered agent files.
+ * Resolves the list of `.agents/` Markdown files to validate.
+ */
+function resolveFilesToScan(
+  targetFiles: string[] | undefined,
+  repoRoot: string,
+): string[] {
+  if (!targetFiles || targetFiles.length === 0) {
+    return discoverAgentFiles(repoRoot).filter((f) => f.endsWith(".md"));
+  }
+  return targetFiles
+    .map((file) => toRepoRelative(file, repoRoot))
+    .filter(
+      (rel) =>
+        rel.endsWith(".md") &&
+        (rel.startsWith(".agents/rules/") ||
+          rel.startsWith(".agents/skills/") ||
+          rel === ".agents/AGENTS.md"),
+    );
+}
+
+/**
+ * Validates a single `.agents/` file based on its path category (`rules`, `skills`, or `AGENTS.md`).
+ */
+function validateSingleAgentFile(
+  relFile: string,
+  content: string,
+  vendorSkills: Set<string>,
+  repoRoot: string,
+): Finding[] {
+  if (relFile.startsWith(".agents/rules/")) {
+    return validateRuleFile(relFile, content, repoRoot);
+  }
+  if (relFile.startsWith(".agents/skills/")) {
+    const parts = relFile.split("/");
+    const skillDirName = parts[2] ?? "";
+    return validateSkillFile(relFile, content, {
+      isVendor: vendorSkills.has(skillDirName),
+      skillDirName,
+      isMainSkillFile: parts[parts.length - 1] === "SKILL.md",
+      repoRoot,
+    });
+  }
+  if (relFile === ".agents/AGENTS.md") {
+    return runLocalMarkdownChecks(content, content, relFile, repoRoot);
+  }
+  return [];
+}
+
+/**
+ * Runs validation across specified or discovered `.agents/` Markdown files.
+ *
+ * @param targetFiles - Optional explicit list of file paths to validate. When omitted, scans all Markdown files under `.agents/`.
+ * @param repoRoot - Repository root directory. Defaults to `process.cwd()`.
+ * @returns Object containing all `findings` and `scannedCount`.
  */
 export function verifyAgentRules(
   targetFiles?: string[],
   repoRoot: string = process.cwd(),
 ): { findings: Finding[]; scannedCount: number } {
   const vendorSkills = loadVendorSkillNames(repoRoot);
-  const filesToScan: string[] = [];
-
-  if (targetFiles && targetFiles.length > 0) {
-    for (const file of targetFiles) {
-      const rel = toRepoRelative(file, repoRoot);
-      if (
-        (rel.startsWith(".agents/rules/") ||
-          rel.startsWith(".agents/skills/") ||
-          rel === ".agents/AGENTS.md") &&
-        rel.endsWith(".md")
-      ) {
-        filesToScan.push(rel);
-      }
-    }
-  } else {
-    const all = discoverAgentFiles(repoRoot);
-    filesToScan.push(...all.filter((f) => f.endsWith(".md")));
-  }
-
+  const filesToScan = resolveFilesToScan(targetFiles, repoRoot);
   const findings: Finding[] = [];
   let scannedCount = 0;
 
@@ -573,37 +726,16 @@ export function verifyAgentRules(
 
     scannedCount++;
     const content = readFileSync(absPath, "utf8");
-
-    if (relFile.startsWith(".agents/rules/")) {
-      findings.push(...validateRuleFile(relFile, content, repoRoot));
-    } else if (relFile.startsWith(".agents/skills/")) {
-      const parts = relFile.split("/");
-      // Path format: .agents/skills/<skill-dir>/...
-      const skillDirName = parts[2] ?? "";
-      const isVendor = vendorSkills.has(skillDirName);
-      const isMainSkillFile = parts[parts.length - 1] === "SKILL.md";
-
-      findings.push(
-        ...validateSkillFile(relFile, content, {
-          isVendor,
-          skillDirName,
-          isMainSkillFile,
-          repoRoot,
-        }),
-      );
-    } else if (relFile === ".agents/AGENTS.md") {
-      findings.push(...checkCodeFences(content, relFile));
-      findings.push(...checkMachinePaths(content, relFile));
-      findings.push(...checkMarkdownLinks(content, relFile, repoRoot));
-      findings.push(...checkUnslop(content, relFile));
-    }
+    findings.push(
+      ...validateSingleAgentFile(relFile, content, vendorSkills, repoRoot),
+    );
   }
 
   return { findings, scannedCount };
 }
 
 /**
- * CLI execution entrypoint.
+ * CLI execution entrypoint for `bun scripts/verify-agent-rules.ts`.
  */
 export function run(): void {
   const startTime = performance.now();

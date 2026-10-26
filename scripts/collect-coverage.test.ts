@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "bun:test";
 import {
@@ -138,6 +140,22 @@ end_of_record
           },
         }),
       ).rejects.toThrow("fumadocs-mdx failed in");
+    });
+
+    it("preserves merged output directory when cleanPriorReports is true and outputDir is cleaned", async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "cov-clean-test-"));
+      const outputDir = path.join(tmpDir, "coverage/scripts");
+      try {
+        const result = await collectCoverage({
+          repoRoot: tmpDir,
+          outputDir,
+          cleanPriorReports: true,
+          spawnCommand: () => ({ status: 0 }),
+        });
+        expect(fs.existsSync(result.outputPath)).toBe(true);
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
     });
   });
 });

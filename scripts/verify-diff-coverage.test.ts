@@ -261,6 +261,19 @@ diff --git a/counter.ts b/counter.ts
       expect(result.totalModifiedExecutableLines).toBe(0);
       expect(result.fileResults).toHaveLength(0);
     });
+
+    it("excludes Next.js App Router boundary adapters from diff-coverage gate", () => {
+      const diffMap = new Map<string, number[]>([
+        ["apps/frontend/src/app/layout.next.tsx", [15, 16]],
+        ["apps/frontend/src/app/dashboard/page.next.tsx", [10]],
+      ]);
+      const lcovMap = new Map<string, Map<number, number>>();
+
+      const result = calculateDiffCoverage(diffMap, lcovMap, 100);
+      expect(result.passed).toBe(true);
+      expect(result.totalModifiedExecutableLines).toBe(0);
+      expect(result.fileResults).toHaveLength(0);
+    });
   });
 
   describe("generateMarkdownSummary", () => {
