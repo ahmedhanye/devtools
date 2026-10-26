@@ -1,61 +1,32 @@
 ---
-trigger: "{apps/**,packages/**,site/**,scripts/**,.github/**,package.json,bun.lock}"
-description: Change-scoped verification commands and quality checks for modified files.
+trigger: "**"
+description: Scope-matched verification commands and completion gates for modified files.
 ---
 
 # Verification rules
 
-Rules for selecting verification commands tailored to changed files and enforcing verification parity.
+Run the narrowest verification commands that prove modified files work. Skip unrelated suites.
 
-## Verification tiers
+## Scope matrix
 
-Follow verification tiers before committing, pushing, or requesting review:
+Inspect changed files (`git status --short` or `git diff --name-only origin/main`) and run only the checks matching the modified paths:
 
-1. **Pre-commit staged checks (<1s):**
-   Executed automatically by Lefthook `pre-commit` across staged files. Runs Oxlint autofixes, Prettier formatting, `react-doctor --staged`, frontend tests (`bun --filter @devtools/frontend test` when `apps/frontend/src/**/*.{ts,tsx}` files are staged), and staged secret checks.
-2. **Fast verification gate (<5s):**
-   ```bash
-   bun run verify:fast
-   ```
-   Runs Oxlint, Prettier check, workspace typechecks, Fallow dead-code analysis, agent rule verification (`bun run lint:agents`), and frontend tests (`bun --filter @devtools/frontend test`) across the monorepo.
-3. **Workspace test run:**
-   ```bash
-   bun --filter @devtools/<package> test
-   ```
-   Runs targeted tests during iterative development and TDD cycles.
-4. **Canonical local verification gate (on-demand & pre-PR):**
-   ```bash
-   bun run verify
-   ```
-   Runs `bun run verify:fast && bun run lint:design && bun run lint:fsd && bun run fallow:dupes && bun run test:coverage && bun run verify:diff-coverage && bun run audit && bun run build:smoke && bun run lint:workflows`.
-   Executed on-demand locally. Pull-request CI runs applicable verification checks in separate conditional jobs.
-   **Mandatory requirement**: Agents must execute `bun run verify` with exit code 0 after completing an implementation plan or before completing `/code-review`.
+| Changed paths                                                                                                                                             | Iterative checks (run on affected files/workspaces)                                                                                                                                     | Completion checks (run before handoff or review)                                                                                                                                                                                                                                                      |
+| :-------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docs/**`, root `*.md`                                                                                                                                    | `bunx prettier --check <files>`                                                                                                                                                         | `bunx prettier --check <files>`                                                                                                                                                                                                                                                                       |
+| `.agents/**`                                                                                                                                              | `bun scripts/verify-agent-rules.ts <files>`<br>`bunx prettier --check <files>`                                                                                                          | `bun run lint:agents`<br>`bunx prettier --check <files>`                                                                                                                                                                                                                                              |
+| `.github/workflows/**`, `.github/actions/**`, `**/*.sh`                                                                                                   | `bun run lint:workflows`                                                                                                                                                                | `bun run lint:workflows`                                                                                                                                                                                                                                                                              |
+| `scripts/**`                                                                                                                                              | `bunx oxlint --deny-warnings <files>`<br>`bunx prettier --check <files>`<br>`bun test <test-files>`                                                                                     | `bunx oxlint --deny-warnings scripts/`<br>`bunx prettier --check scripts/`<br>`bun test scripts/`                                                                                                                                                                                                     |
+| `packages/<pkg>/**`                                                                                                                                       | `bunx oxlint --deny-warnings <files>`<br>`bunx prettier --check <files>`<br>`bun --filter @devtools/<pkg> typecheck`<br>`bun test <test-files>`                                         | `bun --filter @devtools/<pkg> test`<br>`bun run fallow:dead-code`<br>`bun run fallow:arch`                                                                                                                                                                                                            |
+| `apps/api/**`, `apps/cli/**`                                                                                                                              | `bunx oxlint --deny-warnings <files>`<br>`bunx prettier --check <files>`<br>`bun --filter @devtools/<pkg> typecheck`<br>`bun test <test-files>`                                         | `bun --filter @devtools/<pkg> test`<br>`bun run fallow:dead-code`<br>`bun run fallow:arch`<br>(If CLI entrypoint or bundling changed: `bun run build:smoke`)                                                                                                                                          |
+| `apps/frontend/**`                                                                                                                                        | `bunx oxlint --deny-warnings <files>`<br>`bunx prettier --check <files>`<br>`bun --filter @devtools/frontend typecheck`<br>`bun --filter @devtools/frontend test <test-or-story-files>` | `bun --filter @devtools/frontend test`<br>`bun run lint:fsd`<br>`bun run lint:design`<br>`bunx react-doctor --project apps/frontend --scope changed`<br>`bun --filter @devtools/frontend build`<br>(If `*.stories.tsx` or `.storybook/**` changed: `bun --filter @devtools/frontend build-storybook`) |
+| `site/content/**`                                                                                                                                         | `bunx prettier --check <files>`<br>`bun --filter @devtools/site typecheck`                                                                                                              | `bun --filter @devtools/site build`                                                                                                                                                                                                                                                                   |
+| `site/src/**`, `site/tests/**`                                                                                                                            | `bunx oxlint --deny-warnings <files>`<br>`bunx prettier --check <files>`<br>`bun --filter @devtools/site typecheck`<br>`bun --filter @devtools/site test`                               | `bunx react-doctor --project site --scope changed`<br>`bun --filter @devtools/site build`                                                                                                                                                                                                             |
+| Root configs (`package.json`, `bun.lock`, `tsconfig*.json`, `bunfig.toml`, `lefthook.yml`, `.oxlintrc.json`, `.fallowrc.json`) or multi-workspace changes | Matching workspace checks from rows above                                                                                                                                               | `bun run verify`                                                                                                                                                                                                                                                                                      |
 
-## Scope-based verification
+## Gate selection
 
-During iterative development, run verification commands matching modified files to stay fast:
-
-1. **Determine changed files** using `git status --short` or `git diff --name-only main`.
-2. **Execute matching scoped commands**. All scoped checks must pass with exit code 0.
-3. **Run `bun run verify` for cross-cutting changes**: Run the full verification suite whenever changes modify root configurations (`package.json`, `bun.lock`, `tsconfig*.json`, `bunfig.toml`, `lefthook.yml`, `.oxlintrc.json`, `.fallowrc.json`), cross-package contracts, touch multiple workspaces simultaneously, or prior to finalizing work.
-
-## Verification matrix
-
-| Changed files                                | Scope                 | Commands                                                                                                                                                                                                                                                                |
-| -------------------------------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `.github/workflows/**`, `.github/actions/**` | Workflow validation   | `bun run lint:workflows`<br>`bun scripts/verify-staged-secrets.ts` (after staging)                                                                                                                                                                                      |
-| `apps/<pkg>/**`                              | Application workspace | `bunx oxlint apps/<pkg>/**`<br>`bunx prettier --check apps/<pkg>/**`<br>`bun --filter @devtools/<pkg> typecheck`<br>`bun --filter @devtools/<pkg> test`<br>(For frontend: `bun --filter @devtools/frontend lint:design` and `bun --filter @devtools/frontend lint:fsd`) |
-| `packages/<pkg>/**`                          | Package workspace     | `bunx oxlint packages/<pkg>/**`<br>`bunx prettier --check packages/<pkg>/**`<br>`bun --filter @devtools/<pkg> typecheck`<br>`bun --filter @devtools/<pkg> test`                                                                                                         |
-| `site/content/**`                            | Documentation content | `bunx prettier --check site/content/**`<br>`bun --filter @devtools/site typecheck`<br>`bun --filter @devtools/site build`                                                                                                                                               |
-| `site/**` (site application code)            | Site workspace        | `bunx oxlint site/src/**`<br>`bunx prettier --check site/**`<br>`bun --filter @devtools/site typecheck`<br>`bun --filter @devtools/site test`<br>`bun --filter @devtools/site build`                                                                                    |
-| `scripts/**`                                 | Internal scripts      | `bunx oxlint scripts/`<br>`bunx prettier --check scripts/`<br>`bun test scripts/`                                                                                                                                                                                       |
-| `.agents/**`, repository docs (`*.md`)       | Docs and guidelines   | `bun run lint:agents`<br>`bunx prettier --check .agents/** *.md`                                                                                                                                                                                                        |
-| Cross-cutting changes / pre-PR review        | Full verification     | `bun run verify`                                                                                                                                                                                                                                                        |
-
-## Quality guardrails
-
-To prevent regressions and recurring review findings:
-
-- **Exit codes in business logic:** Command handlers and library functions must return numeric exit codes (`Promise<number>`) or throw typed errors. Use Commander's `.exitOverride()` so CLI parsing errors are testable without killing the test runner.
-- **Isolate host environment in unit tests:** Accept filesystem and execution seams rather than probing host binaries or ambient filesystem state directly.
-- **Platform seams:** Code branching on `platform()` or OS-specific paths must accept a seam (e.g., `seam?: { platform?: () => string }`) to allow deterministic verification on any runner.
+1. **Documentation, rules, or workflow-only changes**: Stop after the completion checks in the matching row above exit `0`. Do not run `bun run verify`, `bun run verify:fast`, or workspace test suites when no application, package, site, or script code changed.
+2. **Single-workspace code changes**: Run the row's iterative checks while editing, then run the row's completion checks plus `bun run test:coverage && bun run verify:diff-coverage` to confirm 100% diff coverage on modified executable lines.
+3. **Cross-cutting code changes and pre-PR code gate**: Run `bun run verify:fast` for a quick monorepo health check, and run `bun run verify` once before finalizing implementation or starting `/code-review` whenever executable code or root configurations changed.
+4. **Pre-commit staging check**: After staging files with `git add`, run `bun scripts/verify-staged-secrets.ts` to verify no credentials or unignored test tokens are staged.
