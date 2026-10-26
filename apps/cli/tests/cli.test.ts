@@ -207,8 +207,11 @@ describe("CLI Command Structure & Parser Unit Tests", () => {
     const origLog = console.log;
     const origErr = console.error;
     const origExit = process.exit;
+    let errOutput = "";
     console.log = () => {};
-    console.error = () => {};
+    console.error = (msg: string) => {
+      errOutput += msg;
+    };
     process.exit = ((code?: number) => {
       throw new Error(`exit:${code}`);
     }) as unknown as typeof process.exit;
@@ -252,18 +255,23 @@ describe("CLI Command Structure & Parser Unit Tests", () => {
         ),
       ).rejects.toThrow("exit:1");
 
-      // 4. Interactive conflict prompt error exits 1
+      // 4. Interactive conflict prompt error exits 1 with stderr diagnostic
+      errOutput = "";
       await expect(
         runWebCommand(
           { port: occupiedPort, host: "127.0.0.1" },
           {
             isInteractive: () => true,
             confirm: async () => {
-              throw new Error("cancelled");
+              throw new Error("prompt rejected");
             },
           },
         ),
       ).rejects.toThrow("exit:1");
+      expect(errOutput).toContain(
+        "Error: Interactive port conflict prompt failed",
+      );
+      expect(errOutput).toContain("prompt rejected");
 
       // 5. Interactive conflict accepted boots daemon on next available port
       const instance = await runWebCommand(
@@ -308,6 +316,25 @@ describe("CLI Command Structure & Parser Unit Tests", () => {
     } finally {
       console.error = origErr;
       process.exit = origExit;
+    }
+  });
+
+  test("runWebCommand resolves configuration through options.env seam without reading global process.env", async () => {
+    const origLog = console.log;
+    console.log = () => {};
+    try {
+      const instance = await runWebCommand({
+        env: {
+          PORT: "0",
+          HOST: "127.0.0.1",
+          NODE_ENV: "test",
+        },
+      });
+      expect(instance).toBeDefined();
+      expect(instance?.hostname).toBe("127.0.0.1");
+      await instance?.stop();
+    } finally {
+      console.log = origLog;
     }
   });
 });

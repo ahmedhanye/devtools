@@ -1,8 +1,12 @@
-import { APP_VERSION } from "@devtools/core";
+import { APP_VERSION, type EnvMap } from "@devtools/core";
 import { Command } from "commander";
 import pc from "picocolors";
 import { registerBrowserCommands } from "./browser";
-import { type DaemonInstance, startDaemon } from "./daemon";
+import {
+  type DaemonInstance,
+  resolveDaemonConfig,
+  startDaemon,
+} from "./daemon";
 import { findNextAvailablePort, isPortAvailable } from "./port";
 
 /**
@@ -15,6 +19,8 @@ export interface WebCommandOptions {
   host?: string;
   /** Custom pre-rendered static asset directory (`--static-dir`). */
   staticDir?: string;
+  /** Optional environment variable map seam for hermetic in-process testing. */
+  env?: EnvMap;
 }
 
 /**
@@ -55,7 +61,12 @@ async function promptPortChange(
       process.exit(1);
     }
     return nextPort;
-  } catch {
+  } catch (error) {
+    console.error(
+      pc.red(
+        `Error: Interactive port conflict prompt failed: ${error instanceof Error ? error.message : String(error)}`,
+      ),
+    );
     process.exit(1);
   }
 }
@@ -109,15 +120,18 @@ export async function runWebCommand(
   options: WebCommandOptions = {},
   deps?: WebCommandDeps,
 ): Promise<DaemonInstance | undefined> {
-  let targetPort =
-    options.port !== undefined
-      ? options.port
-      : process.env.PORT !== undefined
-        ? Number.parseInt(process.env.PORT, 10)
-        : 4000;
+  let config: ReturnType<typeof resolveDaemonConfig>;
+  try {
+    config = resolveDaemonConfig(options);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(pc.red(message));
+    process.exit(1);
+  }
 
-  const targetHost = options.host ?? process.env.HOST ?? "127.0.0.1";
-  const staticDir = options.staticDir ?? process.env.DEVTOOLS_STATIC_DIR;
+  let targetPort = config.port;
+  const targetHost = config.host;
+  const staticDir = config.staticDir;
 
   if (targetPort !== 0 && !isPortAvailable(targetPort, targetHost)) {
     targetPort = await resolvePortConflict(targetPort, targetHost, deps);
@@ -126,6 +140,7 @@ export async function runWebCommand(
   let instance: DaemonInstance;
   try {
     instance = startDaemon({
+      ...options,
       port: targetPort,
       host: targetHost,
       staticDir,
