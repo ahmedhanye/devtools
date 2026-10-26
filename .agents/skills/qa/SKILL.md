@@ -1,6 +1,6 @@
 ---
 name: qa
-description: Generate a pair of verification artifacts for code changes without requiring the reviewer to read code or run tests - an interactive end-to-end checklist for QA, and an architecture, diff, and logic synthesis for engineers.
+description: Generate two verification artifacts for code changes without requiring the reviewer to read code or run tests, providing an interactive end-to-end checklist for QA and a logic synthesis for engineers.
 disable-model-invocation: true
 ---
 
@@ -25,9 +25,14 @@ Inspect file statistics and diff hunks:
 git diff <target> --stat
 ```
 
+Map the diff to all touched capabilities across workspaces:
+- Workspace manifests: read `package.json` in each touched workspace to check the exact `name` field for `bun --filter` commands and inspect available scripts. Do not assume the directory name matches the package name.
+- HTTP routes and middleware: read the router factory and route files to confirm exact URL paths. Do not guess version prefixes like `/v1/`. Read middleware source to check which HTTP methods, headers, and conditionals trigger security branches before writing request commands.
+- User surfaces: list all modified interfaces (CLI commands, HTTP endpoints, web pages, component stories, documentation pages) to test each affected area.
+
 Anchor verification to the author's declared scope in the pull request description or commit log. Never invent verification steps for features that the diff touches partially or that remain unbuilt.
 
-Completion criterion: Target scope, commit log, and diff statistics collected.
+Completion criterion: Target scope, commit log, diff statistics, package manifest names, exact route paths, and affected user surfaces collected.
 
 ## 2. Author verification artifacts
 
@@ -62,6 +67,10 @@ For UI flows without a terminal command, format actions as numbered or bulleted 
 
 Every command must run reliably when pasted into a terminal:
 - Sequence prerequisites first so later commands find the assets they depend on.
+- Use the package manifest name from `package.json` with `bun --filter`. Never guess workspace filter names from folder paths.
+- Use exact route paths confirmed from router source files.
+- Match middleware triggers: test the HTTP verbs, headers, and bodies that activate the intended branch.
+- Test all modified user surfaces: when component code or `.stories.tsx` files change, add a Storybook scenario (`storybook dev`); when application pages or layouts change, add a web dev server scenario; when documentation changes, add a docs server scenario.
 - Do not strip runtime directories like `~/.bun/bin` from `PATH` when testing fallback paths or missing dependencies.
 - Do not pass dummy fallback binaries, such as `/bin/sh` in place of a browser executable, that cause assertion failures.
 - Use explicit flags or isolated temporary directories to test negative and fallback paths.

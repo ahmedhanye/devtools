@@ -95,13 +95,7 @@ Before branching:
    gh issue edit <ticket_number> --add-assignee @me
    gh issue develop <ticket_number> --checkout
    ```
-   If using project board tracking:
-   ```bash
-   ITEM_ID=$(gh project item-add <project_number> --owner <owner> --url "https://github.com/<owner>/<repo>/issues/<ticket_number>" --format json --jq .id 2>/dev/null || true)
-   if [ -n "$ITEM_ID" ]; then
-     gh project item-edit --id "$ITEM_ID" --project-id "<project_id>" --field-id "<status_field_id>" --single-select-option-id "<in_progress_option_id>"
-   fi
-   ```
+   If using project board tracking, transition the item status using the `gh project item-edit` command documented in [Project board status lifecycle](#project-board-status-lifecycle) with `<in_progress_option_id>`.
 
 If the linked branch was already created, list linked branches and check out the branch by name:
 

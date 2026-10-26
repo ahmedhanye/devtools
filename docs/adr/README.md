@@ -46,7 +46,17 @@ If any criterion is missing, skip the ADR.
 ```markdown
 # {Short title of the decision}
 
-{1-3 sentences: what is the context, what did we decide, and why.}
+## Context
+
+{Context and problem statement: what is the situation, and what forces are driving a choice.}
+
+## Decision
+
+{1-3 clear statements: what did we decide and what architecture boundaries are established.}
+
+## Consequences
+
+{Non-obvious downstream impacts, positive trade-offs, and operational liabilities.}
 ```
 
 The sequential number belongs exclusively in the filename slug (`docs/adr/0001-slug.md`); do not prefix the markdown H1 title with `{NNNN}:`. The value is in recording that a decision was made and why, not in filling out bureaucratic sections.

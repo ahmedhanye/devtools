@@ -27,13 +27,7 @@ When inspecting pull requests:
    ```bash
    gh pr create --assignee "@me" --fill
    ```
-   If maintaining tracking status on a GitHub Project:
-   ```bash
-   ITEM_ID=$(gh project item-add <project_number> --owner <owner> --url "https://github.com/<owner>/<repo>/issues/<ticket_number>" --format json --jq .id 2>/dev/null || true)
-   if [ -n "$ITEM_ID" ]; then
-     gh project item-edit --id "$ITEM_ID" --project-id "<project_id>" --field-id "<status_field_id>" --single-select-option-id "<in_review_option_id>"
-   fi
-   ```
+   If maintaining tracking status on a GitHub Project, update the ticket item to `<in_review_option_id>` using the commands in [Issue tracking: Project board status lifecycle](issues.md#project-board-status-lifecycle).
 
 ## Review thread resolution
 
