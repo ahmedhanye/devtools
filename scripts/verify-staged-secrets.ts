@@ -62,17 +62,36 @@ const BINARY_EXTENSIONS = new Set([
   ".lockb",
 ]);
 
+/**
+ * Suspected credential match reported by {@link scanContentForSecrets}.
+ */
 export interface Finding {
+  /** Repository-relative path of the file containing the suspected secret. */
   file: string;
+  /** 1-based line number where the match occurred. */
   line: number;
+  /** Human-readable name of the matched credential pattern. */
   rule: string;
+  /** Raw matched credential token (masked via {@link maskSecret} before logging). */
   token: string;
 }
 
+/**
+ * Checks whether a source line carries an inline `trufflehog:ignore` suppression comment.
+ *
+ * @param line - Source line text to inspect.
+ * @returns `true` if `trufflehog:ignore` is present on the line.
+ */
 export function isIgnoredLine(line: string): boolean {
   return /trufflehog:ignore/i.test(line);
 }
 
+/**
+ * Redacts a secret string for safe diagnostic logging, preserving at most a short prefix.
+ *
+ * @param secret - Raw credential string to mask.
+ * @returns Redacted string with trailing characters replaced by `*`.
+ */
 export function maskSecret(secret: string): string {
   if (secret.length <= 8) {
     return "*".repeat(secret.length);
@@ -83,13 +102,20 @@ export function maskSecret(secret: string): string {
   );
 }
 
+/**
+ * Checks whether a matched token is a known synthetic placeholder (`mock_*` or all zeros).
+ */
 function isSyntheticPlaceholder(token: string): boolean {
-  if (token.startsWith("mock_") || /^0+$/.test(token)) {
-    return true;
-  }
-  return false;
+  return token.startsWith("mock_") || /^0+$/.test(token);
 }
 
+/**
+ * Scans text content line-by-line against high-confidence credential regex patterns.
+ *
+ * @param content - File text content to scan.
+ * @param filePath - File path label attached to any resulting {@link Finding} records. Defaults to `"unknown"`.
+ * @returns Array of detected secret findings.
+ */
 export function scanContentForSecrets(
   content: string,
   filePath = "unknown",
@@ -98,19 +124,17 @@ export function scanContentForSecrets(
   const lines = content.split("\n");
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+    const line = lines[i]!;
     if (isIgnoredLine(line)) {
       continue;
     }
 
     for (const pattern of SECRET_PATTERNS) {
       const match = pattern.regex.exec(line);
-      if (match) {
-        const token = match[1] ?? match[0];
-        if (isSyntheticPlaceholder(token)) {
-          continue;
-        }
+      if (!match) continue;
 
+      const token = match[1] ?? match[0];
+      if (!isSyntheticPlaceholder(token)) {
         findings.push({
           file: filePath,
           line: i + 1,
@@ -124,13 +148,23 @@ export function scanContentForSecrets(
   return findings;
 }
 
+/**
+ * Minimal subprocess result interface for injectable git command execution in tests.
+ */
 export interface GitRunnerResult {
+  /** Subprocess exit code (`0` indicates success). */
   exitCode: number;
+  /** Standard output buffer or string. */
   stdout: { toString(): string } | string;
+  /** Optional standard error buffer or string. */
   stderr?: { toString(): string } | string;
 }
 
 let cachedRepoRoot: string | null = null;
+
+/**
+ * Resolves and caches the git repository top-level directory path.
+ */
 function getRepoRoot(): string {
   if (cachedRepoRoot) return cachedRepoRoot;
   try {
@@ -145,6 +179,14 @@ function getRepoRoot(): string {
   return process.cwd();
 }
 
+/**
+ * Normalizes an arbitrary file path into a forward-slash path relative to the git repository root.
+ *
+ * @param filePath - Input file path (absolute, relative to `cwd`, or already repo-relative).
+ * @param repoRoot - Git repository root path. Defaults to `git rev-parse --show-toplevel`.
+ * @param cwd - Current working directory. Defaults to `process.cwd()`.
+ * @returns Normalized repository-relative path string.
+ */
 export function toRepoRelativePath(
   filePath: string,
   repoRoot: string = getRepoRoot(),
@@ -170,12 +212,17 @@ export function toRepoRelativePath(
 
   const abs = resolve(cwd, filePath);
   const relFromRepo = relative(repoRoot, abs).replace(/\\/g, "/");
-  if (relFromRepo.startsWith("../")) {
-    return filePath.replace(/\\/g, "/");
-  }
-  return relFromRepo;
+  return relFromRepo.startsWith("../")
+    ? filePath.replace(/\\/g, "/")
+    : relFromRepo;
 }
 
+/**
+ * Splits null-delimited (`-z`) `git diff --name-only` output into trimmed file paths.
+ *
+ * @param output - Raw null-delimited stdout from `git diff -z`.
+ * @returns Array of non-empty file path strings.
+ */
 export function parseStagedFilesOutput(output: string): string[] {
   if (!output) {
     return [];
@@ -186,6 +233,12 @@ export function parseStagedFilesOutput(output: string): string[] {
     .filter(Boolean);
 }
 
+/**
+ * Queries git for paths staged for deletion (`--diff-filter=D`).
+ *
+ * @param spawnFn - Injectable subprocess runner.
+ * @returns Set of repository-relative file paths staged for deletion.
+ */
 export function getStagedDeletedFiles(
   spawnFn: (args: string[]) => GitRunnerResult = (args) => Bun.spawnSync(args),
 ): Set<string> {
@@ -207,6 +260,13 @@ export function getStagedDeletedFiles(
   return new Set();
 }
 
+/**
+ * Queries git for all non-deleted staged file paths (`--diff-filter=d`).
+ *
+ * @param spawnFn - Injectable subprocess runner.
+ * @param onExit - Injectable exit handler invoked with `1` if `git diff` fails.
+ * @returns Array of staged repository-relative file paths.
+ */
 export function getStagedFiles(
   spawnFn: (args: string[]) => GitRunnerResult = (args) => Bun.spawnSync(args),
   onExit: (code: number) => never = (code) => process.exit(code),
@@ -232,17 +292,25 @@ export function getStagedFiles(
     );
     return onExit(1);
   }
-  const output = proc.stdout.toString();
-  return parseStagedFilesOutput(output);
+  return parseStagedFilesOutput(proc.stdout.toString());
 }
 
+/**
+ * Filters out binary blobs containing null bytes (`\0`).
+ */
 function sanitizeFileText(text: string): string | null {
-  if (text.includes("\0")) {
-    return null;
-  }
-  return text;
+  return text.includes("\0") ? null : text;
 }
 
+/**
+ * Reads the staged git index blob (`git show :<path>`) for a file path.
+ *
+ * @param filePath - File path to read from the git index.
+ * @param repoRoot - Git repository root path.
+ * @param spawnFn - Injectable subprocess runner.
+ * @param onExit - Injectable exit handler invoked with `1` if reading the staged blob fails.
+ * @returns UTF-8 text content of the staged blob, or `null` for binary files.
+ */
 export function readStagedContent(
   filePath: string,
   repoRoot: string = getRepoRoot(),
@@ -279,10 +347,6 @@ export function readStagedContent(
 
 /**
  * Executes the staged secrets verification workflow.
- *
- * Scans staged files against known credential patterns, filters allowlisted
- * paths and fake fixtures, logs violations, and exits with a non-zero code
- * if potential secrets are detected.
  */
 function run(): void {
   const startTime = performance.now();
@@ -307,8 +371,7 @@ function run(): void {
       continue;
     }
     scannedCount++;
-    const findings = scanContentForSecrets(content, file);
-    allFindings.push(...findings);
+    allFindings.push(...scanContentForSecrets(content, file));
   }
 
   const elapsed = (performance.now() - startTime).toFixed(1);
