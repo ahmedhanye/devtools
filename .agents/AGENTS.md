@@ -1,14 +1,5 @@
 # Agent guidelines
 
-## Context pointers
-
-- **Git workflow and issues.** Read `CONTRIBUTING.md` when managing branches, pull requests, commits, and GitHub issues.
-- **Domain vocabulary.** Read `GLOSSARY-MAP.md` for bounded context glossaries under `docs/glossary/` and naming constraints.
-- **Architecture decision records.** Consult `docs/adr/` before changing runtime execution, persistence, or network boundaries.
-- **Documentation site architecture.** Read `docs/architecture/site.md` when modifying Fumadocs routing, MDX configurations, search APIs, or LLM endpoints.
-- **Coding standards.** Read `CODING_STANDARDS.md` and `docs/coding-standards/` before authoring TypeScript, CLI tools, APIs, frontend components, or tests.
-- **System architecture.** Consult `ARCHITECTURE.md` for system topology, component interactions, runtime lifecycles, and bounded context boundaries.
-
 ## Execution boundaries
 
 - **Problem-first planning.** State concrete technical failure modes and verify patterns against documentation or code before asking decision questions.
