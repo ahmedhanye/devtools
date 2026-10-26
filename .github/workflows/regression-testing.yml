@@ -301,6 +301,9 @@ jobs:
       - name: Build Next.js static production export
         run: bun --filter @devtools/frontend build
 
+      - name: Build Storybook static production bundle
+        run: bun --filter @devtools/frontend build-storybook
+
       - name: Compile and smoke test host CLI binary
         run: bun run build:smoke
 

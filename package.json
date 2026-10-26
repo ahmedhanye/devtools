@@ -38,7 +38,7 @@
     "fallow:health": "fallow health",
     "react-doctor": "CI=true react-doctor --project apps/frontend,site --no-telemetry --no-supply-chain && CI=true react-doctor design --project apps/frontend,site --no-telemetry --no-supply-chain",
     "verify:diff-coverage": "bun scripts/verify-diff-coverage.ts --base origin/main",
-    "verify:fast": "bun run check && bun run typecheck && bun run fallow:dead-code && bun run fallow:arch && bun run fallow:health && bun run lint:agents",
+    "verify:fast": "bun run check && bun run typecheck && bun run fallow:dead-code && bun run fallow:arch && bun run fallow:health && bun run lint:agents && bun --filter @devtools/frontend test",
     "verify": "bun run verify:fast && bun run lint:design && bun run lint:fsd && bun run fallow:dupes && bun run react-doctor && bun run test:coverage && bun run verify:diff-coverage && bun run audit && bun run build:smoke && bun run lint:workflows"
   },
   "devDependencies": {

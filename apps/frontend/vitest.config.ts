@@ -1,7 +1,10 @@
+import { createRequire } from "node:module";
 import path from "node:path";
 import react from "@vitejs/plugin-react";
 import { loadCsf } from "storybook/internal/csf-tools";
 import { defineConfig, type Plugin } from "vitest/config";
+
+const require = createRequire(import.meta.url);
 
 function generateStoryTestSuite(
   id: string,
@@ -27,7 +30,7 @@ function generateStoryTestSuite(
   return `
 // Injected by storybookStoriesPlugin for Vitest execution
 import { describe as __sb_describe, test as __sb_test } from "vitest";
-import { composeStories as __sb_composeStories } from "@storybook/react";
+import { composeStories as __sb_composeStories } from "@storybook/nextjs-vite";
 import * as __sb_previewModule from "${previewPath}";
 
 const __sb_module = {
@@ -98,6 +101,11 @@ export default defineConfig({
   test: {
     environment: "happy-dom",
     globals: true,
+    server: {
+      deps: {
+        inline: [/@storybook/, /vite-plugin-storybook-nextjs/],
+      },
+    },
     include: ["src/**/*.{test,spec}.ts", "src/**/*.stories.{ts,tsx}"],
     coverage: {
       provider: "v8",
@@ -107,6 +115,7 @@ export default defineConfig({
       exclude: [
         "**/*.test.{ts,tsx}",
         "**/*.stories.{ts,tsx}",
+        "src/app/**/*.next.{ts,tsx}",
         ".storybook/**",
         "**/dist/**",
         "**/.next/**",
@@ -117,6 +126,30 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "./src"),
+      "next/navigation":
+        require.resolve("vite-plugin-storybook-nextjs/browser/mocks/navigation"),
+      "@storybook/nextjs-vite/navigation.mock":
+        require.resolve("vite-plugin-storybook-nextjs/browser/mocks/navigation"),
+      "next/link":
+        require.resolve("vite-plugin-storybook-nextjs/browser/mocks/link"),
+      "@storybook/nextjs-vite/link.mock":
+        require.resolve("vite-plugin-storybook-nextjs/browser/mocks/link"),
+      "next/headers":
+        require.resolve("vite-plugin-storybook-nextjs/browser/mocks/headers"),
+      "@storybook/nextjs-vite/headers.mock":
+        require.resolve("vite-plugin-storybook-nextjs/browser/mocks/headers"),
+      "next/router":
+        require.resolve("vite-plugin-storybook-nextjs/browser/mocks/router"),
+      "@storybook/nextjs-vite/router.mock":
+        require.resolve("vite-plugin-storybook-nextjs/browser/mocks/router"),
+      "next/cache":
+        require.resolve("vite-plugin-storybook-nextjs/browser/mocks/cache"),
+      "@storybook/nextjs-vite/cache.mock":
+        require.resolve("vite-plugin-storybook-nextjs/browser/mocks/cache"),
+      "sb-original/image-context":
+        require.resolve("vite-plugin-storybook-nextjs/browser/mocks/image-context"),
+      "sb-original/default-loader":
+        require.resolve("vite-plugin-storybook-nextjs/browser/mocks/image-default-loader"),
     },
   },
 });

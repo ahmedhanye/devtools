@@ -7,7 +7,7 @@ Domain vocabulary for DevTools packages and applications mapped across bounded c
 - [Runtime & CLI](./docs/glossary/runtime.md): single Bun daemon process, unified loopback daemon, CLIG standards, programmatic CLI seams, API routing, runtime stack, standalone executable compilation, and release manifests.
 - [Browser Automation](./docs/glossary/browser.md): Chrome for Testing binary resolution waterfall, caching hierarchy, and explicit path overrides.
 - [Persistence](./docs/glossary/persistence.md): embedded SQLite engine, Drizzle ORM primitives, WAL mode, path resolution algorithms, and schema migrations.
-- [Frontend & UI](./docs/glossary/frontend.md): Feature-Sliced Design v2.1 layers, pages-first extraction rule, App Router boundary adapters, tear-free hydration, and semantic theme tokens.
+- [Frontend & UI](./docs/glossary/frontend.md): Feature-Sliced Design v2.1 layers, pages-first extraction rule, App Router boundary adapters, tear-free hydration, semantic theme tokens, and portable stories.
 - [Documentation Platform](./docs/glossary/site.md): Diátaxis quadrants, Fumadocs content pipeline, LLM context endpoints, and search index routes.
 
 ## Relationships

@@ -26,10 +26,11 @@ apps/frontend/src/
 
 ## UI testing and Storybook-first presentation
 
-1. **No `*.test.tsx` files or `tests/` directories for UI components**: Authoring unit test files (`*.test.tsx`) with `@testing-library/react` assertions for presentational components is prohibited in `apps/frontend`. Unit tests (`*.test.ts`) are strictly reserved for pure utility functions and non-visual hooks in `src/shared/lib/`.
+1. **No `*.test.tsx` files or `tests/` directories for UI components**: Authoring unit test files (`*.test.tsx`) with `@testing-library/react` assertions for presentational components is prohibited in `apps/frontend`. Unit tests (`*.test.ts`) are strictly reserved for pure utility functions, custom state hooks, and API schemas across `src/shared/lib/` as well as slice `model/` and `api/` segments (with zero JSX).
 2. **Storybook (`*.stories.tsx`) as the single source of truth**: All UI presentation, states, variants, and interactive behaviors are declared exclusively in co-located Storybook stories (`component.stories.tsx`).
-3. **Automated Storybook test execution & diff coverage**: Vitest is configured in `apps/frontend/vitest.config.ts` to automatically execute `src/**/*.stories.{ts,tsx}` in `happy-dom` via Storybook Portable Stories (`composeStories` from `@storybook/react`), executing story mounts and `play()` functions directly under `@vitest/coverage-v8`.
-4. **Co-location structure**: Every presentational component must co-locate its story file and barrel exports:
+3. **Automated Storybook test execution & diff coverage**: Vitest is configured in `apps/frontend/vitest.config.ts` to automatically execute `src/**/*.stories.{ts,tsx}` in `happy-dom` via Storybook Portable Stories (`composeStories` from `@storybook/nextjs-vite`), executing story mounts, decorators, and `play()` functions directly under `@vitest/coverage-v8`.
+4. **App Router boundary adapters exempted**: Thin framework routing entrypoints (`src/app/**/*.next.{ts,tsx}`) contain no UI logic and are exempted from unit diff coverage gating.
+5. **Co-location structure**: Every presentational component must co-locate its story file and barrel exports:
    - `component.tsx` (component implementation)
    - `component.stories.tsx` (states, variants, and interaction tests)
    - `index.ts` (public segment export)

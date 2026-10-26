@@ -23,3 +23,7 @@ _Avoid_: Is-client check, mounted flag, render delay
 **Semantic Theme Tokens**:
 Design system styling tokens (`bg-primary`, `text-muted-foreground`, `border-border`) mapping semantic intent rather than arbitrary literal Tailwind classes.
 _Avoid_: Utility colors, arbitrary tailwind values, raw hex colors
+
+**Portable Story**:
+A co-located Component Story Format module (`*.stories.tsx`) composed with framework routing and provider contexts so the same component specification renders identically as interactive catalog documentation and as an executable runtime test.
+_Avoid_: Component unit test, RTL test file, visual-only story

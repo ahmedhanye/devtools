@@ -12,12 +12,12 @@ Rules for selecting verification commands tailored to changed files and enforcin
 Follow verification tiers before committing, pushing, or requesting review:
 
 1. **Pre-commit staged checks (<1s):**
-   Executed automatically by Lefthook `pre-commit` across staged files. Runs Oxlint autofixes, Prettier formatting, `react-doctor --staged`, and staged secret checks.
+   Executed automatically by Lefthook `pre-commit` across staged files. Runs Oxlint autofixes, Prettier formatting, `react-doctor --staged`, frontend tests (`bun --filter @devtools/frontend test` when `apps/frontend/src/**/*.{ts,tsx}` files are staged), and staged secret checks.
 2. **Fast verification gate (<5s):**
    ```bash
    bun run verify:fast
    ```
-   Runs Oxlint, Prettier check, workspace typechecks, Fallow dead-code analysis, and agent rule verification (bun run lint:agents) across the monorepo.
+   Runs Oxlint, Prettier check, workspace typechecks, Fallow dead-code analysis, agent rule verification (`bun run lint:agents`), and frontend tests (`bun --filter @devtools/frontend test`) across the monorepo.
 3. **Workspace test run:**
    ```bash
    bun --filter @devtools/<package> test
