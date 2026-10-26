@@ -39,7 +39,11 @@ jobs:
           egress-policy: block
           allowed-endpoints: >
             api.github.com:443
+            codeload.github.com:443
             github.com:443
+            *.actions.githubusercontent.com:443
+            *.blob.core.windows.net:443
+            *.githubapp.com:443
 
       - name: Checkout repository (push only)
         if: github.event_name != 'pull_request'
@@ -85,10 +89,13 @@ jobs:
           egress-policy: block
           allowed-endpoints: >
             api.github.com:443
+            codeload.github.com:443
             github.com:443
+            objects.githubusercontent.com:443
             registry.npmjs.org:443
             release-assets.githubusercontent.com:443
             *.actions.githubusercontent.com:443
+            *.blob.core.windows.net:443
             *.githubapp.com:443
 
       - name: Checkout repository
@@ -129,10 +136,13 @@ jobs:
           egress-policy: block
           allowed-endpoints: >
             api.github.com:443
+            codeload.github.com:443
             github.com:443
+            objects.githubusercontent.com:443
             registry.npmjs.org:443
             release-assets.githubusercontent.com:443
             *.actions.githubusercontent.com:443
+            *.blob.core.windows.net:443
             *.githubapp.com:443
 
       - name: Checkout repository
@@ -170,10 +180,13 @@ jobs:
           egress-policy: block
           allowed-endpoints: >
             api.github.com:443
+            codeload.github.com:443
             github.com:443
+            objects.githubusercontent.com:443
             registry.npmjs.org:443
             release-assets.githubusercontent.com:443
             *.actions.githubusercontent.com:443
+            *.blob.core.windows.net:443
             *.githubapp.com:443
 
       - name: Checkout repository
@@ -203,10 +216,13 @@ jobs:
           egress-policy: block
           allowed-endpoints: >
             api.github.com:443
+            codeload.github.com:443
             github.com:443
+            objects.githubusercontent.com:443
             registry.npmjs.org:443
             release-assets.githubusercontent.com:443
             *.actions.githubusercontent.com:443
+            *.blob.core.windows.net:443
             *.githubapp.com:443
 
       - name: Checkout repository
@@ -284,10 +300,13 @@ jobs:
           egress-policy: block
           allowed-endpoints: >
             api.github.com:443
+            codeload.github.com:443
             github.com:443
+            objects.githubusercontent.com:443
             registry.npmjs.org:443
             release-assets.githubusercontent.com:443
             *.actions.githubusercontent.com:443
+            *.blob.core.windows.net:443
             *.githubapp.com:443
 
       - name: Checkout repository
