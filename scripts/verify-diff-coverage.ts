@@ -40,8 +40,11 @@ function isTestableSourceFile(filePath: string): boolean {
     normalized.endsWith(".d.ts") ||
     normalized.includes("/tests/") ||
     normalized.includes(".stories.") ||
+    normalized.includes(".storybook/") ||
     /\.config\.[a-z]+$/.test(normalized) ||
-    normalized.startsWith("scripts/")
+    normalized.startsWith("scripts/") ||
+    (normalized.startsWith("apps/frontend/src/app/") &&
+      /\.next\.(ts|tsx)$/.test(normalized))
   ) {
     return false;
   }

@@ -19,6 +19,10 @@ pre-commit:
       glob: "{apps/frontend,site}/**/*.{js,jsx,ts,tsx}"
       run: bunx react-doctor --project apps/frontend,site --staged --blocking error --no-telemetry --no-supply-chain
 
+    test-staged-ui:
+      glob: "apps/frontend/src/**/*.{ts,tsx}"
+      run: bun --filter @devtools/frontend test
+
     verify-secrets:
       run: bun scripts/verify-staged-secrets.ts {staged_files}
 
