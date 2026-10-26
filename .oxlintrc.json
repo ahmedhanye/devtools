@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/refs/heads/main/npm/oxlint/configuration_schema.json",
-  "plugins": ["typescript", "unicorn", "oxc", "import", "promise"],
+  "plugins": ["typescript", "unicorn", "oxc", "import", "promise", "jsdoc"],
   "categories": {
     "correctness": "deny",
     "suspicious": "deny",
@@ -11,6 +11,44 @@
     "typescript/await-thenable": "deny",
     "typescript/no-misused-spread": "deny",
     "typescript/no-redundant-type-constituents": "deny",
+    "typescript/ban-ts-comment": [
+      "deny",
+      {
+        "ts-expect-error": "allow-with-description",
+        "ts-ignore": true,
+        "ts-nocheck": true,
+        "minimumDescriptionLength": 10
+      }
+    ],
+    "typescript/ban-tslint-comment": "deny",
+    "jsdoc/check-tag-names": [
+      "deny",
+      {
+        "definedTags": [
+          "remarks",
+          "defaultValue",
+          "packageDocumentation",
+          "internal",
+          "beta",
+          "alpha"
+        ]
+      }
+    ],
+    "jsdoc/check-property-names": "deny",
+    "jsdoc/check-access": "deny",
+    "jsdoc/empty-tags": "deny",
+    "jsdoc/implements-on-classes": "deny",
+    "jsdoc/no-blank-blocks": "deny",
+    "jsdoc/no-defaults": "deny",
+    "jsdoc/require-param-name": "deny",
+    "jsdoc/require-param-description": "deny",
+    "jsdoc/require-property": "deny",
+    "jsdoc/require-property-name": "deny",
+    "jsdoc/require-property-description": "deny",
+    "jsdoc/require-returns-description": "deny",
+    "jsdoc/require-throws-description": "deny",
+    "jsdoc/require-yields": "deny",
+    "jsdoc/require-yields-description": "deny",
     "import/no-duplicates": "deny",
     "import/no-self-import": "deny",
     "import/no-unassigned-import": "off",
@@ -26,6 +64,7 @@
       "plugins": ["react", "react-perf", "jsx-a11y", "nextjs"],
       "rules": {
         "react/react-in-jsx-scope": "off",
+        "react/jsx-no-comment-textnodes": "deny",
         "react/no-unstable-nested-components": "deny",
         "react/exhaustive-deps": "deny",
         "react/jsx-key": "deny",
@@ -93,6 +132,8 @@
       "rules": {
         "vitest/no-focused-tests": "deny",
         "vitest/no-disabled-tests": "warn",
+        "vitest/no-commented-out-tests": "deny",
+        "vitest/prefer-todo": "warn",
         "vitest/valid-expect": "deny",
         "vitest/expect-expect": "warn",
         "vitest/no-identical-title": "deny",

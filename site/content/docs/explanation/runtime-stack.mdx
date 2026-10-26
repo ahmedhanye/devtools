@@ -20,6 +20,7 @@ The codebase separates runtime applications from reusable packages. Each leaf wo
 | `site`              | `@devtools/site`     | Application    | Fumadocs documentation platform and developer guide engine.                                  |
 | `packages/core`     | `@devtools/core`     | Shared package | Shared Zod schemas, error definitions, and platform domain models.                           |
 | `packages/db`       | `@devtools/db`       | Shared package | Embedded SQLite connection management, Drizzle schemas, and migration runners.               |
+| `packages/browser`  | `@devtools/browser`  | Shared package | Chromium provisioning, resolution waterfall algorithm, and managed cache management.         |
 
 ## Package boundaries and contracts
 
@@ -30,12 +31,14 @@ flowchart TD
   CLI["@devtools/cli"] --> Core["@devtools/core"]
   CLI --> DB["@devtools/db"]
   CLI --> API["@devtools/api"]
+  CLI --> Browser["@devtools/browser"]
 
   API --> Core
 
   Frontend["@devtools/frontend"] --> Core
 
   DB --> SQLite[("bun:sqlite / Drizzle")]
+  Browser --> CfT[("Chrome for Testing")]
 ```
 
 ### Boundary invariants
