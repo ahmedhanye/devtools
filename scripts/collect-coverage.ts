@@ -247,11 +247,11 @@ export async function collectCoverage(
         stdio: (opts.stdio as "inherit" | "pipe") ?? "inherit",
       }));
 
-  fs.mkdirSync(mergedLcovDir, { recursive: true });
-
   if (options.cleanPriorReports) {
     cleanCoverageArtifacts(root, mergedLcovPath);
   }
+
+  fs.mkdirSync(mergedLcovDir, { recursive: true });
 
   for (const pkg of BUN_WORKSPACES) {
     const pkgDir = path.join(root, pkg);
