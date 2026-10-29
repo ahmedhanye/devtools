@@ -10,6 +10,7 @@ import { homedir, platform } from "node:os";
 import { dirname, join, resolve as pathResolve } from "node:path";
 import type { EnvMap } from "@devtools/core";
 import { getInstalledBrowsers } from "@puppeteer/browsers";
+import type { InstalledBrowser } from "./types";
 import * as chromeLauncher from "chrome-launcher";
 import {
   resolveCwd,
@@ -201,7 +202,17 @@ export async function verifyBrowserExecutable(
  * Accepted configuration seam inputs for {@link getManagedCacheDir} and {@link probeManagedCache}.
  */
 export type ManagedCacheDirOptions =
-  BrowserSeamOptions | BrowserConfigSeam | EnvMap;
+  | (BrowserSeamOptions & {
+      getInstalledBrowsers?: (opts: {
+        cacheDir: string;
+      }) => Promise<InstalledBrowser[]>;
+    })
+  | (BrowserConfigSeam & {
+      getInstalledBrowsers?: (opts: {
+        cacheDir: string;
+      }) => Promise<InstalledBrowser[]>;
+    })
+  | EnvMap;
 
 /**
  * Returns the managed browser cache directory path (`~/.devtools/browsers` or `DEVTOOLS_BROWSERS_DIR`).
@@ -234,12 +245,12 @@ export async function probeManagedCache(
   }
 
   const getInstalled =
-    (envOrSeam &&
-      typeof envOrSeam === "object" &&
-      "getInstalledBrowsers" in envOrSeam &&
-      // biome-ignore lint/suspicious/noExplicitAny: test seam injection
-      (envOrSeam as any).getInstalledBrowsers) ||
-    getInstalledBrowsers;
+    envOrSeam &&
+    typeof envOrSeam === "object" &&
+    "getInstalledBrowsers" in envOrSeam &&
+    typeof envOrSeam.getInstalledBrowsers === "function"
+      ? (envOrSeam.getInstalledBrowsers as typeof getInstalledBrowsers)
+      : getInstalledBrowsers;
 
   try {
     const installed = await getInstalled({ cacheDir: targetDir });

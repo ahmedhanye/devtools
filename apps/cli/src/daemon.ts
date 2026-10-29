@@ -78,7 +78,7 @@ export function resolveStaticDir(
  *
  * @param options - Explicit daemon options and optional `env` seam override.
  * @returns Validated `{ host, port, staticDir }` configuration.
- * @throws {Error} When `port` or `host` fails {@link RuntimeConfigSchema} validation.
+ * @throws {@link Error} When `port` or `host` fails {@link RuntimeConfigSchema} validation.
  */
 export function resolveDaemonConfig(options: StartDaemonOptions = {}): {
   host: string;
@@ -195,7 +195,7 @@ export async function serveStaticAsset(
  *
  * @param options - Optional port, host, static directory, and environment overrides.
  * @returns Running {@link DaemonInstance} handle.
- * @throws {Error} When the static asset directory does not exist or SQLite migrations fail.
+ * @throws {@link Error} When the static asset directory does not exist or SQLite migrations fail.
  */
 export function startDaemon(options: StartDaemonOptions = {}): DaemonInstance {
   const config = resolveDaemonConfig(options);

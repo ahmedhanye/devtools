@@ -39,7 +39,7 @@ export interface ServerInstance {
  *
  * @param options - Explicit host/port options and optional `env` seam override.
  * @returns Validated `{ host, port }` configuration.
- * @throws {Error} When `port` or `host` fails {@link RuntimeConfigSchema} validation.
+ * @throws {@link Error} When `port` or `host` fails {@link RuntimeConfigSchema} validation.
  */
 export function resolveServerConfig(options: StartServerOptions = {}): {
   host: string;

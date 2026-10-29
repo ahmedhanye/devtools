@@ -302,9 +302,7 @@ describe("Browser Resolution Waterfall", () => {
     const stringStatus = await getBrowserStatus(
       {},
       {
-        probeManagedCache: async () => {
-          throw "Raw string failure";
-        },
+        probeManagedCache: () => Promise.reject("Raw string failure"),
       },
     );
     expect(stringStatus.found).toBe(false);

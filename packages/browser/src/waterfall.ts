@@ -179,8 +179,8 @@ async function probeFallbackCandidates(
  * @param options - Optional explicit path, cache directory, timeout, and environment seam overrides.
  * @param deps - Optional dependency injection seam for unit testing.
  * @returns Verified {@link BrowserResolution} containing executable path, version, and source tier.
- * @throws {InvalidBrowserPathError} When an explicit Tier 1 path is empty, missing, or fails verification.
- * @throws {BrowserNotFoundError} When no runnable Chromium browser is found across any tier.
+ * @throws {@link InvalidBrowserPathError} When an explicit Tier 1 path is empty, missing, or fails verification.
+ * @throws {@link BrowserNotFoundError} When no runnable Chromium browser is found across any tier.
  */
 export async function resolveBrowserPath(
   options?: ResolveBrowserOptions,

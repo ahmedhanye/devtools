@@ -277,6 +277,36 @@ describe("CLI Browser Command Surface", () => {
     }
   });
 
+  test("runBrowserInstallCommand reports download progress when isTTY is true", async () => {
+    const mockInstalledPath = join(testDir, "installed-browser");
+    const stderrChunks: string[] = [];
+
+    await runBrowserInstallCommand(
+      { path: testDir },
+      {
+        isTTY: true,
+        writeStderr: (chunk: string) => stderrChunks.push(chunk),
+        installBrowser: async (opts) => {
+          opts?.onProgress?.(0, 100);
+          opts?.onProgress?.(50, 100);
+          opts?.onProgress?.(50, 100);
+          opts?.onProgress?.(100, 100);
+          return {
+            executablePath: mockInstalledPath,
+            buildId: "130.0.6723.69",
+            browser: "chrome-headless-shell",
+          };
+        },
+      },
+    );
+
+    const joined = stderrChunks.join("");
+    expect(joined).toContain("Downloading chrome-headless-shell: 0%");
+    expect(joined).toContain("Downloading chrome-headless-shell: 50%");
+    expect(joined).toContain("Downloading chrome-headless-shell: 100%");
+    expect(joined).toContain("\n");
+  });
+
   test("runBrowserInstallCommand logs error and exits code 1 on failure", async () => {
     const errLogs: string[] = [];
     const origErr = console.error;

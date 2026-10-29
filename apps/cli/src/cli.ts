@@ -33,6 +33,16 @@ export interface WebCommandDeps {
   confirm?: (opts: { message: string; default?: boolean }) => Promise<boolean>;
   /** Override next available port discovery. */
   findNextAvailablePort?: typeof findNextAvailablePort;
+  /** Override process exit handler for programmatic and hermetic testing. */
+  exit?: (code?: number) => void;
+}
+
+function exitProcess(code = 1, deps?: WebCommandDeps): void {
+  if (deps?.exit) {
+    deps.exit(code);
+    return;
+  }
+  process.exit(code);
 }
 
 function checkInteractive(deps?: WebCommandDeps): boolean {
@@ -45,12 +55,9 @@ function checkInteractive(deps?: WebCommandDeps): boolean {
 async function promptPortChange(
   targetPort: number,
   nextPort: number,
-  confirmFn?: (opts: {
-    message: string;
-    default?: boolean;
-  }) => Promise<boolean>,
+  deps?: WebCommandDeps,
 ): Promise<number> {
-  const confirm = confirmFn ?? (await import("@inquirer/prompts")).confirm;
+  const confirm = deps?.confirm ?? (await import("@inquirer/prompts")).confirm;
   try {
     const accepted = await confirm({
       message: `Port ${targetPort} is in use. Would you like to use available port ${nextPort} instead?`,
@@ -58,7 +65,8 @@ async function promptPortChange(
     });
     if (!accepted) {
       console.error(pc.yellow("Aborted server start."));
-      process.exit(1);
+      exitProcess(1, deps);
+      return nextPort;
     }
     return nextPort;
   } catch (error) {
@@ -67,7 +75,8 @@ async function promptPortChange(
         `Error: Interactive port conflict prompt failed: ${error instanceof Error ? error.message : String(error)}`,
       ),
     );
-    process.exit(1);
+    exitProcess(1, deps);
+    return nextPort;
   }
 }
 
@@ -86,7 +95,8 @@ async function resolvePortConflict(
         `Port ${targetPort} is already in use. Use --port <port> or set PORT=<port> to specify a different port.`,
       ),
     );
-    process.exit(1);
+    exitProcess(1, deps);
+    return targetPort;
   }
 
   const findNext =
@@ -98,14 +108,11 @@ async function resolvePortConflict(
         `Port ${targetPort} is in use and no available port was found in range.`,
       ),
     );
-    process.exit(1);
+    exitProcess(1, deps);
+    return targetPort;
   }
 
-  return promptPortChange(
-    targetPort,
-    nextPort,
-    deps ? deps.confirm : undefined,
-  );
+  return promptPortChange(targetPort, nextPort, deps);
 }
 
 /**
@@ -126,7 +133,8 @@ export async function runWebCommand(
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(pc.red(message));
-    process.exit(1);
+    exitProcess(1, deps);
+    return undefined;
   }
 
   let targetPort = config.port;

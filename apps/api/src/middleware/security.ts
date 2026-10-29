@@ -53,13 +53,15 @@ export function formatError(
 function hasNonJsonBody(c: Context): boolean {
   const contentLength = c.req.header("content-length");
   const hasBody =
+    c.req.raw.body !== null ||
     (contentLength !== undefined && contentLength !== "0") ||
     c.req.header("transfer-encoding") !== undefined;
   if (!hasBody) {
     return false;
   }
   const contentType = c.req.header("content-type") ?? "";
-  return !contentType.toLowerCase().includes("application/json");
+  const mimeType = contentType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+  return mimeType !== "application/json";
 }
 
 /**

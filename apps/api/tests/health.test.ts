@@ -162,6 +162,28 @@ describe("Health API Endpoint (/api/health) & Security Boundaries", () => {
       API_ERROR_CODES.UNSUPPORTED_MEDIA_TYPE,
     );
 
+    // 3b. Rejects loose application/json parameter spoofing
+    const spoofedContentRes = await customApp.request("/api/mutate", {
+      method: "POST",
+      headers: {
+        Origin: "http://127.0.0.1:4000",
+        "Content-Type": "text/plain; note=application/json",
+      },
+      body: "payload",
+    });
+    expect(spoofedContentRes.status).toBe(415);
+
+    // 3c. Rejects non-JSON body constructed without explicit Content-Length header
+    const noLengthRes = await customApp.request("/api/mutate", {
+      method: "POST",
+      headers: {
+        Origin: "http://127.0.0.1:4000",
+        "Content-Type": "text/plain",
+      },
+      body: "payload",
+    });
+    expect(noLengthRes.status).toBe(415);
+
     // 4. Accepts valid loopback JSON POST
     const validRes = await customApp.request("/api/mutate", {
       method: "POST",

@@ -37,7 +37,7 @@ export interface BrowserInstallerDependencies {
  * @param options - Optional cache directory override and download progress callback.
  * @param deps - Optional dependency injection seam for testing without network I/O.
  * @returns Metadata describing the installed browser executable, build ID, and browser type.
- * @throws {Error} If the current OS/architecture platform is unsupported or archive download fails.
+ * @throws {@link Error} If the current OS/architecture platform is unsupported or archive download fails.
  */
 export async function installBrowser(
   options?: InstallBrowserOptions,

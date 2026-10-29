@@ -69,6 +69,7 @@ export async function runBrowserStatusCommand(
  */
 function createDownloadProgressReporter(
   isTTY: boolean,
+  writeStderr: (chunk: string) => void = (chunk) => process.stderr.write(chunk),
 ): (downloadedBytes: number, totalBytes: number) => void {
   let lastPercent = -1;
   return (downloadedBytes: number, totalBytes: number) => {
@@ -78,7 +79,7 @@ function createDownloadProgressReporter(
     const percent = Math.floor((downloadedBytes / totalBytes) * 100);
     if (percent !== lastPercent) {
       lastPercent = percent;
-      process.stderr.write(`\rDownloading chrome-headless-shell: ${percent}%`);
+      writeStderr(`\rDownloading chrome-headless-shell: ${percent}%`);
     }
   };
 }
@@ -88,13 +89,19 @@ function createDownloadProgressReporter(
  * into the managed browser cache and reporting progress to `stderr`.
  *
  * @param options - Parsed CLI install options.
- * @param deps - Optional injected `installBrowser` implementation for unit testing.
+ * @param deps - Optional injected dependencies and streams for testing.
  */
 export async function runBrowserInstallCommand(
   options: BrowserInstallOptions = {},
-  deps?: { installBrowser?: typeof InstallBrowserFn },
+  deps?: {
+    installBrowser?: typeof InstallBrowserFn;
+    isTTY?: boolean;
+    writeStderr?: (chunk: string) => void;
+  },
 ): Promise<void> {
-  const isTTY = Boolean(process.stderr.isTTY);
+  const isTTY = deps?.isTTY ?? Boolean(process.stderr.isTTY);
+  const writeStderr =
+    deps?.writeStderr ?? ((chunk: string) => process.stderr.write(chunk));
   const doInstall =
     deps?.installBrowser ?? (await import("@devtools/browser")).installBrowser;
 
@@ -105,11 +112,11 @@ export async function runBrowserInstallCommand(
   try {
     const installed = await doInstall({
       cacheDir: options.path,
-      onProgress: createDownloadProgressReporter(isTTY),
+      onProgress: createDownloadProgressReporter(isTTY, writeStderr),
     });
 
     if (isTTY) {
-      process.stderr.write("\n");
+      writeStderr("\n");
     }
 
     console.log(
@@ -119,7 +126,7 @@ export async function runBrowserInstallCommand(
     );
   } catch (err: unknown) {
     if (isTTY) {
-      process.stderr.write("\n");
+      writeStderr("\n");
     }
     const message = err instanceof Error ? err.message : String(err);
     console.error(pc.red(`Failed to install browser: ${message}`));

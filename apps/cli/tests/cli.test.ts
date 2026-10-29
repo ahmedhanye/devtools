@@ -363,4 +363,28 @@ describe("CLI Command Structure & Parser Unit Tests", () => {
       process.exit = origExit;
     }
   });
+
+  test("runWebCommand routes exit calls through deps.exit seam without monkey-patching process.exit", async () => {
+    let exitCode: number | undefined;
+    const origErr = console.error;
+    console.error = () => {};
+
+    try {
+      await runWebCommand(
+        {
+          env: {
+            PORT: "99999",
+          },
+        },
+        {
+          exit: (code) => {
+            exitCode = code;
+          },
+        },
+      );
+      expect(exitCode).toBe(1);
+    } finally {
+      console.error = origErr;
+    }
+  });
 });
