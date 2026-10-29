@@ -342,6 +342,38 @@ describe("CLI Browser Command Surface", () => {
     }
   });
 
+  test("runBrowserInstallCommand writes newline on failure when isTTY is true", async () => {
+    const errLogs: string[] = [];
+    const stderrChunks: string[] = [];
+    const origErr = console.error;
+    console.error = (...args: any[]) => errLogs.push(args.join(" "));
+
+    const origExit = process.exit;
+    process.exit = ((code?: number) => {
+      throw new Error(`process.exit called with ${code}`);
+    }) as any;
+
+    try {
+      await expect(
+        runBrowserInstallCommand(
+          { path: testDir },
+          {
+            isTTY: true,
+            writeStderr: (chunk: string) => stderrChunks.push(chunk),
+            installBrowser: async () => {
+              throw new Error("Network timeout");
+            },
+          },
+        ),
+      ).rejects.toThrow("process.exit called with 1");
+
+      expect(stderrChunks).toContain("\n");
+    } finally {
+      console.error = origErr;
+      process.exit = origExit;
+    }
+  });
+
   test("runBrowserStatusCommand forwards path option as cacheDir to getBrowserStatus", async () => {
     let capturedOptions: any;
     const origLog = console.log;
