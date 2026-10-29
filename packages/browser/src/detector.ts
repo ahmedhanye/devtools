@@ -14,6 +14,7 @@ import type { InstalledBrowser } from "./types";
 import * as chromeLauncher from "chrome-launcher";
 import {
   resolveCwd,
+  resolveEnv,
   resolveLocalAppData,
   resolveManagedCacheDir,
   resolvePlatform,
@@ -492,18 +493,19 @@ export type ProbeToolCachesOptions =
 /**
  * Probes local Playwright and Puppeteer browser cache directories for existing Chromium binaries.
  *
- * @param home - User home directory path used to locate default tool caches. Defaults to `os.homedir()`.
+ * @param home - User home directory path used to locate default tool caches. Defaults to `HOME` from the seam, then `os.homedir()`.
  * @param envOrSeam - Optional environment map or {@link BrowserConfigSeam} override.
  * @returns Array of executable {@link CandidateBrowser} entries tagged with `"playwright"` or `"puppeteer"`.
  */
 export async function probeToolCaches(
-  home = homedir(),
+  home?: string,
   envOrSeam?: ProbeToolCachesOptions,
 ): Promise<Array<CandidateBrowser<"playwright" | "puppeteer">>> {
   const seam = resolveSeam(envOrSeam);
+  const resolvedHome = home ?? resolveEnv(seam).HOME ?? homedir();
   const osType = resolvePlatform(seam);
-  const playwrightBase = getPlaywrightCacheBase(home, osType, seam);
-  const puppeteerBase = resolvePuppeteerCacheDir(home, seam);
+  const playwrightBase = getPlaywrightCacheBase(resolvedHome, osType, seam);
+  const puppeteerBase = resolvePuppeteerCacheDir(resolvedHome, seam);
 
   const playwrightFound = scanPlaywrightCacheDir(playwrightBase);
   const puppeteerFound = await scanPuppeteerCacheDir(puppeteerBase);

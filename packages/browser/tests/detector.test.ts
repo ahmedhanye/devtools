@@ -519,4 +519,33 @@ describe("Browser Detector & Executable Verification", () => {
     expect(candidates.some((c) => c.path === mockExe)).toBe(true);
     expect(candidates.some((c) => c.path === mockHeadless)).toBe(true);
   });
+
+  test("probeToolCaches resolves default home from HOME environment seam when home argument is undefined", async () => {
+    const customHome = join(testDir, "seam-home");
+    const chromeDir = join(
+      customHome,
+      ".cache",
+      "ms-playwright",
+      "chromium-200",
+      "chrome-linux",
+    );
+    mkdirSync(chromeDir, { recursive: true });
+    const mockExe = join(chromeDir, "chrome");
+    writeFileSync(mockExe, "#!/bin/sh\nexit 0\n");
+    chmodSync(mockExe, 0o755);
+
+    const candidates = await probeToolCaches(undefined, {
+      seam: {
+        platform: () => "linux",
+        env: { HOME: customHome },
+      },
+    });
+
+    expect(candidates.some((c) => c.path === mockExe)).toBe(true);
+  });
+
+  test("probeToolCaches falls back to ambient homedir when home and seam HOME are not set", async () => {
+    const candidates = await probeToolCaches();
+    expect(candidates).toBeArray();
+  });
 });
