@@ -60,25 +60,39 @@ interface PageProps {
   }>;
 }
 
+function resolveDocSection(
+  pagePath: string,
+  slug?: string[],
+): string | undefined {
+  if (pagePath === "index.mdx" || pagePath.startsWith("tutorials/")) {
+    return "tutorials";
+  }
+  return slug?.[0];
+}
+
+function resolvePageMetadataText(
+  page: NonNullable<ReturnType<typeof resolveDocPage>>,
+) {
+  const details = resolvePageDetails(page);
+  return {
+    title: page.data.title || details.title,
+    description: page.data.description || details.description,
+    fallbackText:
+      page.data.description || details.description || details.content,
+  };
+}
+
 export default async function Page({ params }: PageProps) {
   const { slug } = await params;
-
   const page = resolveDocPage(slug);
 
   if (!page) {
     notFound();
   }
 
-  const details = resolvePageDetails(page);
-  const title = page.data.title || details.title;
-  const description = page.data.description || details.description;
+  const { title, description, fallbackText } = resolvePageMetadataText(page);
   const MDX = page.data.body;
-
-  const section =
-    page.path === "index.mdx" || page.path.startsWith("tutorials/")
-      ? "tutorials"
-      : slug?.[0];
-
+  const section = resolveDocSection(page.path, slug);
   const pageStyle = section ? SECTION_STYLES[section] : undefined;
 
   return (
@@ -98,7 +112,7 @@ export default async function Page({ params }: PageProps) {
           <MDX components={MDX_COMPONENTS} />
         ) : (
           <div>
-            <p>{description || details.content}</p>
+            <p>{fallbackText}</p>
           </div>
         )}
       </DocsBody>
@@ -112,7 +126,6 @@ export async function generateStaticParams() {
 
 export async function generateMetadata({ params }: PageProps) {
   const { slug } = await params;
-
   const page = resolveDocPage(slug);
 
   if (!page) {
@@ -121,10 +134,9 @@ export async function generateMetadata({ params }: PageProps) {
     };
   }
 
-  const details = resolvePageDetails(page);
-
+  const { title, description } = resolvePageMetadataText(page);
   return {
-    title: page.data.title || details.title,
-    description: page.data.description || details.description,
+    title,
+    description,
   };
 }

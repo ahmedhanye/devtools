@@ -10,7 +10,7 @@ const meta: Meta<typeof DashboardPage> = {
   },
   decorators: [
     (Story) => (
-      <div className="flex min-h-screen flex-col p-4">
+      <div className="flex min-h-dvh flex-col p-4">
         <Story />
       </div>
     ),
