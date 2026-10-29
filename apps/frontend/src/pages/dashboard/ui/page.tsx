@@ -1,6 +1,11 @@
 import * as React from "react";
 import { LayoutDashboard } from "lucide-react";
 
+/**
+ * Primary dashboard presentation page rendering the workspace empty state.
+ *
+ * @returns Dashboard page presentation component.
+ */
 export function DashboardPage() {
   return (
     <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed p-8 text-center">

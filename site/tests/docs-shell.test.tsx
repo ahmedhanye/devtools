@@ -13,6 +13,7 @@ mock.module("next/navigation", () => ({
 
 import { RootProvider } from "fumadocs-ui/provider/next";
 import RootDocsLayout from "../src/app/docs/layout";
+import RootSiteLayout from "../src/app/layout";
 import DocsCatchAllPage, {
   generateMetadata,
   generateStaticParams,
@@ -68,7 +69,7 @@ describe("documentation shell and catch-all route seam", () => {
 
   it("renders documentation layout with nested children cleanly", () => {
     const element = React.createElement(
-      RootProvider,
+      RootSiteLayout,
       null,
       React.createElement(
         RootDocsLayout,
@@ -78,5 +79,20 @@ describe("documentation shell and catch-all route seam", () => {
     );
     const html = renderToStaticMarkup(element);
     expect(html).toContain('id="test-content"');
+  });
+
+  it("renders non-tutorial documentation section page cleanly within docs layout", async () => {
+    const pageElement = await DocsCatchAllPage({
+      params: Promise.resolve({ slug: ["reference", "cli"] }),
+    });
+    const html = renderToStaticMarkup(
+      React.createElement(
+        RootProvider,
+        null,
+        React.createElement(RootDocsLayout, null, pageElement),
+      ),
+    );
+    expect(html).toContain("<article");
+    expect(html).toContain("<h1");
   });
 });

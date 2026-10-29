@@ -4,6 +4,12 @@ import { statusBadgesPlugin } from "fumadocs-core/source/plugins/status-badges";
 import { createElement } from "react";
 import * as icons from "lucide-react";
 
+const QUADRANT_OVERVIEWS = [
+  { names: ["How-To Guides", "how-to"], url: "/docs/how-to" },
+  { names: ["Reference", "reference"], url: "/docs/reference" },
+  { names: ["Explanation", "explanation"], url: "/docs/explanation" },
+] as const;
+
 const baseSource = loader({
   baseUrl: "/docs",
   source: docs.toFumadocsSource(),
@@ -44,50 +50,64 @@ const baseSource = loader({
   },
 });
 
+type PageTreeNode = (typeof baseSource.pageTree.children)[number];
+
+function patchTutorialsFolder(child: PageTreeNode): void {
+  if (
+    child.type === "folder" &&
+    (child.name === "Tutorials" || child.$id === "tutorials")
+  ) {
+    const remainingChildren = (child.children || []).filter(
+      (c) =>
+        !("url" in c) || (c.url !== "/docs/tutorials" && c.url !== "/docs"),
+    );
+    child.children = [
+      {
+        $id: "tutorials:intro",
+        type: "page",
+        name: "Introduction",
+        url: "/docs",
+        $ref: "index.mdx",
+      },
+      ...remainingChildren,
+    ];
+  }
+}
+
+function isMatchingQuadrantFolder(
+  child: PageTreeNode,
+  names: readonly string[],
+): boolean {
+  const nameMatch =
+    typeof child.name === "string" && names.includes(child.name);
+  const idMatch = typeof child.$id === "string" && names.includes(child.$id);
+  return nameMatch || idMatch;
+}
+
+function renameOverviewPage(children: PageTreeNode[], targetUrl: string): void {
+  for (const item of children) {
+    if (item.type === "page" && item.url === targetUrl) {
+      item.name = "Overview";
+    }
+  }
+}
+
+function patchQuadrantOverviewLabels(child: PageTreeNode): void {
+  if (child.type === "folder") {
+    for (const quadrant of QUADRANT_OVERVIEWS) {
+      if (isMatchingQuadrantFolder(child, quadrant.names)) {
+        renameOverviewPage(child.children || [], quadrant.url);
+      }
+    }
+  }
+}
+
 function patchTree(tree: typeof baseSource.pageTree) {
   if (!tree || !Array.isArray(tree.children)) return tree;
 
   for (const child of tree.children) {
-    if (
-      child.type === "folder" &&
-      (child.name === "Tutorials" || child.$id === "tutorials")
-    ) {
-      const remainingChildren = (child.children || []).filter(
-        (c) =>
-          !("url" in c) || (c.url !== "/docs/tutorials" && c.url !== "/docs"),
-      );
-      child.children = [
-        {
-          $id: "tutorials:intro",
-          type: "page",
-          name: "Introduction",
-          url: "/docs",
-          $ref: "index.mdx",
-        },
-        ...remainingChildren,
-      ];
-    }
-
-    const quadrantOverviews = [
-      { names: ["How-To Guides", "how-to"], url: "/docs/how-to" },
-      { names: ["Reference", "reference"], url: "/docs/reference" },
-      { names: ["Explanation", "explanation"], url: "/docs/explanation" },
-    ];
-
-    for (const quadrant of quadrantOverviews) {
-      const matchesName =
-        typeof child.name === "string" && quadrant.names.includes(child.name);
-      const matchesId =
-        typeof child.$id === "string" && quadrant.names.includes(child.$id);
-
-      if (child.type === "folder" && (matchesName || matchesId)) {
-        for (const item of child.children || []) {
-          if (item.type === "page" && item.url === quadrant.url) {
-            item.name = "Overview";
-          }
-        }
-      }
-    }
+    patchTutorialsFolder(child);
+    patchQuadrantOverviewLabels(child);
   }
 
   return tree;

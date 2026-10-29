@@ -1,3 +1,8 @@
+/**
+ * Shared frontend utilities and hydration-safe React hooks.
+ *
+ * @packageDocumentation
+ */
 export { cn } from "./cn";
 // fallow-ignore-next-line unused-export
 export { useIsMounted } from "./use-is-mounted";

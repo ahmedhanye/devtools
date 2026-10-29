@@ -14,6 +14,20 @@ export interface MermaidProps {
   initialSvg?: string;
 }
 
+function resolveMermaidMeta(
+  rawId: string,
+  title?: string,
+  description?: string,
+) {
+  const descId = `mermaid_desc_${rawId}`;
+  return {
+    uniqueId: `mermaid_${rawId}`,
+    descId,
+    ariaLabel: title || "Diagram visualization",
+    ariaDescribedBy: description ? descId : undefined,
+  };
+}
+
 export function Mermaid({
   chart,
   title,
@@ -23,8 +37,11 @@ export function Mermaid({
 }: MermaidProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rawId = useId().replace(/:/g, "_");
-  const uniqueId = `mermaid_${rawId}`;
-  const descId = `mermaid_desc_${rawId}`;
+  const { uniqueId, descId, ariaLabel, ariaDescribedBy } = resolveMermaidMeta(
+    rawId,
+    title,
+    description,
+  );
   const [svgContent, setSvgContent] = useState<string | null>(
     initialSvg ?? null,
   );
@@ -77,8 +94,8 @@ export function Mermaid({
 
   return (
     <figure
-      aria-label={title || "Diagram visualization"}
-      aria-describedby={description ? descId : undefined}
+      aria-label={ariaLabel}
+      aria-describedby={ariaDescribedBy}
       className={`my-6 w-full overflow-x-auto rounded-lg border border-fd-border bg-fd-card/50 p-4 transition-colors ${className}`}
     >
       {title ? (

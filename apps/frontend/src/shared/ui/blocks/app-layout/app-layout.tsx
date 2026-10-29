@@ -18,9 +18,15 @@ import {
   SidebarTrigger,
 } from "@/shared/ui/shadcn/sidebar";
 
+/**
+ * Navigation item entry displayed in the application sidebar shell.
+ */
 export interface NavItem {
+  /** Human-readable label for the navigation destination. */
   title: string;
+  /** Route pathname (`href`) linked by the sidebar button. */
   href: string;
+  /** Icon component rendered alongside the label. */
   icon: React.ComponentType<{ className?: string }>;
 }
 
@@ -32,11 +38,22 @@ const DEFAULT_NAV_ITEMS: readonly NavItem[] = [
   },
 ];
 
+/**
+ * Props for the {@link AppLayout} shell component.
+ */
 export interface AppLayoutProps {
+  /** Primary page content rendered inside the sidebar inset region. */
   children: React.ReactNode;
+  /** Navigation links rendered in the collapsible sidebar menu. */
   navItems?: readonly NavItem[];
 }
 
+/**
+ * Collapsible application shell providing sidebar navigation, header trigger, and main content inset.
+ *
+ * @param props - Children and optional navigation item definitions.
+ * @returns Rendered application shell layout.
+ */
 export function AppLayout({
   children,
   navItems = DEFAULT_NAV_ITEMS,
