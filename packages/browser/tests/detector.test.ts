@@ -428,6 +428,70 @@ describe("Browser Detector & Executable Verification", () => {
     expect(hit?.version).toBe("Chrome 130.0.0");
   });
 
+  test("probeManagedCache preserves ambient DEVTOOLS_BROWSERS_DIR when options supply getInstalledBrowsers seam", async () => {
+    const originalEnv = process.env.DEVTOOLS_BROWSERS_DIR;
+    const customDir = join(testDir, "ambient-browsers-dir");
+    mkdirSync(customDir, { recursive: true });
+
+    const mockExe = join(customDir, "ambient-chrome.sh");
+    writeFileSync(mockExe, '#!/bin/sh\necho "Chrome 132.0.0"\n');
+    chmodSync(mockExe, 0o755);
+
+    process.env.DEVTOOLS_BROWSERS_DIR = customDir;
+    try {
+      let lookupCacheDir: string | undefined;
+      const hit = await probeManagedCache(undefined, {
+        getInstalledBrowsers: async (opts) => {
+          lookupCacheDir = opts.cacheDir;
+          return [
+            {
+              executablePath: mockExe,
+              buildId: "132.0.0",
+              browser: "chrome" as any,
+            },
+          ];
+        },
+      });
+
+      expect(hit).toBeDefined();
+      expect(hit?.path).toBe(mockExe);
+      expect(lookupCacheDir).toBe(customDir);
+    } finally {
+      if (originalEnv !== undefined) {
+        process.env.DEVTOOLS_BROWSERS_DIR = originalEnv;
+      } else {
+        delete process.env.DEVTOOLS_BROWSERS_DIR;
+      }
+    }
+  });
+
+  test("getManagedCacheDir preserves ambient DEVTOOLS_BROWSERS_DIR when options supply getInstalledBrowsers seam", () => {
+    const originalEnv = process.env.DEVTOOLS_BROWSERS_DIR;
+    process.env.DEVTOOLS_BROWSERS_DIR = "/ambient/cache/dir";
+    try {
+      expect(
+        getManagedCacheDir({
+          getInstalledBrowsers: async () => [],
+        }),
+      ).toBe("/ambient/cache/dir");
+    } finally {
+      if (originalEnv !== undefined) {
+        process.env.DEVTOOLS_BROWSERS_DIR = originalEnv;
+      } else {
+        delete process.env.DEVTOOLS_BROWSERS_DIR;
+      }
+    }
+  });
+
+  test("getManagedCacheDir respects explicit DEVTOOLS_BROWSERS_DIR override with getInstalledBrowsers seam", () => {
+    expect(
+      getManagedCacheDir({
+        DEVTOOLS_BROWSERS_DIR: "/override/cache/dir",
+        getInstalledBrowsers: async () => [],
+      }),
+    ).toBe("/override/cache/dir");
+  });
+
   test("probeToolCaches skips non-chromium Playwright directory entries and discovers chromium", async () => {
     const customPw = join(testDir, "ms-playwright-mixed");
     mkdirSync(join(customPw, "firefox-100"), { recursive: true });

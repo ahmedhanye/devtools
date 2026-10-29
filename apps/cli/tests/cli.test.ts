@@ -387,4 +387,154 @@ describe("CLI Command Structure & Parser Unit Tests", () => {
       console.error = origErr;
     }
   });
+
+  test("runWebCommand returns undefined and calls deps.exit(1) on port conflict when user declines", async () => {
+    const blocker = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch() {
+        return new Response("busy");
+      },
+    });
+    const occupiedPort = blocker.port ?? 0;
+    let exitCode: number | undefined;
+    const origErr = console.error;
+    console.error = () => {};
+
+    try {
+      const result = await runWebCommand(
+        { port: occupiedPort, host: "127.0.0.1" },
+        {
+          isInteractive: () => true,
+          confirm: async () => false,
+          exit: (code) => {
+            exitCode = code;
+          },
+        },
+      );
+      expect(result).toBeUndefined();
+      expect(exitCode).toBe(1);
+    } finally {
+      console.error = origErr;
+      blocker.stop(true);
+    }
+  });
+
+  test("runWebCommand returns undefined and calls deps.exit(1) when interactive prompt throws", async () => {
+    const blocker = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch() {
+        return new Response("busy");
+      },
+    });
+    const occupiedPort = blocker.port ?? 0;
+    let exitCode: number | undefined;
+    const origErr = console.error;
+    console.error = () => {};
+
+    try {
+      const result = await runWebCommand(
+        { port: occupiedPort, host: "127.0.0.1" },
+        {
+          isInteractive: () => true,
+          confirm: async () => {
+            throw new Error("terminal aborted");
+          },
+          exit: (code) => {
+            exitCode = code;
+          },
+        },
+      );
+      expect(result).toBeUndefined();
+      expect(exitCode).toBe(1);
+    } finally {
+      console.error = origErr;
+      blocker.stop(true);
+    }
+  });
+
+  test("runWebCommand returns undefined and calls deps.exit(1) on port conflict in non-interactive mode", async () => {
+    const blocker = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch() {
+        return new Response("busy");
+      },
+    });
+    const occupiedPort = blocker.port ?? 0;
+    let exitCode: number | undefined;
+    const origErr = console.error;
+    console.error = () => {};
+
+    try {
+      const result = await runWebCommand(
+        { port: occupiedPort, host: "127.0.0.1" },
+        {
+          isInteractive: () => false,
+          exit: (code) => {
+            exitCode = code;
+          },
+        },
+      );
+      expect(result).toBeUndefined();
+      expect(exitCode).toBe(1);
+    } finally {
+      console.error = origErr;
+      blocker.stop(true);
+    }
+  });
+
+  test("runWebCommand returns undefined and calls deps.exit(1) when no port available in range", async () => {
+    const blocker = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch() {
+        return new Response("busy");
+      },
+    });
+    const occupiedPort = blocker.port ?? 0;
+    let exitCode: number | undefined;
+    const origErr = console.error;
+    console.error = () => {};
+
+    try {
+      const result = await runWebCommand(
+        { port: occupiedPort, host: "127.0.0.1" },
+        {
+          isInteractive: () => true,
+          findNextAvailablePort: () => null,
+          exit: (code) => {
+            exitCode = code;
+          },
+        },
+      );
+      expect(result).toBeUndefined();
+      expect(exitCode).toBe(1);
+    } finally {
+      console.error = origErr;
+      blocker.stop(true);
+    }
+  });
+
+  test("runWebCommand returns undefined and calls deps.exit(1) when startDaemon throws", async () => {
+    let exitCode: number | undefined;
+    const origErr = console.error;
+    console.error = () => {};
+
+    try {
+      const result = await runWebCommand(
+        { port: 0, staticDir: "/path/that/does/not/exist/at/all" },
+        {
+          exit: (code) => {
+            exitCode = code;
+          },
+        },
+      );
+      expect(result).toBeUndefined();
+      expect(exitCode).toBe(1);
+    } finally {
+      console.error = origErr;
+    }
+  });
 });

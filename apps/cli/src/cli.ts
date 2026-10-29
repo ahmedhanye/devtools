@@ -56,7 +56,7 @@ async function promptPortChange(
   targetPort: number,
   nextPort: number,
   deps?: WebCommandDeps,
-): Promise<number> {
+): Promise<number | null> {
   const confirm = deps?.confirm ?? (await import("@inquirer/prompts")).confirm;
   try {
     const accepted = await confirm({
@@ -66,7 +66,7 @@ async function promptPortChange(
     if (!accepted) {
       console.error(pc.yellow("Aborted server start."));
       exitProcess(1, deps);
-      return nextPort;
+      return null;
     }
     return nextPort;
   } catch (error) {
@@ -76,7 +76,7 @@ async function promptPortChange(
       ),
     );
     exitProcess(1, deps);
-    return nextPort;
+    return null;
   }
 }
 
@@ -88,7 +88,7 @@ async function resolvePortConflict(
   targetPort: number,
   targetHost: string,
   deps?: WebCommandDeps,
-): Promise<number> {
+): Promise<number | null> {
   if (!checkInteractive(deps)) {
     console.error(
       pc.red(
@@ -96,7 +96,7 @@ async function resolvePortConflict(
       ),
     );
     exitProcess(1, deps);
-    return targetPort;
+    return null;
   }
 
   const findNext =
@@ -109,7 +109,7 @@ async function resolvePortConflict(
       ),
     );
     exitProcess(1, deps);
-    return targetPort;
+    return null;
   }
 
   return promptPortChange(targetPort, nextPort, deps);
@@ -142,7 +142,15 @@ export async function runWebCommand(
   const staticDir = config.staticDir;
 
   if (targetPort !== 0 && !isPortAvailable(targetPort, targetHost)) {
-    targetPort = await resolvePortConflict(targetPort, targetHost, deps);
+    const resolvedPort = await resolvePortConflict(
+      targetPort,
+      targetHost,
+      deps,
+    );
+    if (resolvedPort === null) {
+      return undefined;
+    }
+    targetPort = resolvedPort;
   }
 
   let instance: DaemonInstance;
@@ -156,7 +164,8 @@ export async function runWebCommand(
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(pc.red(message));
-    process.exit(1);
+    exitProcess(1, deps);
+    return undefined;
   }
 
   console.log(

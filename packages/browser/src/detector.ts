@@ -214,6 +214,19 @@ export type ManagedCacheDirOptions =
     })
   | EnvMap;
 
+function extractManagedSeam(
+  envOrSeam?: ManagedCacheDirOptions,
+): BrowserSeamOptions | BrowserConfigSeam | EnvMap | undefined {
+  if (!envOrSeam || typeof envOrSeam !== "object") {
+    return undefined;
+  }
+  if ("getInstalledBrowsers" in envOrSeam) {
+    const { getInstalledBrowsers: _, ...rest } = envOrSeam;
+    return Object.keys(rest).length > 0 ? rest : undefined;
+  }
+  return envOrSeam;
+}
+
 /**
  * Returns the managed browser cache directory path (`~/.devtools/browsers` or `DEVTOOLS_BROWSERS_DIR`).
  *
@@ -221,7 +234,7 @@ export type ManagedCacheDirOptions =
  * @returns Absolute path to the managed browser cache directory.
  */
 export function getManagedCacheDir(envOrSeam?: ManagedCacheDirOptions): string {
-  const seam = resolveSeam(envOrSeam);
+  const seam = resolveSeam(extractManagedSeam(envOrSeam));
   return resolveManagedCacheDir(undefined, seam);
 }
 
@@ -238,7 +251,7 @@ export async function probeManagedCache(
   envOrSeam?: ManagedCacheDirOptions,
   timeoutMs?: number,
 ): Promise<{ path: string; version: string } | null> {
-  const seam = resolveSeam(envOrSeam);
+  const seam = resolveSeam(extractManagedSeam(envOrSeam));
   const targetDir = resolveManagedCacheDir(cacheDir, seam);
   if (!existsSync(targetDir)) {
     return null;
