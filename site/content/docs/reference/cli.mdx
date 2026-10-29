@@ -35,9 +35,8 @@ Options:
   -h, --help      display help for command
 
 Commands:
-  web [options]               Start the unified local loopback daemon
-  browser <status|install>    Inspect and provision Chromium browsers
-  help [command]              display help for command
+  web [options]   Start the unified local loopback daemon
+  help [command]  display help for command
 ```
 
 To view options for the `web` subcommand:
@@ -104,34 +103,6 @@ When command-line flags are omitted, the CLI reads configuration from these envi
   Command line flags take precedence over environment variables when both are
   provided.
 </Callout>
-
-## Browser provisioning commands
-
-The CLI provides subcommands to inspect and manage Chromium binaries:
-
-### `devtools browser status`
-
-Inspects Chromium resolution status across explicit overrides, managed cache, system paths, and test tools:
-
-```bash title="terminal"
-devtools browser status
-```
-
-Supports `--json` for machine-readable output:
-
-```bash title="terminal"
-devtools browser status --json
-```
-
-### `devtools browser install`
-
-Downloads and caches Chrome for Testing (`chrome-headless-shell@stable`) into the local managed cache (`~/.devtools/browsers/`):
-
-```bash title="terminal"
-devtools browser install
-```
-
-Pass `--path <dir>` to install into a custom directory.
 
 ## Exit codes
 

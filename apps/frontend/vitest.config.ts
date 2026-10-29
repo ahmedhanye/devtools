@@ -57,8 +57,14 @@ function parseStoryExports(code: string): {
   const csf = loadCsf(code, {
     makeTitle: (userTitle) => userTitle || "Story",
   }).parse();
+  const metaVar = csf._metaVariableName;
+  if (!metaVar) {
+    throw new Error(
+      "storybookStoriesPlugin: declare the default export as `const meta = {...}; export default meta;`.",
+    );
+  }
   return {
-    metaVar: csf._metaVariableName || "meta",
+    metaVar,
     storyNames: Object.keys(csf._stories),
   };
 }
