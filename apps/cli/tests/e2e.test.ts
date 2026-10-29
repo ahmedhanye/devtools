@@ -94,10 +94,11 @@ describe("End-to-End Interconnected Stack Integration (CLI -> Daemon -> UI -> AP
       expect(exitCode).toBe(0);
 
       const stdout = await new Response(daemonProc.stdout).text();
+      const stderr = await new Response(daemonProc.stderr).text();
       expect(stdout).toContain(
         `DevTools daemon listening on http://127.0.0.1:${port}`,
       );
-      expect(stdout).toContain("Received SIGTERM. Shutting down");
+      expect(stderr).toContain("Received SIGTERM. Shutting down");
 
       // 7. Verify socket closed after termination
       expect(fetch(`${baseUrl}/api/health`)).rejects.toThrow();

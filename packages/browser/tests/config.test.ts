@@ -190,7 +190,7 @@ describe("packages/browser/src/config", () => {
       const funcPlat: BrowserConfigSeam = {
         platform: () => "linux",
       };
-      expect(resolveSeam(funcPlat)).toEqual(funcPlat);
+      expect(resolveSeam(funcPlat)?.platform?.()).toBe("linux");
 
       expect(resolveSeam(undefined, "darwin")).toEqual({
         platform: expect.any(Function),

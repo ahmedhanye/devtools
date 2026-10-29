@@ -1,40 +1,39 @@
-import {
-  API_ERROR_CODES,
-  type ApiErrorResponse,
-  ApiErrorResponseSchema,
-  type HealthResponse,
-  HealthResponseSchema,
-} from "@devtools/core";
+import { API_ERROR_CODES } from "@devtools/core";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import {
+  createLoopbackProtectionMiddleware,
+  formatError,
+  isLoopbackOrigin,
+} from "./middleware/security";
+import { createHealthRoutes } from "./routes/health";
 
-const APP_VERSION = "0.1.0";
+export {
+  createLoopbackProtectionMiddleware,
+  formatError,
+  isLoopbackOrigin,
+} from "./middleware/security";
+export { createHealthRoutes } from "./routes/health";
 
-function isLoopbackOrigin(origin: string): boolean {
-  try {
-    const url = new URL(origin);
-    return (
-      (url.hostname === "localhost" || url.hostname === "127.0.0.1") &&
-      (url.protocol === "http:" || url.protocol === "https:")
-    );
-  } catch {
-    return false;
-  }
-}
-
-function formatError(code: string, message: string): ApiErrorResponse {
-  return ApiErrorResponseSchema.parse({
-    error: {
-      code,
-      message,
-    },
-  });
-}
-
+/**
+ * Configuration options for instantiating the Hono API application via {@link createApp}.
+ */
 export interface CreateAppOptions {
+  /**
+   * URL prefix under which all API routes are mounted.
+   * Pass `""` to mount routes at the root path `/`.
+   * @defaultValue "/api"
+   */
   basePath?: string;
 }
 
+/**
+ * Creates a configured Hono application instance with loopback CORS, CSRF protection,
+ * structured JSON error boundaries, and API route modules.
+ *
+ * @param options - Optional route mounting prefix configuration.
+ * @returns Chained Hono application instance preserving full route type inference (`AppType`).
+ */
 export function createApp(options: CreateAppOptions = {}) {
   const basePath = options.basePath ?? "/api";
   const app = new Hono();
@@ -62,6 +61,8 @@ export function createApp(options: CreateAppOptions = {}) {
     }),
   );
 
+  app.use(corsPath, createLoopbackProtectionMiddleware());
+
   app.notFound((c) => {
     return c.json(
       formatError(
@@ -80,17 +81,20 @@ export function createApp(options: CreateAppOptions = {}) {
 
   const api = basePath ? app.basePath(basePath) : app;
 
-  return api.get("/health", (c) => {
-    const payload: HealthResponse = {
-      status: "ok",
-      timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
-      version: APP_VERSION,
-    };
-    return c.json(HealthResponseSchema.parse(payload), 200);
-  });
+  return api.route("/", createHealthRoutes());
 }
 
+/**
+ * Default Hono API application instance mounted at `/api`.
+ */
 export const app = createApp();
+
+/**
+ * Inferred Hono RPC router type for end-to-end typed client consumption (`hc<AppType>`).
+ */
 export type AppType = typeof app;
+
+/**
+ * Alias for {@link AppType}.
+ */
 export type App = typeof app;

@@ -257,6 +257,7 @@ describe("CLI Browser Command Surface", () => {
         { path: testDir },
         {
           installBrowser: async (opts) => {
+            opts?.onProgress?.(0, 0);
             opts?.onProgress?.(50, 100);
             return {
               executablePath: mockInstalledPath,
@@ -274,6 +275,36 @@ describe("CLI Browser Command Surface", () => {
     } finally {
       console.log = origLog;
     }
+  });
+
+  test("runBrowserInstallCommand reports download progress when isTTY is true", async () => {
+    const mockInstalledPath = join(testDir, "installed-browser");
+    const stderrChunks: string[] = [];
+
+    await runBrowserInstallCommand(
+      { path: testDir },
+      {
+        isTTY: true,
+        writeStderr: (chunk: string) => stderrChunks.push(chunk),
+        installBrowser: async (opts) => {
+          opts?.onProgress?.(0, 100);
+          opts?.onProgress?.(50, 100);
+          opts?.onProgress?.(50, 100);
+          opts?.onProgress?.(100, 100);
+          return {
+            executablePath: mockInstalledPath,
+            buildId: "130.0.6723.69",
+            browser: "chrome-headless-shell",
+          };
+        },
+      },
+    );
+
+    const joined = stderrChunks.join("");
+    expect(joined).toContain("Downloading chrome-headless-shell: 0%");
+    expect(joined).toContain("Downloading chrome-headless-shell: 50%");
+    expect(joined).toContain("Downloading chrome-headless-shell: 100%");
+    expect(joined).toContain("\n");
   });
 
   test("runBrowserInstallCommand logs error and exits code 1 on failure", async () => {
@@ -305,6 +336,38 @@ describe("CLI Browser Command Surface", () => {
       expect(combinedErrors).toContain(
         "Failed to install browser: Disk full error",
       );
+    } finally {
+      console.error = origErr;
+      process.exit = origExit;
+    }
+  });
+
+  test("runBrowserInstallCommand writes newline on failure when isTTY is true", async () => {
+    const errLogs: string[] = [];
+    const stderrChunks: string[] = [];
+    const origErr = console.error;
+    console.error = (...args: any[]) => errLogs.push(args.join(" "));
+
+    const origExit = process.exit;
+    process.exit = ((code?: number) => {
+      throw new Error(`process.exit called with ${code}`);
+    }) as any;
+
+    try {
+      await expect(
+        runBrowserInstallCommand(
+          { path: testDir },
+          {
+            isTTY: true,
+            writeStderr: (chunk: string) => stderrChunks.push(chunk),
+            installBrowser: async () => {
+              throw new Error("Network timeout");
+            },
+          },
+        ),
+      ).rejects.toThrow("process.exit called with 1");
+
+      expect(stderrChunks).toContain("\n");
     } finally {
       console.error = origErr;
       process.exit = origExit;
