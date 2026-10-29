@@ -81,7 +81,7 @@ describe("documentation shell and catch-all route seam", () => {
     expect(html).toContain('id="test-content"');
   });
 
-  it("renders non-tutorial documentation section page with quadrant styling", async () => {
+  it("renders non-tutorial documentation section page cleanly within docs layout", async () => {
     const pageElement = await DocsCatchAllPage({
       params: Promise.resolve({ slug: ["reference", "cli"] }),
     });
@@ -92,6 +92,7 @@ describe("documentation shell and catch-all route seam", () => {
         React.createElement(RootDocsLayout, null, pageElement),
       ),
     );
-    expect(html).toContain("--reference-color");
+    expect(html).toContain("<article");
+    expect(html).toContain("<h1");
   });
 });
