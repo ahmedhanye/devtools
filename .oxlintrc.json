@@ -68,8 +68,8 @@
     },
     {
       "files": [
-        "**/packages/browser/src/browser/detector.ts",
-        "**/packages/browser/src/browser/waterfall.ts"
+        "**/packages/browser/src/detector.ts",
+        "**/packages/browser/src/waterfall.ts"
       ],
       "rules": {
         "no-await-in-loop": "off"

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { installBrowser } from "../src/browser/installer";
+import { installBrowser } from "../src/installer";
 
 describe("Browser Installer", () => {
   const testDir = join(

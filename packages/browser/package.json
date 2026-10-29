@@ -14,6 +14,7 @@
     "test:coverage": "bun test --coverage"
   },
   "dependencies": {
+    "@devtools/core": "workspace:*",
     "@puppeteer/browsers": "^3.2.5",
     "chrome-launcher": "^1.2.2"
   }

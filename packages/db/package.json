@@ -19,6 +19,7 @@
     "test:coverage": "bun test --coverage"
   },
   "dependencies": {
+    "@devtools/core": "workspace:*",
     "drizzle-orm": "^0.45.4"
   },
   "devDependencies": {

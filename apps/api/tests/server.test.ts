@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { HealthResponseSchema } from "@devtools/core";
-import { type ServerInstance, startServer } from "../src/server";
+import {
+  resolveServerConfig,
+  type ServerInstance,
+  startServer,
+} from "../src/server";
 
 describe("Standalone Server Lifecycle", () => {
   let activeInstance: ServerInstance | null = null;
@@ -113,5 +117,12 @@ describe("Standalone Server Lifecycle", () => {
     expect(stderr).toContain(
       `Port ${occupiedPort} is already in use. Set PORT=<port> to use an alternate port.`,
     );
+  });
+
+  test("resolveServerConfig respects injected env seam", () => {
+    const cfg = resolveServerConfig({
+      env: { HOST: "0.0.0.0", PORT: "4321" },
+    });
+    expect(cfg).toEqual({ host: "0.0.0.0", port: 4321 });
   });
 });
