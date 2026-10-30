@@ -114,9 +114,12 @@ describe("resolveArtifactsDir (4-tier precedence waterfall)", () => {
   });
 
   it("defaults to process.env and process.cwd when invoked with no arguments", () => {
-    const resolved = resolveArtifactsDir();
-    expect(typeof resolved).toBe("string");
-    expect(resolved.length).toBeGreaterThan(0);
+    expect(resolveArtifactsDir()).toBe(
+      resolveArtifactsDir({
+        env: process.env,
+        cwd: () => process.cwd(),
+      }),
+    );
   });
 });
 
@@ -171,12 +174,33 @@ describe("resolveChromeSandboxDisabled (Chromium sandbox policy seam)", () => {
     ).toBe(true);
   });
 
-  it("keeps sandboxing enabled in non-root desktop environments without CI or overrides", () => {
+  it("keeps sandboxing enabled in non-root desktop environments or when UID is unavailable", () => {
     expect(
       resolveChromeSandboxDisabled({
         env: {},
         getuid: () => 1000,
       }),
     ).toBe(false);
+    expect(
+      resolveChromeSandboxDisabled({
+        env: {},
+        getuid: () => undefined,
+      }),
+    ).toBe(false);
+  });
+
+  it("delegates to default process.env and process.getuid when seams are omitted", () => {
+    expect(resolveChromeSandboxDisabled({ env: {} })).toBe(
+      resolveChromeSandboxDisabled({
+        env: {},
+        getuid: process.getuid,
+      }),
+    );
+    expect(resolveChromeSandboxDisabled()).toBe(
+      resolveChromeSandboxDisabled({
+        env: process.env,
+        getuid: process.getuid,
+      }),
+    );
   });
 });

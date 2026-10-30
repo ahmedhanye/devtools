@@ -110,7 +110,7 @@ export interface ResolveChromeSandboxOptions {
   /** Environment variable map overriding `process.env`. */
   env?: EnvMap;
   /** Custom user ID retriever for unit testing (defaults to `process.getuid`). */
-  getuid?: () => number;
+  getuid?: () => number | undefined;
 }
 
 /**
@@ -140,13 +140,6 @@ export function resolveChromeSandboxDisabled(
   ) {
     return true;
   }
-  const uidResolver =
-    options.getuid ??
-    (typeof process.getuid === "function"
-      ? () => process.getuid!()
-      : undefined);
-  if (typeof uidResolver === "function" && uidResolver() === 0) {
-    return true;
-  }
-  return false;
+  const getuid = options.getuid ?? process.getuid;
+  return getuid?.() === 0;
 }

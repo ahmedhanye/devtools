@@ -451,12 +451,7 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
 
     // Verify invokeWorkerEntrypoint sets exitCode on failure and resets cleanly
     const prevExitCode = process.exitCode;
-    const bunRef = Bun as unknown as { stdin: unknown };
-    const originalStdin = bunRef.stdin;
     try {
-      bunRef.stdin = {
-        text: async () => '{"mock":true}',
-      };
       const entryCode = await invokeWorkerEntrypoint(
         [],
         async (_argv, deps) => {
@@ -464,20 +459,24 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
           expect(stdinText).toBe('{"mock":true}');
           return 1;
         },
+        { text: async () => '  {"mock":true}  ' },
       );
       expect(entryCode).toBe(1);
       expect(process.exitCode).toBe(1);
 
-      // Also cover fallback branch when Bun.stdin is absent
-      bunRef.stdin = null;
-      await invokeWorkerEntrypoint([], async (_argv, deps) => {
-        const fallbackText = await deps?.readStdin?.();
-        expect(fallbackText).toBe("");
-        return 0;
-      });
+      // Also cover fallback branch when stdin is absent and default stdin seam
+      await invokeWorkerEntrypoint(
+        [],
+        async (_argv, deps) => {
+          const fallbackText = await deps?.readStdin?.();
+          expect(fallbackText).toBe("");
+          return 0;
+        },
+        null,
+      );
+      expect(await invokeWorkerEntrypoint(["{}"], async () => 0)).toBe(0);
     } finally {
       process.exitCode = prevExitCode ?? 0;
-      bunRef.stdin = originalStdin;
     }
   });
 

@@ -346,19 +346,16 @@ export async function runWorkerMain(
  *
  * @param argv - Command-line arguments passed to the worker script.
  * @param mainFn - Optional {@link runWorkerMain} override seam for unit testing.
+ * @param stdin - Optional standard input stream reader seam (defaults to `Bun.stdin`).
  * @returns Numeric exit code returned by `mainFn`.
  */
 export async function invokeWorkerEntrypoint(
   argv: readonly string[] = process.argv.slice(2),
   mainFn: typeof runWorkerMain = runWorkerMain,
+  stdin: { text: () => Promise<string> } | null = Bun.stdin,
 ): Promise<number> {
   const code = await mainFn(argv, {
-    readStdin: async () => {
-      if (typeof Bun !== "undefined" && Bun.stdin) {
-        return (await Bun.stdin.text()).trim();
-      }
-      return "";
-    },
+    readStdin: async () => (stdin ? (await stdin.text()).trim() : ""),
   });
   if (code !== 0) {
     process.exitCode = code;
