@@ -12,6 +12,7 @@ packages/db/
 ├── src/
 │   ├── schema/
 │   │   ├── system.ts          # System records & registration schemas
+│   │   ├── lighthouse.ts      # Lighthouse audit runs & summary JSON schemas
 │   │   └── index.ts           # Schema aggregation & exports
 │   ├── client.ts              # Drizzle ORM wrapper & query methods
 │   ├── config.ts              # Database path resolution & env seams
@@ -44,3 +45,11 @@ Per [ADR 0001](../adr/0001-embedded-database-foundation.md), SQLite connections 
    - Resolves to `<repo_root>/.devtools/devtools.db` in local workspace development (`NODE_ENV !== "production"`).
    - Defaults to `~/.devtools/devtools.db` under the user's home directory in production.
 2. **In-memory test isolation**: Unit test suites instantiate databases using `createDb(":memory:")` or `createConnection(":memory:")`. This creates an ephemeral, lightning-fast database in RAM that requires zero disk cleanup and eliminates cross-test state pollution. In-memory databases automatically omit WAL pragma execution.
+
+## 3-tier audit storage schema (ADR 0003)
+
+Per [ADR 0003](../adr/0003-lighthouse-audit-isolation-and-tiered-storage.md), `packages/db/src/schema/lighthouse.ts` defines the `lighthouse_runs` table supporting 3-tier performance audit storage:
+
+1. **Hot relational columns**: Core run attributes (`url`, `final_url`, `form_factor`, `throttling_method`), the 4 category scores (0–100), and the 6 Core Web Vitals (`lcp_ms`, `cls`, `tbt_ms`, `fcp_ms`, `si_ms`, `ttfb_ms`) are stored in indexed columns for fast queries without parsing large JSON payloads.
+2. **Warm summary payload**: The `summary_json` column stores a structured, normalized JSON summary with LCP and CLS attribution, prioritized insight diagnostics, and multi-run distribution metadata.
+3. **Cold disk references**: The `json_report_path` and `html_report_path` columns store relative disk paths pointing to full Lighthouse report artifacts under `<artifactsDir>/<runId>/`.
