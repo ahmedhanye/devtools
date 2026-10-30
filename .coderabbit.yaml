@@ -142,6 +142,14 @@ reviews:
         2. Clean Seams: Mock external download operations (@puppeteer/browsers) in tests to guarantee offline test isolation.
         3. Stable Contracts: Export public contracts (resolveBrowserPath, installBrowser, getBrowserStatus, types, errors) via index.ts.
 
+    - path: "packages/lighthouse/**"
+      instructions: >-
+        This package provides the isolated Lighthouse v13 audit engine, metric extraction, and persistence services.
+        Enforce the following:
+        1. Subprocess Isolation: Execute Lighthouse runs inside an isolated child process/worker with deterministic Chromium cleanup (`launchedChrome.kill()` in `finally`).
+        2. Configuration Seam: Isolate environment variable reads inside `src/config.ts` (`resolveArtifactsDir`) with injectable `options.env?: EnvMap` per ADR 0002.
+        3. Representative Selection: Select a single Representative Run via Euclidean distance to median FCP and TTI rather than computing independent per-metric medians.
+
     - path: "site/**"
       instructions: >-
         This package is the Fumadocs documentation platform application.

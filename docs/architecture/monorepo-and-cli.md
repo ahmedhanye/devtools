@@ -15,7 +15,8 @@ devtools/
 ├── packages/                     # Shared headless domain packages
 │   ├── core/                     # Shared Zod schemas, domain models, error constants
 │   ├── db/                       # Embedded SQLite persistence, Drizzle ORM, migrations
-│   └── browser/                  # Chromium resolution waterfall & managed cache
+│   ├── browser/                  # Chromium resolution waterfall & managed cache
+│   └── lighthouse/               # Isolated Lighthouse audit engine & normalizer
 └── site/                         # Fumadocs documentation platform & LLM endpoints
 ```
 
@@ -38,6 +39,7 @@ graph TD
     Browser["packages/browser<br/>(Chromium Waterfall)"]
     DB["packages/db<br/>(SQLite / Drizzle)"]
     Core["packages/core<br/>(Zod Schemas & Domain Errors)"]
+    Lighthouse["packages/lighthouse<br/>(Lighthouse Audit Engine)"]
   end
 
   CLI --> API
@@ -48,6 +50,9 @@ graph TD
   Frontend --> Core
   DB --> Core
   Browser --> Core
+  Lighthouse --> Core
+  Lighthouse --> DB
+  Lighthouse --> Browser
 ```
 
 ### Architectural tier invariants
@@ -55,6 +60,7 @@ graph TD
 1. **Headless domain packages (`packages/*`)**:
    - Leaf foundation: `@devtools/core` has zero workspace dependencies and declares shared Zod schemas, error primitives, and configuration types.
    - Persistence and automation: `@devtools/db` and `@devtools/browser` consume `@devtools/core`.
+   - Performance auditing: `@devtools/lighthouse` consumes `@devtools/core`, `@devtools/db`, and `@devtools/browser`.
    - Invariant: Packages must **never** import from applications (`apps/*`) or documentation (`site/`).
 2. **Deployable applications (`apps/*`)**:
    - Applications consume headless packages via `"workspace:*"`.

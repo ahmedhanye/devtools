@@ -1,5 +1,7 @@
+import * as lighthouseSchema from "./lighthouse";
 import * as systemSchema from "./system";
 
+export * from "./lighthouse";
 export * from "./system";
 
 /**
@@ -7,4 +9,5 @@ export * from "./system";
  */
 export const schema = {
   ...systemSchema,
+  ...lighthouseSchema,
 };

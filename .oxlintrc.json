@@ -98,7 +98,8 @@
     {
       "files": [
         "**/packages/db/src/config.ts",
-        "**/packages/browser/src/config.ts"
+        "**/packages/browser/src/config.ts",
+        "**/packages/lighthouse/src/config.ts"
       ],
       "plugins": ["node"],
       "rules": {
@@ -108,7 +109,9 @@
     {
       "files": [
         "**/packages/browser/src/detector.ts",
-        "**/packages/browser/src/waterfall.ts"
+        "**/packages/browser/src/waterfall.ts",
+        "**/packages/lighthouse/src/runner.ts",
+        "**/packages/lighthouse/src/worker.ts"
       ],
       "rules": {
         "no-await-in-loop": "off"

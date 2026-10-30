@@ -12,6 +12,7 @@ out/
 storybook-static/
 .source/
 coverage/
+**/coverage/
 
 # Environment files
 .env

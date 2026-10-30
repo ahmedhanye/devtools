@@ -4,9 +4,9 @@ Architectural guidelines, boundary rules, and development practices for shared d
 
 ## Headless domain isolation
 
-1. **Unidirectional dependency ordering**: Packages under `packages/*` are headless domain libraries (`@devtools/core`, `@devtools/db`, `@devtools/browser`). They supply shared business logic, schemas, and persistence primitives:
+1. **Unidirectional dependency ordering**: Packages under `packages/*` are headless domain libraries (`@devtools/core`, `@devtools/db`, `@devtools/browser`, `@devtools/lighthouse`). They supply shared business logic, schemas, and persistence primitives:
    - Packages must **never** import from applications (`apps/*`) or documentation (`site/`).
-   - Packages follow a strict hierarchy: `@devtools/core` is a zero-dependency foundation; `@devtools/db` and `@devtools/browser` depend on `@devtools/core`. Sibling packages must not form circular references.
+   - Packages follow a strict hierarchy: `@devtools/core` is a zero-dependency foundation; `@devtools/db` and `@devtools/browser` depend on `@devtools/core`; `@devtools/lighthouse` depends on `@devtools/core`, `@devtools/db`, and `@devtools/browser`. Sibling packages must not form circular references.
 2. **Framework independence**: Headless packages must remain independent of frontend UI frameworks (React, Next.js) and HTTP routing engines (Hono). Keep domain models and business rules pure and decoupled from delivery mechanisms.
 
 ## Direct source exports
