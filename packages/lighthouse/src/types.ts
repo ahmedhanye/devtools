@@ -372,6 +372,7 @@ export interface WorkerPayload {
   throttlingMethod: LighthouseThrottlingMethod;
   categories: readonly string[];
   chromePath?: string;
+  disableSandbox?: boolean;
   env?: EnvMap;
   runIndex: number;
   totalRuns: number;
@@ -407,6 +408,8 @@ export interface RunLighthouseAuditOptions {
   categories?: readonly string[];
   /** Optional explicit Chromium binary path override (`--chrome-path`). */
   chromePath?: string;
+  /** Optional flag to force disable or enable Chromium sandboxing (`--no-sandbox`). */
+  disableSandbox?: boolean;
   /** Optional explicit artifacts base directory override. */
   artifactsDir?: string;
   /** Optional isolated environment map seam overriding `process.env`. */

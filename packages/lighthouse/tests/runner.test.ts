@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createDb, runMigrations, type DevtoolsDb } from "@devtools/db";
+import {
+  createDb,
+  resetDb,
+  runMigrations,
+  type DevtoolsDb,
+} from "@devtools/db";
 import {
   executeIterationInSubprocess,
   getLighthouseRunById,
@@ -213,6 +218,40 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
     }
   });
 
+  it("passes options.env to getDb to honor ADR-0002 database seam when db option is omitted", async () => {
+    resetDb();
+    const customDbPath = join(tempArtifactsDir, "isolated-test.db");
+    const isolatedDb = createDb({ path: customDbPath });
+    runMigrations(isolatedDb);
+
+    try {
+      const mockResult = makeMockIterationResult(
+        "https://example.com/db-test",
+        800,
+        1500,
+        1200,
+        95,
+        "db-test",
+      );
+
+      const result = await runLighthouseAudit({
+        url: "https://example.com/db-test",
+        runs: 1,
+        artifactsDir: tempArtifactsDir,
+        env: {
+          DEVTOOLS_DB_PATH: customDbPath,
+          NODE_ENV: "test",
+        },
+        executor: async () => mockResult,
+      });
+
+      expect(result.run.url).toBe("https://example.com/db-test");
+      expect(existsSync(customDbPath)).toBe(true);
+    } finally {
+      resetDb();
+    }
+  });
+
   it("buildLighthouseConfig constructs mobile and desktop configs with default 4 categories and throttling overrides", () => {
     const mobileCfg = buildLighthouseConfig({
       formFactor: "mobile",
@@ -388,6 +427,19 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
       "Missing worker JSON payload argument",
     );
 
+    // Verify runWorkerMain accepts payload via stdin seam
+    const stdinLines: string[] = [];
+    const codeStdin = await runWorkerMain([], {
+      readStdin: async () => JSON.stringify(payload),
+      writeLine: (line) => stdinLines.push(line),
+      executeIteration: async () => ({
+        reportJson: mockIter.reportJson,
+        reportHtml: mockIter.reportHtml,
+      }),
+    });
+    expect(codeStdin).toBe(0);
+    expect(JSON.parse(stdinLines[0]!).type).toBe("result");
+
     // Verify extractReportStrings fallback when report is a single JSON string
     const fallbackReports = extractReportStrings(
       mockIter.lhr,
@@ -422,8 +474,8 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
     await Bun.write(
       mockScriptPath,
       `
-const arg = process.argv[2];
-const parsed = JSON.parse(arg);
+const raw = process.argv[2] || (await Bun.stdin.text()).trim();
+const parsed = JSON.parse(raw);
 if (parsed.url.includes("fail-worker")) {
   console.log(JSON.stringify({ type: "error", message: "Simulated worker crash" }));
   process.exit(1);
@@ -431,6 +483,17 @@ if (parsed.url.includes("fail-worker")) {
 if (parsed.url.includes("crash-raw")) {
   console.error("Fatal stderr crash");
   process.exit(2);
+}
+if (parsed.url.includes("large-stderr")) {
+  process.stderr.write("E".repeat(128 * 1024));
+  process.stdout.write(JSON.stringify({
+    type: "result",
+    result: {
+      reportJson: ${JSON.stringify(mockResult.reportJson)},
+      reportHtml: ${JSON.stringify(mockResult.reportHtml)}
+    }
+  }));
+  process.exit(0);
 }
 console.log("non-json banner line");
 console.log("{ malformed json line");
@@ -492,6 +555,19 @@ process.stdout.write(JSON.stringify({
         mockScriptPath,
       ),
     ).rejects.toThrow("Fatal stderr crash");
+
+    const largeStderrResult = await executeIterationInSubprocess(
+      {
+        url: "https://example.com/large-stderr",
+        formFactor: "mobile",
+        throttlingMethod: "simulate",
+        categories: ["performance"],
+        runIndex: 0,
+        totalRuns: 1,
+      },
+      mockScriptPath,
+    );
+    expect(largeStderrResult.reportHtml).toContain("Report subprocess-ok");
   });
 
   it("runWorkerIteration handles SIGTERM cleanup listener", async () => {

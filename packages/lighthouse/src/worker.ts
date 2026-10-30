@@ -8,6 +8,7 @@ import defaultRunLighthouse, {
   desktopConfig,
   generateReport as defaultGenerateReport,
 } from "lighthouse";
+import { resolveChromeSandboxDisabled } from "./config";
 import { WorkerExecutionError } from "./errors";
 import type {
   LighthouseFormFactor,
@@ -204,10 +205,14 @@ export async function runWorkerIteration(
     "launching_browser",
     `Launching headless Chromium (${browser.version})`,
   );
+  const disableSandbox = resolveChromeSandboxDisabled({
+    disableSandbox: payload.disableSandbox,
+    env: payload.env,
+  });
   const chromeFlags = [
     ...Launcher.defaultFlags(),
     "--headless=new",
-    "--no-sandbox",
+    ...(disableSandbox ? ["--no-sandbox"] : []),
     "--disable-gpu",
     "--disable-dev-shm-usage",
   ];
@@ -275,18 +280,27 @@ export async function runWorkerIteration(
 }
 
 /**
+ * Optional dependencies and I/O seams for {@link runWorkerMain}.
+ */
+export interface RunWorkerMainDeps {
+  /** Line writer seam (defaults to `process.stdout.write`). */
+  writeLine?: (line: string) => void;
+  /** Iteration executor seam (defaults to `runWorkerIteration`). */
+  executeIteration?: typeof runWorkerIteration;
+  /** Stdin reader seam (defaults to `Bun.stdin.text` when invoked via entrypoint). */
+  readStdin?: () => Promise<string>;
+}
+
+/**
  * CLI entrypoint for the isolated worker subprocess (`bun packages/lighthouse/src/worker.ts <jsonPayload>`).
  *
  * @param argv - Command-line arguments following the script path (`process.argv.slice(2)`).
- * @param deps - Optional output writer and iteration executor seams for unit testing.
+ * @param deps - Optional output writer, iteration executor, and stdin reader seams for unit testing.
  * @returns Numeric exit code (`0` on success, `1` on error).
  */
 export async function runWorkerMain(
   argv: readonly string[],
-  deps: {
-    writeLine?: (line: string) => void;
-    executeIteration?: typeof runWorkerIteration;
-  } = {},
+  deps: RunWorkerMainDeps = {},
 ): Promise<number> {
   const writeLine =
     deps.writeLine ?? ((line: string) => process.stdout.write(`${line}\n`));
@@ -297,7 +311,13 @@ export async function runWorkerMain(
   };
 
   try {
-    const rawArg = argv[0];
+    let rawArg = argv[0];
+    if (!rawArg && deps.readStdin) {
+      const stdinText = (await deps.readStdin()).trim();
+      if (stdinText) {
+        rawArg = stdinText;
+      }
+    }
     if (!rawArg) {
       throw new WorkerExecutionError("Missing worker JSON payload argument");
     }
@@ -332,7 +352,14 @@ export async function invokeWorkerEntrypoint(
   argv: readonly string[] = process.argv.slice(2),
   mainFn: typeof runWorkerMain = runWorkerMain,
 ): Promise<number> {
-  const code = await mainFn(argv);
+  const code = await mainFn(argv, {
+    readStdin: async () => {
+      if (typeof Bun !== "undefined" && Bun.stdin) {
+        return (await Bun.stdin.text()).trim();
+      }
+      return "";
+    },
+  });
   if (code !== 0) {
     process.exitCode = code;
   }

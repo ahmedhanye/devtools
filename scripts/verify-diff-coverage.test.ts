@@ -172,6 +172,16 @@ diff --git a/counter.ts b/counter.ts
       expect(isTypeOnlySource("export enum Status { Active, Inactive }")).toBe(
         false,
       );
+      expect(isTypeOnlySource('import "./bootstrap";')).toBe(false);
+      expect(isTypeOnlySource('import "dotenv/config";')).toBe(false);
+    });
+
+    it("evaluates non-matching import strings without exponential backtracking (ReDoS safe)", () => {
+      const maliciousPayload = `import ${"$ ".repeat(40)}not_matching;`;
+      const start = performance.now();
+      expect(isTypeOnlySource(maliciousPayload)).toBe(false);
+      const elapsed = performance.now() - start;
+      expect(elapsed).toBeLessThan(50);
     });
   });
 

@@ -139,18 +139,17 @@ export async function executeIterationInSubprocess(
     throttlingMethod: params.throttlingMethod,
     categories: params.categories,
     chromePath: params.chromePath,
+    disableSandbox: params.disableSandbox,
     env: params.env,
     runIndex: params.runIndex,
     totalRuns: params.totalRuns,
   };
 
-  const proc = Bun.spawn(
-    [process.execPath, workerScriptPath, JSON.stringify(payload)],
-    {
-      stdout: "pipe",
-      stderr: "pipe",
-    },
-  );
+  const proc = Bun.spawn([process.execPath, workerScriptPath], {
+    stdin: new Blob([JSON.stringify(payload)]),
+    stdout: "pipe",
+    stderr: "pipe",
+  });
 
   const state: {
     result: WorkerResultPayload | null;
@@ -160,6 +159,7 @@ export async function executeIterationInSubprocess(
     workerError: null,
   };
 
+  const stderrPromise = new Response(proc.stderr).text();
   const decoder = new TextDecoder();
   let buffer = "";
 
@@ -175,7 +175,7 @@ export async function executeIterationInSubprocess(
     handleWorkerLine(buffer, params.onProgress, state);
   }
 
-  const stderrText = await new Response(proc.stderr).text();
+  const stderrText = await stderrPromise;
   const exitCode = await proc.exited;
 
   if (state.workerError) {
@@ -217,7 +217,7 @@ export async function runLighthouseAudit(
   const startTime = performance.now();
   const validated = validateAuditOptions(options);
   const executor = options.executor ?? executeIterationInSubprocess;
-  const targetDb = options.db ?? getDb();
+  const targetDb = options.db ?? getDb({ env: options.env });
 
   const iterations: SingleIterationResult[] = [];
   for (let i = 0; i < validated.runs; i++) {
@@ -227,6 +227,7 @@ export async function runLighthouseAudit(
       throttlingMethod: validated.throttlingMethod,
       categories: validated.categories,
       chromePath: options.chromePath,
+      disableSandbox: options.disableSandbox,
       env: options.env,
       runIndex: i,
       totalRuns: validated.runs,

@@ -100,3 +100,53 @@ export function resolveArtifactsDir(
     join(homedir(), ".devtools", "artifacts", "lighthouse"),
   );
 }
+
+/**
+ * Configuration seam options for resolving Chromium sandbox behavior.
+ */
+export interface ResolveChromeSandboxOptions {
+  /** Explicit override to disable or keep sandbox. */
+  disableSandbox?: boolean;
+  /** Environment variable map overriding `process.env`. */
+  env?: EnvMap;
+  /** Custom user ID retriever for unit testing (defaults to `process.getuid`). */
+  getuid?: () => number;
+}
+
+/**
+ * Determines whether Chromium `--no-sandbox` flag should be applied.
+ *
+ * @remarks
+ * In root environments (`uid 0`), continuous integration environments (`CI=true`),
+ * or when `CHROME_NO_SANDBOX=1` is configured, `--no-sandbox` is required for Chromium
+ * to launch without SUID or unprivileged user namespace sandbox failures.
+ * In desktop non-root sessions, sandboxing remains enabled by default.
+ *
+ * @param options - Explicit override, environment map, and user ID seam.
+ * @returns True if `--no-sandbox` should be passed to Chromium.
+ */
+export function resolveChromeSandboxDisabled(
+  options: ResolveChromeSandboxOptions = {},
+): boolean {
+  if (typeof options.disableSandbox === "boolean") {
+    return options.disableSandbox;
+  }
+  const currentEnv = options.env ?? process.env;
+  if (
+    currentEnv.CHROME_NO_SANDBOX === "1" ||
+    currentEnv.CHROME_NO_SANDBOX === "true" ||
+    currentEnv.CI === "true" ||
+    currentEnv.CI === "1"
+  ) {
+    return true;
+  }
+  const uidResolver =
+    options.getuid ??
+    (typeof process.getuid === "function"
+      ? () => process.getuid!()
+      : undefined);
+  if (typeof uidResolver === "function" && uidResolver() === 0) {
+    return true;
+  }
+  return false;
+}

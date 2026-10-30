@@ -61,10 +61,9 @@ function stripDeclarativeStatements(jsText: string): string {
     .replace(/export\s*\*\s*(?:as\s+[\w$]+\s+)?from\s*["'][^"']+["']\s*;?/g, "")
     .replace(/export\s*\{[^}]*\}\s*from\s*["'][^"']+["']\s*;?/g, "")
     .replace(
-      /import\s*(?:(?:[\w$]+|\{[^}]*\}|\*\s*as\s+[\w$]+)\s*,?\s*)*from\s*["'][^"']+["']\s*;?/g,
+      /import\s+(?:(?:\*\s+as\s+[\w$]+|[\w$]+|\{[^}]*\})\s*,\s*)*(?:\*\s+as\s+[\w$]+|[\w$]+|\{[^}]*\})\s+from\s*["'][^"']+["']\s*;?/g,
       "",
     )
-    .replace(/import\s*["'][^"']+["']\s*;?/g, "")
     .replace(/export\s*\{[^}]*\}\s*;?/g, "")
     .trim();
 }
