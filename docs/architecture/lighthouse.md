@@ -49,9 +49,9 @@ sequenceDiagram
 
 ### Worker lifecycle guarantees
 
-1. **Subprocess boundary**: `runWorkerAudit` launches `worker.ts` with `Bun.spawn`, passing audit options via environment variables and receiving serialized payloads over standard output.
+1. **Subprocess boundary**: `executeIterationInSubprocess` launches `worker.ts` with `Bun.spawn`, passing the serialized audit payload through standard input (`stdin`) and receiving progress events and final report payloads over standard output (`stdout`) IPC.
 2. **Ephemeral port assignment**: Chrome launches with `port: 0` to let the operating system allocate an available port, avoiding port collisions during concurrent test or audit runs.
-3. **Deterministic cleanup**: A `finally` block in `worker.ts` ensures `chrome.kill()` terminates the browser process upon completion, unhandled errors, or unexpected process exit.
+3. **Deterministic cleanup**: A `finally` block in `worker.ts` along with `SIGTERM`/`SIGINT` signal handlers ensures `chrome.kill()` terminates the browser process upon normal completion, unhandled errors, or handled lifecycle signals.
 
 ## Representative run selection algorithm
 
@@ -76,6 +76,6 @@ Audit results range from sub-millisecond status checks to multi-megabyte trace r
 `packages/lighthouse/src/config.ts` accepts an optional `options.env` seam and resolves the artifacts directory using a 4-tier waterfall:
 
 1. **Explicit options**: `options.customDir` if provided.
-2. **Environment override**: `DEVTOOLS_ARTIFACTS_DIR` if set.
-3. **Development fallback**: `<repo_root>/.devtools/artifacts` in development mode (`NODE_ENV !== "production"`).
-4. **Production default**: `~/.devtools/artifacts` in production mode.
+2. **Environment override**: `DEVTOOLS_LIGHTHOUSE_ARTIFACTS_DIR` if set.
+3. **Development fallback**: `<repo_root>/.devtools/artifacts/lighthouse` in development mode (`NODE_ENV !== "production"`).
+4. **Production default**: `~/.devtools/artifacts/lighthouse` in production mode.

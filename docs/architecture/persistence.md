@@ -52,4 +52,4 @@ Per [ADR 0003](../adr/0003-lighthouse-audit-isolation-and-tiered-storage.md), `p
 
 1. **Hot relational columns**: Core run attributes (`url`, `final_url`, `form_factor`, `throttling_method`), the 4 category scores (0–100), and the 6 Core Web Vitals (`lcp_ms`, `cls`, `tbt_ms`, `fcp_ms`, `si_ms`, `ttfb_ms`) are stored in indexed columns for fast queries without parsing large JSON payloads.
 2. **Warm summary payload**: The `summary_json` column stores a structured, normalized JSON summary with LCP and CLS attribution, prioritized insight diagnostics, and multi-run distribution metadata.
-3. **Cold disk references**: The `json_report_path` and `html_report_path` columns store relative disk paths pointing to full Lighthouse report artifacts under `<artifactsDir>/<runId>/`.
+3. **Cold disk references**: The `json_report_path` and `html_report_path` columns store absolute disk paths pointing to full Lighthouse report artifacts under `<artifactsDir>/<runId>/`.

@@ -44,7 +44,6 @@ graph TD
   CLI --> Core
   CLI --> DB
   CLI --> Browser
-  CLI --> Lighthouse
   API --> Core
   Frontend --> Core
   DB --> Core
