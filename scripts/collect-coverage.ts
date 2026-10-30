@@ -114,6 +114,7 @@ const BUN_WORKSPACES = [
   "packages/core",
   "packages/db",
   "packages/browser",
+  "packages/lighthouse",
   "apps/cli",
   "apps/api",
   "site",
