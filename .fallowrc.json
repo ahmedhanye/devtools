@@ -4,7 +4,9 @@
     "apps/frontend/steiger.config.js",
     "packages/browser/src/index.ts",
     "packages/core/src/index.ts",
-    "packages/db/src/index.ts"
+    "packages/db/src/index.ts",
+    "packages/lighthouse/src/index.ts",
+    "packages/lighthouse/src/worker.ts"
   ],
   "ignoreDependencies": ["prettier-plugin-tailwindcss"],
   "ignoreUnresolvedImports": [
@@ -53,6 +55,10 @@
         "patterns": ["packages/browser/src/**"]
       },
       {
+        "name": "lighthouse",
+        "patterns": ["packages/lighthouse/src/**"]
+      },
+      {
         "name": "api",
         "patterns": ["apps/api/src/**"]
       },
@@ -87,12 +93,16 @@
         "allow": ["core"]
       },
       {
-        "from": "api",
+        "from": "lighthouse",
         "allow": ["core", "db", "browser"]
       },
       {
+        "from": "api",
+        "allow": ["core", "db", "browser", "lighthouse"]
+      },
+      {
         "from": "cli",
-        "allow": ["core", "db", "browser", "api"]
+        "allow": ["core", "db", "browser", "lighthouse", "api"]
       },
       {
         "from": "frontend-app",

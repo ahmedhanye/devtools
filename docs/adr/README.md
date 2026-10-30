@@ -11,7 +11,8 @@ Filenames must use kebab-case descriptive slugs that explain the decision direct
 docs/adr/
 ├── README.md
 ├── 0001-embedded-database-foundation.md
-└── 0002-package-configuration-and-environment-seams.md
+├── 0002-package-configuration-and-environment-seams.md
+└── 0003-lighthouse-audit-isolation-and-tiered-storage.md
 ```
 
 ## When to offer an ADR

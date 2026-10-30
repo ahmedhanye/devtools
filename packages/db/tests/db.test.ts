@@ -12,6 +12,7 @@ import {
   findWorkspaceRoot,
   getDb,
   integer,
+  lighthouseRuns,
   resetDb,
   resolveDatabasePath,
   runMigrations,
@@ -217,6 +218,47 @@ describe("Migrations & Database Client Operations", () => {
       where: eq(systemMetadata.key, "version"),
     });
     expect(deleted).toBeUndefined();
+
+    // Verify lighthouse_runs table and default timestamp $defaultFn
+    testDb
+      .insert(lighthouseRuns)
+      .values({
+        id: "run-default-ts",
+        url: "https://example.com",
+        finalUrl: "https://example.com/",
+        formFactor: "mobile",
+        throttlingMethod: "simulate",
+        performanceScore: 95,
+        accessibilityScore: 100,
+        bestPracticesScore: 92,
+        seoScore: 98,
+        lcpMs: 1200.5,
+        cls: 0.01,
+        tbtMs: 45,
+        fcpMs: 800,
+        siMs: 1100,
+        ttfbMs: 120,
+        summaryJson: {
+          lcpElement: null,
+          lcpPhases: null,
+          clsCulprits: [],
+          insights: [],
+          failedAudits: [],
+          runWarnings: [],
+          runtimeError: null,
+          medianMetadata: null,
+        },
+        jsonReportPath: "/tmp/report.json",
+        htmlReportPath: "/tmp/report.html",
+        durationMs: 3200,
+      })
+      .run();
+
+    const lhRow = await testDb.query.lighthouseRuns.findFirst({
+      where: eq(lighthouseRuns.id, "run-default-ts"),
+    });
+    expect(lhRow?.url).toBe("https://example.com");
+    expect(lhRow?.createdAt instanceof Date).toBe(true);
   });
 
   it("supports getDb() singleton, closeDb(), and resetDb()", () => {
