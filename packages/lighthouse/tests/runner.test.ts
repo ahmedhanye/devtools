@@ -4,26 +4,23 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createDb, runMigrations, type DevtoolsDb } from "@devtools/db";
 import {
-  LighthouseExecutionError,
-  InvalidAuditOptionsError,
-} from "../src/errors";
-import { getLighthouseRunById, listLighthouseRuns } from "../src/repository";
-import {
   executeIterationInSubprocess,
+  getLighthouseRunById,
+  InvalidAuditOptionsError,
+  LighthouseExecutionError,
+  listLighthouseRuns,
   runLighthouseAudit,
-} from "../src/runner";
+  type LighthouseProgressEvent,
+  type SingleIterationResult,
+  type WorkerPayload,
+} from "../src";
 import {
   buildLighthouseConfig,
   extractReportStrings,
   invokeWorkerEntrypoint,
   runWorkerIteration,
   runWorkerMain,
-  type WorkerPayload,
 } from "../src/worker";
-import type {
-  LighthouseProgressEvent,
-  SingleIterationResult,
-} from "../src/types";
 
 function makeMockIterationResult(
   url: string,
@@ -364,7 +361,10 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
           runIndex: 0,
           totalRuns: 1,
         });
-        return mockIter;
+        return {
+          reportJson: mockIter.reportJson,
+          reportHtml: mockIter.reportHtml,
+        };
       },
     });
     expect(codeOk).toBe(0);
@@ -440,7 +440,10 @@ console.log(JSON.stringify({
 }));
 process.stdout.write(JSON.stringify({
   type: "result",
-  result: ${JSON.stringify(mockResult)}
+  result: {
+    reportJson: ${JSON.stringify(mockResult.reportJson)},
+    reportHtml: ${JSON.stringify(mockResult.reportHtml)}
+  }
 }));
 `,
     );
@@ -532,4 +535,59 @@ process.stdout.write(JSON.stringify({
     });
     expect(killedViaSignal).toBe(true);
   });
+
+  it("executes a live headless Chromium navigation audit against a local HTTP fixture", async () => {
+    const server = Bun.serve({
+      port: 0,
+      fetch() {
+        return new Response(
+          "<!doctype html><html><head><title>Live Fixture</title></head><body><main><h1 class='hero'>Live Heading</h1><p>Body text</p></main></body></html>",
+          { headers: { "content-type": "text/html" } },
+        );
+      },
+    });
+
+    try {
+      const fixtureUrl = `http://127.0.0.1:${server.port}/`;
+      const progressEvents: LighthouseProgressEvent[] = [];
+
+      const result = await runLighthouseAudit({
+        url: fixtureUrl,
+        formFactor: "desktop",
+        throttlingMethod: "provided",
+        runs: 1,
+        artifactsDir: tempArtifactsDir,
+        db,
+        onProgress: (ev) => progressEvents.push(ev),
+      });
+
+      // Exactly 1 canonical row in lighthouse_runs
+      const allRows = listLighthouseRuns(db);
+      expect(allRows).toHaveLength(1);
+      expect(result.run.id).toBe(allRows[0]!.id);
+      expect(result.run.formFactor).toBe("desktop");
+      expect(result.run.throttlingMethod).toBe("provided");
+      expect(result.run.performanceScore).toBeGreaterThanOrEqual(0);
+      expect(result.run.lcpMs).not.toBeNull();
+      expect(result.run.fcpMs).not.toBeNull();
+
+      // Exactly 1 pair of disk artifacts written for the run
+      expect(existsSync(result.run.jsonReportPath)).toBe(true);
+      expect(existsSync(result.run.htmlReportPath)).toBe(true);
+      const rawHtml = readFileSync(result.run.htmlReportPath, "utf-8");
+      expect(rawHtml).toContain("<!doctype html>");
+      expect(rawHtml).toContain("</html>");
+
+      // Verify lifecycle progress stages include navigating, analyzing, and complete
+      expect(progressEvents.some((e) => e.stage === "navigating")).toBe(true);
+      expect(progressEvents.some((e) => e.stage === "analyzing")).toBe(true);
+      expect(progressEvents.at(-1)?.stage).toBe("complete");
+
+      // Stored row is retrievable by ID
+      const fetched = getLighthouseRunById(db, result.run.id);
+      expect(fetched?.id).toBe(result.run.id);
+    } finally {
+      await server.stop(true);
+    }
+  }, 30000);
 });

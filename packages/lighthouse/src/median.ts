@@ -1,3 +1,4 @@
+import { EmptyRunsError } from "./errors";
 import type {
   LighthouseMedianMetadata,
   RawLighthouseResult,
@@ -51,21 +52,23 @@ function pickMiddleValue(values: number[]): number {
 }
 
 /**
- * Selects a single **Representative Run** from a batch of Lighthouse iterations using
- * minimum squared Euclidean distance to the batch median First Contentful Paint (`first-contentful-paint`)
+ * Selects a single Representative Run from a batch of Lighthouse iterations.
+ *
+ * @remarks
+ * Uses minimum squared Euclidean distance to the batch median First Contentful Paint (`first-contentful-paint`)
  * and median Interactive (`interactive`, falling back to `total-blocking-time` when `0` or absent):
  *
  * $$D(\text{run}) = (\text{FCP}_{\text{run}} - \text{medianFcp})^2 + (\text{TTI}_{\text{run}} - \text{medianInteractive})^2$$
  *
  * @param runs - Non-empty array of single-iteration Lighthouse results.
  * @returns The selected Representative Run, its zero-based index, and multi-run distribution metadata.
- * @throws {Error} When `runs` is empty.
+ * @throws {@link EmptyRunsError} When `runs` is empty.
  */
 export function computeRepresentativeRun(
   runs: readonly SingleIterationResult[],
 ): RepresentativeRunSelection {
   if (runs.length === 0) {
-    throw new Error(
+    throw new EmptyRunsError(
       "Cannot compute a representative run from an empty runs array",
     );
   }

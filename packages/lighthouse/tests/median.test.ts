@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { EmptyRunsError } from "../src/errors";
 import { computeRepresentativeRun } from "../src/median";
 import type { SingleIterationResult } from "../src/types";
 
@@ -28,6 +29,7 @@ function makeIteration(
 
 describe("computeRepresentativeRun (Euclidean distance to median FCP and TTI)", () => {
   it("throws an error when passed an empty runs array", () => {
+    expect(() => computeRepresentativeRun([])).toThrow(EmptyRunsError);
     expect(() => computeRepresentativeRun([])).toThrow(
       "Cannot compute a representative run from an empty runs array",
     );

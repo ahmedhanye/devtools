@@ -11,4 +11,3 @@ export * from "./normalizer";
 export * from "./median";
 export * from "./repository";
 export * from "./runner";
-export * from "./worker";

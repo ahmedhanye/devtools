@@ -342,6 +342,16 @@ export interface RawLighthouseResult {
 }
 
 /**
+ * Raw report strings emitted by the worker subprocess over IPC before parent LHR hydration.
+ */
+export interface WorkerResultPayload {
+  /** Raw serialized JSON report string. */
+  reportJson: string;
+  /** Raw standalone HTML report string. */
+  reportHtml: string;
+}
+
+/**
  * Output of a single Lighthouse iteration executed by the worker or injected executor seam.
  */
 export interface SingleIterationResult {

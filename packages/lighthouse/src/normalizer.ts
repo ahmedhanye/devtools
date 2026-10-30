@@ -471,6 +471,17 @@ function extractFailedAudits(
  * Normalizes a raw Lighthouse v13 Result (`LHR`) into hot category scores, Core Web Vitals,
  * and a validated warm `LighthouseRunSummaryData` payload.
  *
+ * @remarks
+ * Executes a 5-stage transformation pipeline:
+ * 1. Category scores: transforms `[0, 1]` floats into rounded `0-100` integers.
+ * 2. Core Web Vitals: extracts LCP, CLS, TBT, FCP, SI, and resolves TTFB via a 3-source fallback chain.
+ * 3. Element attributions: extracts LCP element bounding rects and 4-phase duration breakdown,
+ *    and maps CLS culprits with root-cause attribution from `cls-culprits-insight`.
+ * 4. Diagnostics: prioritizes Lighthouse v13 `*-insight` audits by failure and metric savings,
+ *    and collects non-insight failing audits.
+ * 5. Schema validation: validates the aggregated warm payload against {@link LighthouseRunSummaryDataSchema},
+ *    integrating optional multi-run median distribution metadata.
+ *
  * @param lhr - Raw Lighthouse v13 Result object.
  * @param medianMetadata - Optional multi-run distribution metadata when `--runs > 1`.
  * @returns Normalized scores, Core Web Vitals, and warm summary JSON.

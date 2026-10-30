@@ -8,13 +8,14 @@ import defaultRunLighthouse, {
   desktopConfig,
   generateReport as defaultGenerateReport,
 } from "lighthouse";
+import { WorkerExecutionError } from "./errors";
 import type {
   LighthouseFormFactor,
   LighthouseProgressEvent,
   LighthouseThrottlingMethod,
   RawLighthouseResult,
-  SingleIterationResult,
   WorkerPayload,
+  WorkerResultPayload,
 } from "./types";
 
 export type { WorkerPayload };
@@ -29,7 +30,7 @@ export type WorkerOutboundMessage =
     }
   | {
       type: "result";
-      result: SingleIterationResult;
+      result: WorkerResultPayload;
     }
   | {
       type: "error";
@@ -162,13 +163,13 @@ export function extractReportStrings(
  *
  * @param payload - Worker iteration parameters.
  * @param deps - Optional dependency injection seams for browser resolution, Chrome launch, and Lighthouse execution.
- * @returns The completed {@link SingleIterationResult} containing the LHR, JSON report, and HTML report.
- * @throws {Error} When browser resolution fails, Chrome fails to launch, or Lighthouse returns an empty result.
+ * @returns The completed {@link WorkerResultPayload} containing the JSON and HTML reports.
+ * @throws {@link WorkerExecutionError} When browser resolution fails, Chrome fails to launch, or Lighthouse returns an empty result.
  */
 export async function runWorkerIteration(
   payload: WorkerPayload,
   deps: WorkerIterationDependencies = {},
-): Promise<SingleIterationResult> {
+): Promise<WorkerResultPayload> {
   const resolveBrowser = deps.resolveBrowser ?? resolveBrowserPath;
   const launchChrome =
     deps.launchChrome ??
@@ -249,7 +250,9 @@ export async function runWorkerIteration(
     );
 
     if (!runnerResult || !runnerResult.lhr) {
-      throw new Error("Lighthouse returned an empty runner result");
+      throw new WorkerExecutionError(
+        "Lighthouse returned an empty runner result",
+      );
     }
 
     emitStage("analyzing", "Analyzing trace and computing insights");
@@ -261,7 +264,6 @@ export async function runWorkerIteration(
     );
 
     return {
-      lhr: runnerResult.lhr,
       reportJson,
       reportHtml,
     };
@@ -297,7 +299,7 @@ export async function runWorkerMain(
   try {
     const rawArg = argv[0];
     if (!rawArg) {
-      throw new Error("Missing worker JSON payload argument");
+      throw new WorkerExecutionError("Missing worker JSON payload argument");
     }
     const payload = JSON.parse(rawArg) as WorkerPayload;
     const result = await executeIteration(payload, {

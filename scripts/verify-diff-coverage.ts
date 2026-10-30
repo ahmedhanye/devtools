@@ -52,7 +52,29 @@ function isTestableSourceFile(filePath: string): boolean {
 }
 
 /**
- * Checks whether source code contains only type definitions and emits no runtime JavaScript statements.
+ * Strips comments and pure declarative ESM import/re-export statements that emit no runtime execution code.
+ */
+function stripDeclarativeStatements(jsText: string): string {
+  return jsText
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/.*/g, "")
+    .replace(/export\s*\*\s*(?:as\s+[\w$]+\s+)?from\s*["'][^"']+["']\s*;?/g, "")
+    .replace(/export\s*\{[^}]*\}\s*from\s*["'][^"']+["']\s*;?/g, "")
+    .replace(
+      /import\s*(?:(?:[\w$]+|\{[^}]*\}|\*\s*as\s+[\w$]+)\s*,?\s*)*from\s*["'][^"']+["']\s*;?/g,
+      "",
+    )
+    .replace(/import\s*["'][^"']+["']\s*;?/g, "")
+    .replace(/export\s*\{[^}]*\}\s*;?/g, "")
+    .trim();
+}
+
+/**
+ * Checks whether source code contains only type definitions and declarative re-exports emitting no runtime JavaScript statements.
+ *
+ * @param sourceText - Raw TypeScript or JavaScript source code content.
+ * @param filePath - Optional file path used to infer the transpiler loader (`ts` or `tsx`).
+ * @returns True if the transpiled source emits zero runtime executable statements.
  */
 export function isTypeOnlySource(
   sourceText: string,
@@ -67,7 +89,7 @@ export function isTypeOnlySource(
         filePath.endsWith(".tsx") || filePath.endsWith(".jsx") ? "tsx" : "ts";
       const transpiler = new Bun.Transpiler({ loader });
       const transformed = transpiler.transformSync(sourceText);
-      return transformed.replace(/export\s*\{\s*\};?/g, "").trim().length === 0;
+      return stripDeclarativeStatements(transformed).length === 0;
     } catch {
       return false;
     }

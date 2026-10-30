@@ -13,10 +13,13 @@ import {
   LighthouseThrottlingMethodSchema,
   type ExecuteIterationParams,
   type NormalizedLighthouseRun,
+  type RawLighthouseResult,
   type RunLighthouseAuditOptions,
   type SingleIterationResult,
+  type WorkerPayload,
+  type WorkerResultPayload,
 } from "./types";
-import type { WorkerOutboundMessage, WorkerPayload } from "./worker";
+import type { WorkerOutboundMessage } from "./worker";
 
 const DEFAULT_WORKER_SCRIPT_PATH = join(import.meta.dir, "worker.ts");
 
@@ -92,7 +95,7 @@ function handleWorkerLine(
   line: string,
   onProgress: ExecuteIterationParams["onProgress"],
   state: {
-    result: SingleIterationResult | null;
+    result: WorkerResultPayload | null;
     workerError: string | null;
   },
 ): void {
@@ -115,8 +118,11 @@ function handleWorkerLine(
 }
 
 /**
- * Executes a single Lighthouse iteration inside an isolated `Bun.spawn` child process
- * so trace analysis and Speedline decoding never block the parent daemon event loop.
+ * Executes a single Lighthouse iteration inside an isolated child process.
+ *
+ * @remarks
+ * Uses `Bun.spawn` child process isolation so CPU-bound trace analysis and Speedline decoding
+ * never block the parent daemon event loop.
  *
  * @param params - Iteration execution parameters.
  * @param workerScriptPath - Optional path override to the worker script entrypoint.
@@ -147,7 +153,7 @@ export async function executeIterationInSubprocess(
   );
 
   const state: {
-    result: SingleIterationResult | null;
+    result: WorkerResultPayload | null;
     workerError: string | null;
   } = {
     result: null,
@@ -183,14 +189,22 @@ export async function executeIterationInSubprocess(
     );
   }
 
-  return state.result;
+  const lhr = JSON.parse(state.result.reportJson) as RawLighthouseResult;
+
+  return {
+    lhr,
+    reportJson: state.result.reportJson,
+    reportHtml: state.result.reportHtml,
+  };
 }
 
 /**
- * Executes a full Lighthouse v13 audit across `--runs <N>` iterations, selects the single
- * Representative Run via minimum squared Euclidean distance to median FCP and Interactive,
- * writes the cold `report.json` and `report.html` artifacts to `<artifactsDir>/<runId>/`,
- * and persists one canonical row in `lighthouse_runs`.
+ * Executes a full Lighthouse v13 audit across `--runs <N>` iterations.
+ *
+ * @remarks
+ * Orchestrates multi-run iterations, selects the single Representative Run via minimum squared
+ * Euclidean distance to median FCP and Interactive, writes cold `report.json` and `report.html` artifacts
+ * to `<artifactsDir>/<runId>/`, and persists one canonical row in `lighthouse_runs`.
  *
  * @param options - Audit target URL, form factor, throttling method, run count, and seams.
  * @returns Persisted {@link LighthouseRunRow}, normalized data, and representative run index.
