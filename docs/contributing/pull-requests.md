@@ -21,9 +21,13 @@ When inspecting pull requests:
 1. **Link the tracking issue:** `gh issue develop` links the issue automatically. When creating manually, add `Closes #<issue>` to the pull request description.
 2. **Self-assign the pull request:** Assign yourself as the Directly Responsible Individual (DRI) when opening a pull request by passing `--assignee "@me"` (maintainer review is automatically requested via `CODEOWNERS`).
 3. **Follow the pull request structure:** PR descriptions must describe user-facing changes to `main` following [.github/PULL_REQUEST_TEMPLATE.md](../../.github/PULL_REQUEST_TEMPLATE.md) (Summary with structural diff/tree, Evidence, and Merge Danger). Pull request descriptions cite permanent codebase paths and omit ephemeral workspace `.scratch/` paths, raw session logs, and agent execution notes.
-4. **Provide verification evidence:** Include terminal test output, commands, or observable behavior confirming all acceptance criteria.
-5. **Verify tracking issue checklist:** Before opening the pull request, inspect the linked ticket description (`gh issue view <ticket_number> --json number,title,body,state,labels`) and its parent Spec description (`gh api repos/{owner}/{repo}/issues/<ticket_number>/parent --jq .number 2>/dev/null`) to confirm all acceptance criteria are met. Update completed task checkboxes from `- [ ]` to `- [x]` in the ticket and parent Spec descriptions via `gh issue edit <number> --body "$UPDATED_BODY"`.
-6. **Open the pull request non-interactively:** Create the pull request using explicit title and body flags or `--fill` to avoid interactive terminal prompts:
+4. **Follow Conventional Commits for pull request titles:** Pull request titles must follow the Conventional Commits specification in [Commits and atomic changes](commits.md#conventional-commits) (`<type>(<scope>): <imperative description>`). Because linear squash merging is enforced, the PR title forms the squash commit subject on `main` evaluated by Release Please:
+   - Reserve `feat` strictly for end-user product capabilities (which triggers minor version releases).
+   - Classify agent skills, rules, internal scripts, and developer tooling as `chore` (e.g., `chore(agents): ...`), never `feat`.
+   - Classify documentation-only updates as `docs: ...` or `docs(<scope>): ...`.
+5. **Provide verification evidence:** Include terminal test output, commands, or observable behavior confirming all acceptance criteria.
+6. **Verify tracking issue checklist:** Before opening the pull request, inspect the linked ticket description (`gh issue view <ticket_number> --json number,title,body,state,labels`) and its parent Spec description (`gh api repos/{owner}/{repo}/issues/<ticket_number>/parent --jq .number 2>/dev/null`) to confirm all acceptance criteria are met. Update completed task checkboxes from `- [ ]` to `- [x]` in the ticket and parent Spec descriptions via `gh issue edit <number> --body "$UPDATED_BODY"`.
+7. **Open the pull request non-interactively:** Create the pull request using explicit title and body flags or `--fill` to avoid interactive terminal prompts:
    ```bash
    gh pr create --assignee "@me" --fill
    ```
