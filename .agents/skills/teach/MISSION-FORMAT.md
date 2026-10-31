@@ -1,6 +1,6 @@
 # MISSION.md Format
 
-`MISSION.md` lives at the workspace root. It captures the _reason_ the user is learning this topic. Every teaching decision (what to teach next, which resources to surface, which exercises to design) should trace back to this document.
+`MISSION.md` lives at `.scratch/teach/<topic-slug>/MISSION.md` for each topic track. It captures the _reason_ the user is learning this specific topic. Every teaching decision (what to teach next, which resources to surface, which exercises to design) should trace back to this document.
 
 ## Template
 
@@ -8,7 +8,7 @@
 # Mission: {Topic}
 
 ## Why
-{1-3 sentences. The concrete real-world goal the user is chasing. What changes in their life or work when they have this skill? Avoid abstract framings like "to understand X"; push for the underlying outcome.}
+{1-3 sentences. The concrete real-world goal the user is chasing in this domain. What changes in their life or work when they have this skill? Avoid abstract framings like "to understand X"; push for the underlying outcome.}
 
 ## Success looks like
 - {A specific, observable thing the user will be able to do}
@@ -24,7 +24,7 @@
 
 ## Rules
 
-- **One mission per workspace.** If the user wants to learn two unrelated things, that is two workspaces.
+- **One mission per topic track.** If the user wants to learn two unrelated things (for example, Lighthouse and TypeScript), they belong in separate topic tracks inside `.scratch/teach/<topic-slug>/` within the same workspace.
 - **Concrete over abstract.** "Run a half marathon by October" beats "get fitter." "Ship a Rust CLI to my team" beats "learn Rust."
 - **Push back on vagueness.** If the user cannot articulate why, interview them before writing anything. A bad mission is worse than no mission.
 - **Revise when reality shifts.** Missions change. When the user's goal moves, update this file: don't leave a stale mission steering future sessions.

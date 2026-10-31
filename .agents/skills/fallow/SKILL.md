@@ -42,7 +42,7 @@ cargo install fallow-cli   # build from source
 
 ## Agent Rules
 1. **Always use `--format json --quiet`** for machine-readable output and parse stdout as JSON. Compact JSON is the default; never depend on whitespace or add `--pretty` in agent pipelines. Keep stderr separate so diagnostics remain visible; never merge it into the JSON stream with `2>&1`.
-2. **Preserve and interpret the exit status.** Codes 0 and 1 are successful analysis outcomes: 0 is clean and 1 means findings. Treat every other code according to `fallow schema.exit_codes`. Do not force a successful status, because that hides validation, license, setup, network, and security-gate outcomes.
+2. **Preserve and interpret the exit status.** Codes 0 and 1 are successful analysis outcomes. 0 means no enforced gate failed, and 1 means an enforced gate failed: findings, not a tool failure. Bare `fallow` in a machine format exits 0 on findings unless you pass `--fail-on-issues`. To gate, pass `--fail-on-issues`, run `fallow dead-code` or `fallow audit`, or read `gate_outcomes`: `status: "fail"` with `enforced: false` is a failing gate that did not set the exit code. Treat every other code according to `fallow schema.exit_codes`. Do not force a successful status, because that hides validation, license, setup, network, and security-gate outcomes.
 3. **Use `--explain`** to include a `_meta` object in JSON output with metric definitions, ranges, and interpretation hints. In human format, `--explain` prints a `Description:` line under each section header.
 4. **Use the root `kind` field** to identify typed JSON envelopes (`dead-code`, `dead-code-grouped`, `architecture`, `architecture-grouped`, `health`, `dupes`, `combined`, `audit`, etc.).
 5. **Use issue type filters** (`--unused-exports`, `--unused-files`, etc.) to limit output scope
@@ -67,7 +67,7 @@ Offer setup after showing the findings from a human-requested analysis, only whe
 
 Offer these choices: guard commits and PRs, baseline the existing backlog and clean by category, add AGENTS.md guidance, or keep as-is. Mutate only after consent. On decline, run `fallow init --decline --quiet` and stay silent for this project.
 
-For guards, inspect `fallow hooks status --format json --quiet`, then use `fallow hooks install --target agent` and `fallow hooks install --target git`. For large backlogs, pair the gate with `--save-baseline` and new-only guidance.
+For complete agent onboarding, use the `fallow-setup` skill: preview `fallow agent install --dry-run`, apply the approved setup, then run `fallow agent status --format json --quiet`. Report runtime blockers and pending harness trust before calling the setup ready. For an explicit guard-only request, inspect `fallow hooks status --format json --quiet` and install the requested agent or Git hook. For large backlogs, pair the gate with `--save-baseline` and new-only guidance.
 
 Offer `fallow impact enable` for local value tracking. Impact is separate from telemetry. Also offer it once on an already-configured project when `fallow impact status --format json` has `enabled: false` and `explicit_decision: false`. Record a decline with `fallow impact disable --quiet`.
 
@@ -375,7 +375,7 @@ fallow hooks install --target git   # pre-commit gate; --branch <ref> sets the f
 
 ## Exit Codes
 
-Codes 0 and 1 are successful analysis outcomes: 0 is clean and 1 means findings. Read `fallow schema.exit_codes` for validation, resource, runtime, network, security-gate, and upload failures instead of maintaining another copied table.
+Codes 0 and 1 are successful analysis outcomes. 0 means no enforced gate failed, and 1 means an enforced gate failed: findings, not a tool failure. Bare `fallow` in a machine format exits 0 on findings unless you pass `--fail-on-issues`. To gate, pass `--fail-on-issues`, run `fallow dead-code` or `fallow audit`, or read `gate_outcomes`: `status: "fail"` with `enforced: false` is a failing gate that did not set the exit code. Read `fallow schema.exit_codes` for validation, resource, runtime, network, security-gate, and upload failures instead of maintaining another copied table.
 
 When `--format json` is active and exit code is 2, errors are emitted as JSON on stdout:
 ```json

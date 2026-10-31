@@ -9,7 +9,7 @@ Investigate technical questions against primary sources, verify facts across cod
 
 ## Rules
 
-1. **Subagent isolation.** Multi-step research runs in a dedicated subagent to keep the main conversation context clean. The foreground session defines the question and dispatches the subagent. The subagent performs the search, reading, and verification.
+1. **Subagent isolation.** Multi-step research runs in a dedicated subagent with a fresh context window to keep the main conversation context clean. The foreground session defines the question and dispatches the subagent. The subagent performs the search, reading, and verification.
 2. **Mandatory web search for external topics.** When questions touch external libraries, APIs, security advisories, or ecosystem practices, the subagent runs live web searches. Do not rely on training memory for external library contracts or versions.
 3. **Primary sources over secondary summaries.** Treat source code, compilers, runtime output, official specifications, and release notes as ground truth. Quarantine third-party blog posts and forum comments.
 4. **Current state before proposals.** Document how the system currently works before suggesting changes.
