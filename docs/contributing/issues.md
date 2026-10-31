@@ -6,7 +6,7 @@ Guidelines for GitHub Issues, Spec and Ticket hierarchy, project status tracking
 
 Issues and specs live as GitHub issues. Use the `gh` CLI for operations; the repository target is inferred from `git remote -v`.
 
-GitHub shares one number space across issues and pull requests. When inspecting a reference, resolve the number with `gh pr view <number>` first, then fall back to `gh issue view <number>`.
+GitHub shares one number space across issues and pull requests. When inspecting a reference, resolve the number with `gh pr view <number> --json number,title` first, then fall back to `gh issue view <number> --json number,title`. Always pass explicit `--json` projections to avoid deprecated classic project queries.
 
 - **Create an issue:** `gh issue create --title "<title>" --body "..."`
 - **Create a Spec issue:** `gh issue create --title "<title>" --label "type:spec" --milestone "<milestone>" --body "..."`
