@@ -36,9 +36,9 @@ Execute pushes non-interactively:
   git push origin <branch>
   ```
 - **Stacked PR branches (`gh-stack`):**
-  Always pass `--yes` to avoid interactive confirmation prompts when pruning or updating stacked branches:
+  Synchronize rebased branches and PR metadata across the stack (use `--prune` to remove branches for merged PRs):
   ```bash
-  gh stack sync --yes
+  gh stack sync
   ```
 
 ## Active pull request inspection
@@ -57,7 +57,7 @@ Branch protection requires all review comment threads to be resolved before merg
 
 ### 1. Query open review threads
 
-Inspect unresolved review threads, modified paths, line numbers, and comment node IDs:
+Inspect unresolved review threads, modified paths, line numbers, thread IDs, and comment database IDs:
 
 ```bash
 gh api graphql -F owner='{owner}' -F repo='{repo}' -F pr=<pr_number> -f query='
@@ -91,15 +91,15 @@ gh api graphql -F owner='{owner}' -F repo='{repo}' -F pr=<pr_number> -f query='
 Compare the unresolved thread paths and lines against the commits pushed in the current push:
 
 1. **Valid defect addressed:**
-   Post a reply comment citing the pushed commit SHA and resolve the review thread via GraphQL:
+   Post a reply comment citing the pushed commit SHA and resolve the review thread via GraphQL (note: `<comment_database_id>` is the numeric `databaseId` from the query above):
    ```bash
-   gh api repos/{owner}/{repo}/pulls/<pr_number>/comments/<comment_id>/replies -f body="Addressed in <commit_sha>"
+   gh api repos/{owner}/{repo}/pulls/<pr_number>/comments/<comment_database_id>/replies -f body="Addressed in <commit_sha>"
    gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "<thread_node_id>"}) { clientMutationId } }'
    ```
 2. **False positive or out-of-diff suggestion:**
    If a comment suggests changes outside the active ticket boundary or contradicts repository architecture, post a technical explanation in a reply comment and resolve the thread via GraphQL:
    ```bash
-   gh api repos/{owner}/{repo}/pulls/<pr_number>/comments/<comment_id>/replies -f body="Declined: <technical explanation citing coding standards or ticket scope>"
+   gh api repos/{owner}/{repo}/pulls/<pr_number>/comments/<comment_database_id>/replies -f body="Declined: <technical explanation citing coding standards or ticket scope>"
    gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "<thread_node_id>"}) { clientMutationId } }'
    ```
 3. **Ambiguous or high-risk finding:**
