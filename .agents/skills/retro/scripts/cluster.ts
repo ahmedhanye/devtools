@@ -73,8 +73,8 @@ export const RETRO_MARKERS = ["/retro", ".agents/skills/retro"] as const;
 export const EXIT_RE = /exited with code (\d+)|exit code[: ]+(\d+)/i;
 export const PR_RE = /(?:pull\/|PR\s*#|pr\s+#?|#)(\d+)/g;
 export const BRANCH_RE =
-  /git\s+(?:checkout|switch)\s+(?:-[bBcC]\s+)?([\w][\w./-]*)|gh\s+pr\s+checkout\s+([\w][\w./-]*)/g;
-export const ISSUE_BRANCH_RE = /^(\d+)-/;
+  /git\s+(?:checkout|switch)\s+(?:-[bBcC]\s+)?([\w][\w./-]*)|gh\s+pr\s+checkout\s+([\w][\w./-]*)|git\s+push\s+(?:-[a-zA-Z]+\s+)*origin\s+([\w][\w./-]*)|On branch ([\w][\w./-]*)/g;
+export const ISSUE_BRANCH_RE = /^(?:[\w.-]+\/)?(\d+)-/;
 
 export function parseTs(value: unknown): Date | null {
   if (value === null || value === undefined || value === "") {
@@ -359,9 +359,26 @@ export function loadPrs(filePath?: string | null): PullRequest[] {
   }
 }
 
+export function loadGitBranches(): string[] {
+  try {
+    const out = execFileSync(
+      "git",
+      ["branch", "-a", "--format=%(refname:short)"],
+      { encoding: "utf-8", timeout: 10_000, stdio: ["ignore", "pipe", "pipe"] },
+    );
+    return out
+      .split("\n")
+      .map((b) => b.trim().replace(/^origin\//, ""))
+      .filter((b) => b && b !== "main" && b !== "master" && b !== "HEAD");
+  } catch {
+    return [];
+  }
+}
+
 export function keysFor(
   events: TranscriptEvent[],
   prs: PullRequest[],
+  gitBranches: string[] = loadGitBranches(),
 ): Map<string, number> {
   const byPr = new Map<string, string>();
   const branches = new Set<string>();
@@ -370,6 +387,10 @@ export function keysFor(
   for (const p of prs) {
     byPr.set(String(p.number), p.headRefName);
     branches.add(p.headRefName);
+  }
+
+  for (const b of gitBranches) {
+    branches.add(b);
   }
 
   for (const b of Array.from(branches).toSorted()) {
@@ -396,12 +417,12 @@ export function keysFor(
       addKey(e.branch);
     }
 
-    const blob = e.tools + (e.role === "user" ? e.text : "");
+    const blob = e.tools + " " + e.text;
 
     BRANCH_RE.lastIndex = 0;
-    const branchMatches = e.tools.matchAll(BRANCH_RE);
+    const branchMatches = blob.matchAll(BRANCH_RE);
     for (const m of branchMatches) {
-      const b = m[1] || m[2];
+      const b = m[1] || m[2] || m[3] || m[4];
       if (b && branches.has(b)) {
         addKey(b);
       }
@@ -501,7 +522,14 @@ export function cluster(
 
     let prompt = "";
     if (users.length > 0 && users[0]) {
-      const firstLine = users[0].trim().split(/\r?\n/)[0] ?? "";
+      const cleaned = users[0]
+        .replace(/<\/?[A-Z_]+>/g, " ")
+        .trim();
+      const firstLine =
+        cleaned
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .find((l) => l.length > 0) ?? "";
       prompt = firstLine.slice(0, 100);
     }
 

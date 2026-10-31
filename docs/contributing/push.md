@@ -60,7 +60,7 @@ Branch protection requires all review comment threads to be resolved before merg
 Inspect unresolved review threads, modified paths, line numbers, and comment node IDs:
 
 ```bash
-gh api graphql -F owner=':owner' -F repo=':repo' -F pr=<pr_number> -f query='
+gh api graphql -F owner='{owner}' -F repo='{repo}' -F pr=<pr_number> -f query='
   query($owner: String!, $repo: String!, $pr: Int!) {
     repository(owner: $owner, name: $repo) {
       pullRequest(number: $pr) {
@@ -93,13 +93,13 @@ Compare the unresolved thread paths and lines against the commits pushed in the 
 1. **Valid defect addressed:**
    Post a reply comment citing the pushed commit SHA and resolve the review thread via GraphQL:
    ```bash
-   gh api repos/:owner/:repo/pulls/<pr_number>/comments/<comment_id>/replies -f body="Addressed in <commit_sha>"
+   gh api repos/{owner}/{repo}/pulls/<pr_number>/comments/<comment_id>/replies -f body="Addressed in <commit_sha>"
    gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "<thread_node_id>"}) { clientMutationId } }'
    ```
 2. **False positive or out-of-diff suggestion:**
    If a comment suggests changes outside the active ticket boundary or contradicts repository architecture, post a technical explanation in a reply comment and resolve the thread via GraphQL:
    ```bash
-   gh api repos/:owner/:repo/pulls/<pr_number>/comments/<comment_id>/replies -f body="Declined: <technical explanation citing coding standards or ticket scope>"
+   gh api repos/{owner}/{repo}/pulls/<pr_number>/comments/<comment_id>/replies -f body="Declined: <technical explanation citing coding standards or ticket scope>"
    gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "<thread_node_id>"}) { clientMutationId } }'
    ```
 3. **Ambiguous or high-risk finding:**
