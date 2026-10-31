@@ -277,6 +277,7 @@ diff --git a/counter.ts b/counter.ts
     it("excludes internal scripts from diff-coverage gate while verifying application workspaces", () => {
       const diffMap = new Map<string, number[]>([
         ["scripts/my-script.ts", [10, 11]],
+        [".agents/skills/retro/scripts/cluster.ts", [20, 21]],
       ]);
       const lcovMap = new Map<string, Map<number, number>>();
 

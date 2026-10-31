@@ -44,6 +44,6 @@ Word each question so "yes" accepts your recommended answer.
 
 Each round the user answers reshapes the tree: settled decisions push the frontier outward and unblock questions that depended on them. Recompute the frontier and ask the next round. A question whose answer depends on another question still open in this round belongs to a _later_ round, not this one.
 
-Finding _facts_ is your job, never the user's. When a frontier question needs a fact from the environment (filesystem, tools, etc.), find it or dispatch a sub-agent to find it, and await its completion before formulating the question. Never ask questions with speculative recommendations while fact-finding or sub-agents are in flight. The _decisions_ are the user's: put each to the user and wait.
+Finding _facts_ is your job, never the user's. When a frontier question needs a fact from the environment (filesystem, tools, etc.), find it or dispatch a sub-agent with a fresh context window to find it, and await its completion before formulating the question. Never ask questions with speculative recommendations while fact-finding or sub-agents are in flight. The _decisions_ are the user's: put each to the user and wait.
 
 The session concludes when the frontier is empty: every branch of the design tree visited, nothing left silently assumed. Present a summary of all agreed decisions and wait for user confirmation before implementing.

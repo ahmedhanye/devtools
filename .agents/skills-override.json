@@ -2,12 +2,12 @@
   "domain-modeling": {
     "source": "mattpocock/skills",
     "path": "skills/engineering/domain-modeling/SKILL.md",
-    "commit": "c612defa9e5cf9372262d0279eb124993ba77b71"
+    "commit": "d80fa0f4ebe0c5714af0adf8670336065233ecc6"
   },
   "grilling": {
     "source": "mattpocock/skills",
     "path": "skills/productivity/grilling/SKILL.md",
-    "commit": "95249b0b49782349740fd9b8c6ce32b4e59e497a"
+    "commit": "7739eaed7f8f3915437a8def198a6d0d7206dbc7"
   },
   "handoff": {
     "source": "mattpocock/skills",
@@ -17,12 +17,12 @@
   "improve-codebase-architecture": {
     "source": "mattpocock/skills",
     "path": "skills/engineering/improve-codebase-architecture/SKILL.md",
-    "commit": "d80fa0f4ebe0c5714af0adf8670336065233ecc6"
+    "commit": "7739eaed7f8f3915437a8def198a6d0d7206dbc7"
   },
   "research": {
     "source": "mattpocock/skills",
     "path": "skills/engineering/research/SKILL.md",
-    "commit": "321658273cb1d20b76026717d027d505790106d4"
+    "commit": "7739eaed7f8f3915437a8def198a6d0d7206dbc7"
   },
   "teach": {
     "source": "mattpocock/skills",
