@@ -36,9 +36,13 @@ Examples:
 
 ## Atomic commits
 
-Every commit represents a single logical change scoped to a workspace (`<type>(<scope>): <desc>`). Stage files selectively by path rather than staging the entire repository. Verify staged contents before committing:
+Every commit represents a single logical change. If a commit description needs "and" to explain what it does, split the commit. Never stage an entire dirty working tree with `git add .` or `git commit -a`.
 
-```bash
-git add <path>
-git diff --cached --stat
-```
+### Dividing changes
+
+When a session leaves changes across multiple files or directories, divide them into separate commits before pushing:
+
+- **Revertability.** A change that may need to be rolled back on its own belongs in its own commit.
+- **Separation of concerns.** Keep unrelated tasks apart. Separate refactoring from behavior changes, vendor and lockfile updates from feature code, and documentation from tooling rules.
+- **Code and tests together.** Commit source changes and their tests in the same commit. This preserves `git bisect` and prevents untested intermediate revisions.
+- **Hook enforcement.** Pre-commit hooks in `lefthook.yml` run formatting, linting, secret detection, and commit message checks on every `git commit`. Do not bypass hooks with `--no-verify`.

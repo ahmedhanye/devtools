@@ -43,6 +43,7 @@ function isTestableSourceFile(filePath: string): boolean {
     normalized.includes(".storybook/") ||
     /\.config\.[a-z]+$/.test(normalized) ||
     normalized.startsWith("scripts/") ||
+    normalized.startsWith(".agents/") ||
     (normalized.startsWith("apps/frontend/src/app/") &&
       /\.next\.(ts|tsx)$/.test(normalized))
   ) {

@@ -63,8 +63,8 @@ Run checks across the monorepo during development:
    ```bash
    gh pr create --assignee "@me" --fill
    ```
-   Follow [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md) and ensure the description includes `Closes #<ticket_number>`. Inspect the linked issue and parent Spec descriptions (`gh issue view <ticket_number>` and `gh api repos/{owner}/{repo}/issues/<ticket_number>/parent`), updating any completed checklist tasks (`- [ ]` to `- [x]`) using `gh issue edit`.
-5. **Resolve review comments:** Address reviewer and automated comments before merging. When pushing commits to an existing pull request, inspect open review threads, verify if the commits resolve the comments, post a comment referencing the commit SHA, and resolve the threads via GraphQL.
+   Follow [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md) and ensure the description includes `Closes #<ticket_number>`. Inspect the linked issue and parent Spec descriptions (`gh issue view <ticket_number> --json number,title,body,state,labels` and `gh api repos/{owner}/{repo}/issues/<ticket_number>/parent`), updating any completed checklist tasks (`- [ ]` to `- [x]`) using `gh issue edit`.
+5. **Push changes and resolve review comments:** Follow [Pushing changes and review synchronization](docs/contributing/push.md) to verify readiness, pause at git checkpoints, push commits, and resolve review threads post-push.
 6. **Merge via squash merge:**
    ```bash
    gh pr merge <pr_number> --squash --delete-branch
@@ -74,6 +74,7 @@ Run checks across the monorepo during development:
 
 Detailed operational guides live under `docs/contributing/`:
 
+- [Pushing changes and review synchronization](docs/contributing/push.md): Verification, git checkpoints, push execution, and post-push review thread resolution.
 - [Pull requests and code review](docs/contributing/pull-requests.md): Review thread resolution and merge requirements.
 - [Issue tracking and management](docs/contributing/issues.md): Hierarchy, sub-issues, dependencies, and project lifecycle.
 - [Commits and atomic changes](docs/contributing/commits.md): Commit types, subject formats, and staging.

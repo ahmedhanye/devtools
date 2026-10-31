@@ -1,6 +1,6 @@
 # GLOSSARY.md Format
 
-`GLOSSARY.md` is the canonical language for this teaching workspace. All explainers, exercises, and learning records should adhere to its terminology. Building it is itself part of learning: compressing a concept into a tight definition is evidence the user understands it.
+`GLOSSARY.md` lives at `.scratch/teach/<topic-slug>/GLOSSARY.md` and defines the canonical language for this specific topic track. All explainers, exercises, and learning records should adhere to its terminology. Building it is itself part of learning: compressing a concept into a tight definition is evidence the user understands it.
 
 ## Structure
 
