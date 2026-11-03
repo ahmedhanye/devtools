@@ -43,7 +43,7 @@ export async function installBrowser(
   options?: InstallBrowserOptions,
   deps?: BrowserInstallerDependencies,
 ): Promise<InstalledBrowser> {
-  const cacheDir = options?.cacheDir ?? getManagedCacheDir();
+  const cacheDir = options?.cacheDir ?? getManagedCacheDir(options?.env);
   mkdirSync(cacheDir, { recursive: true });
 
   const resolveBuild = deps?.resolveBuildId ?? defaultResolveBuildId;

@@ -15,6 +15,8 @@ export interface ResolveDatabasePathOptions {
   customPath?: string;
   /** Isolated environment variable map overriding `process.env`. */
   env?: EnvMap;
+  /** Optional working directory getter seam overriding `process.cwd()`. */
+  cwd?: () => string;
 }
 
 /**
@@ -81,11 +83,12 @@ function ensureParentDirectory(filePath: string): string {
 function normalizeResolutionInput(
   customPathOrOptions?: string | ResolveDatabasePathOptions,
   maybeEnv?: EnvMap,
-): { customPath?: string; env: EnvMap } {
+): { customPath?: string; env: EnvMap; cwd?: () => string } {
   if (typeof customPathOrOptions === "object" && customPathOrOptions !== null) {
     return {
       customPath: customPathOrOptions.customPath,
       env: customPathOrOptions.env ?? process.env,
+      cwd: customPathOrOptions.cwd,
     };
   }
   return {
@@ -113,10 +116,12 @@ export function resolveDatabasePath(
   customPathOrOptions?: string | ResolveDatabasePathOptions,
   maybeEnv?: EnvMap,
 ): string {
-  const { customPath, env: currentEnv } = normalizeResolutionInput(
-    customPathOrOptions,
-    maybeEnv,
-  );
+  const {
+    customPath,
+    env: currentEnv,
+    cwd: customCwd,
+  } = normalizeResolutionInput(customPathOrOptions, maybeEnv);
+  const currentCwd = customCwd ? customCwd() : process.cwd();
 
   // 1. Explicit override via argument or environment variable
   const envPath =
@@ -124,7 +129,7 @@ export function resolveDatabasePath(
   if (envPath) {
     return envPath === ":memory:"
       ? ":memory:"
-      : ensureParentDirectory(resolve(process.cwd(), envPath));
+      : ensureParentDirectory(resolve(currentCwd, envPath));
   }
 
   // 2. Automated test environment
@@ -134,7 +139,7 @@ export function resolveDatabasePath(
 
   // 3. Local Development (Django-style in-repo database anchored to workspace root)
   if (currentEnv.NODE_ENV !== "production") {
-    const root = findWorkspaceRoot() ?? process.cwd();
+    const root = findWorkspaceRoot(currentCwd) ?? currentCwd;
     return ensureParentDirectory(resolve(root, ".devtools", "devtools.db"));
   }
 
