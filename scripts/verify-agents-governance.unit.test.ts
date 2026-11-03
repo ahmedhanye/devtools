@@ -1,4 +1,7 @@
 import { describe, expect, it } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   checkCodeFences,
   checkMachinePaths,
@@ -10,10 +13,11 @@ import {
   toRepoRelative,
   validateRuleFile,
   validateSkillFile,
+  verifyAgentsGovernance,
   verifyAgentRules,
-} from "./verify-agent-rules";
+} from "./verify-agents-governance";
 
-describe("verify-agent-rules", () => {
+describe("verify-agents-governance", () => {
   describe("toRepoRelative", () => {
     it("converts absolute path to repository-relative with forward slashes", () => {
       const repoRoot = "/workspace/repo";
@@ -28,6 +32,11 @@ describe("verify-agent-rules", () => {
       expect(toRepoRelative(".agents/rules/frontend.md", repoRoot)).toBe(
         ".agents/rules/frontend.md",
       );
+    });
+
+    it("normalizes path using default process.cwd() repoRoot when called with one argument", () => {
+      const rel = toRepoRelative("package.json");
+      expect(rel).toBe("package.json");
     });
   });
 
@@ -240,6 +249,34 @@ description: "short"
         true,
       );
     });
+
+    it("accepts rule file with exactly 10-character description and rejects 9 characters", () => {
+      const passContent = `---
+trigger: "package.json"
+description: "0123456789"
+---
+# Content`;
+      const passFindings = validateRuleFile(
+        ".agents/rules/test.md",
+        passContent,
+      );
+      expect(
+        passFindings.some((f) => f.rule === "rule/description-required"),
+      ).toBe(false);
+
+      const failContent = `---
+trigger: "package.json"
+description: "012345678"
+---
+# Content`;
+      const failFindings = validateRuleFile(
+        ".agents/rules/test.md",
+        failContent,
+      );
+      expect(
+        failFindings.some((f) => f.rule === "rule/description-required"),
+      ).toBe(true);
+    });
   });
 
   describe("validateSkillFile", () => {
@@ -349,25 +386,59 @@ unquoted colon: in: here
     });
   });
 
-  describe("discoverAgentFiles and verifyAgentRules", () => {
+  describe("discoverAgentFiles and verifyAgentsGovernance", () => {
+    it("exports verifyAgentRules as an alias to verifyAgentsGovernance", () => {
+      expect(verifyAgentRules).toBe(verifyAgentsGovernance);
+    });
+
     it("discovers existing files and passes clean repository scan", () => {
       const files = discoverAgentFiles();
       expect(files.length).toBeGreaterThan(0);
       expect(
-        files.some((f) => f.includes(".agents/rules/verification.md")),
+        files.some((f) => f.includes(".agents/rules/documentation.md")),
       ).toBe(true);
 
-      const result = verifyAgentRules();
+      const result = verifyAgentsGovernance();
       expect(result.scannedCount).toBeGreaterThan(0);
       const errors = result.findings.filter((f) => f.severity === "error");
       expect(errors).toHaveLength(0);
     });
 
     it("filters and validates specific target files", () => {
-      const target = [".agents/rules/verification.md"];
-      const result = verifyAgentRules(target);
+      const target = [".agents/rules/documentation.md"];
+      const result = verifyAgentsGovernance(target);
       expect(result.scannedCount).toBe(1);
       expect(result.findings).toHaveLength(0);
+    });
+
+    it("skips non-existent target files gracefully", () => {
+      const target = ["non-existent-rule-file.md"];
+      const result = verifyAgentsGovernance(target);
+      expect(result.scannedCount).toBe(0);
+      expect(result.findings).toHaveLength(0);
+    });
+
+    it("captures validation errors when target file has rule violations", () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "agent-rules-test-"));
+      try {
+        const rulesDir = join(tempDir, ".agents", "rules");
+        mkdirSync(rulesDir, { recursive: true });
+        // Create an invalid rule without frontmatter and with absolute path
+        writeFileSync(
+          join(rulesDir, "invalid.md"),
+          "# Invalid Rule\n\nMust not use absolute path /home/user/file.ts\n",
+        );
+
+        const target = [".agents/rules/invalid.md"];
+        const result = verifyAgentsGovernance(target, tempDir);
+        expect(result.scannedCount).toBe(1);
+        expect(result.findings.length).toBeGreaterThan(0);
+        expect(
+          result.findings.some((f) => f.rule === "rule/frontmatter-missing"),
+        ).toBe(true);
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
     });
   });
 });
