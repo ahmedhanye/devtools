@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import { expect, userEvent, within } from "storybook/test";
 import { AppLayout } from "./app-layout";
 
 const meta: Meta<typeof AppLayout> = {
@@ -11,6 +12,14 @@ const meta: Meta<typeof AppLayout> = {
       appDirectory: true,
     },
   },
+  decorators: [
+    (Story) => {
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem("sidebar_state");
+      }
+      return <Story />;
+    },
+  ],
 };
 
 export default meta;
@@ -29,5 +38,20 @@ export const Default: Story = {
         </p>
       </div>
     ),
+  },
+};
+
+export const InteractiveSidebarToggle: Story = {
+  args: {
+    ...Default.args,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const trigger = canvas.getByRole("button", { name: /toggle sidebar/i });
+
+    await expect(trigger).toBeInTheDocument();
+    await userEvent.click(trigger);
+    const sidebar = canvasElement.querySelector('[data-slot="sidebar"]');
+    await expect(sidebar).toHaveAttribute("data-state", "collapsed");
   },
 };

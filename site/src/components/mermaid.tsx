@@ -66,7 +66,7 @@ export function Mermaid({
 
         mermaidModule.initialize({
           startOnLoad: false,
-          securityLevel: "loose",
+          securityLevel: "strict",
           ...config,
         });
 
