@@ -19,4 +19,8 @@ describe("cn utility", () => {
     expect(cn("p-4", "p-2")).toBe("p-2");
     expect(cn("bg-primary", "bg-destructive")).toBe("bg-destructive");
   });
+
+  it("returns empty string when called with no arguments", () => {
+    expect(cn()).toBe("");
+  });
 });

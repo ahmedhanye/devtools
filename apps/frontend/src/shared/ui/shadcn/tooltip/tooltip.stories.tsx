@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import { expect, userEvent, waitFor, within } from "storybook/test";
 import { Button } from "../button";
 import {
   Tooltip,
@@ -47,4 +48,67 @@ export const Bottom: Story = {
       </TooltipContent>
     </Tooltip>
   ),
+};
+
+export const InteractiveHover: Story = {
+  render: () => (
+    <Tooltip>
+      <TooltipTrigger
+        render={<Button variant="outline">Interactive Hover Target</Button>}
+      />
+      <TooltipContent>
+        <p>Interactive Tooltip Content</p>
+      </TooltipContent>
+    </Tooltip>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const trigger = canvas.getByRole("button", {
+      name: "Interactive Hover Target",
+    });
+
+    await expect(trigger).toBeInTheDocument();
+    await userEvent.hover(trigger);
+
+    const body = within(canvasElement.ownerDocument.body);
+    const tooltipText = await body.findByText("Interactive Tooltip Content");
+    await expect(tooltipText).toBeInTheDocument();
+
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(body.queryByRole("tooltip")).not.toBeInTheDocument(),
+    );
+  },
+};
+
+export const InteractiveKeyboardFocus: Story = {
+  render: () => (
+    <Tooltip>
+      <TooltipTrigger
+        render={<Button variant="outline">Keyboard Focus Target</Button>}
+      />
+      <TooltipContent>
+        <p>Keyboard Tooltip Content</p>
+      </TooltipContent>
+    </Tooltip>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const trigger = canvas.getByRole("button", {
+      name: "Keyboard Focus Target",
+    });
+
+    await expect(trigger).toBeInTheDocument();
+    trigger.focus();
+    await expect(trigger).toHaveFocus();
+
+    const body = within(canvasElement.ownerDocument.body);
+    const tooltipText = await body.findByText("Keyboard Tooltip Content");
+    await expect(tooltipText).toBeInTheDocument();
+
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(body.queryByRole("tooltip")).not.toBeInTheDocument(),
+    );
+  },
 };

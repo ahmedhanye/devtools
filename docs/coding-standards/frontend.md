@@ -24,16 +24,117 @@ apps/frontend/src/
 3. **Public API boundary**: Every slice must export its public interface exclusively through its root `index.ts` file. Deep imports into slice internals (e.g. `import ... from "@/features/browser-install/ui/button"`) are prohibited.
 4. **App Router boundary adapters**: Route entrypoint files in `src/app/` (`page.next.tsx`, `layout.next.tsx`) are thin routing adapters configured via `pageExtensions: ["next.tsx", "next.ts"]`. They declare layout metadata, global providers, and parameter parsing, delegating feature orchestration immediately to FSD page components in `src/pages/<page>/ui/page.tsx`.
 
-## UI testing and Storybook-first presentation
+## Storybook component stories and presentation
 
-1. **No `*.test.tsx` files or `tests/` directories for UI components**: Authoring unit test files (`*.test.tsx`) with `@testing-library/react` assertions for presentational components is prohibited in `apps/frontend`. Unit tests (`*.test.ts`) are strictly reserved for pure utility functions, custom state hooks, and API schemas across `src/shared/lib/` as well as slice `model/` and `api/` segments (with zero JSX).
-2. **Storybook (`*.stories.tsx`) as the single source of truth**: All UI presentation, states, variants, and interactive behaviors are declared exclusively in co-located Storybook stories (`component.stories.tsx`).
-3. **Automated Storybook test execution & diff coverage**: Vitest is configured in `apps/frontend/vitest.config.ts` to automatically execute `src/**/*.stories.{ts,tsx}` in `happy-dom` via Storybook Portable Stories (`composeStories` from `@storybook/nextjs-vite`), executing story mounts, decorators, and `play()` functions directly under `@vitest/coverage-v8`.
-4. **App Router boundary adapters exempted**: Thin framework routing entrypoints (`src/app/**/*.next.{ts,tsx}`) contain no UI logic and are exempted from unit diff coverage gating.
-5. **Co-location structure**: Every presentational component must co-locate its story file and barrel exports:
+Storybook stories define visual states, variants, and interactive documentation for presentational components in `apps/frontend`.
+
+1. **Colocation with components.** Every presentational component colocates its story file and barrel export:
    - `component.tsx` (component implementation)
-   - `component.stories.tsx` (states, variants, and interaction tests)
-   - `index.ts` (public segment export)
+   - `component.stories.tsx` (visual states and variants)
+   - `index.ts` (public export)
+2. **Kebab-case naming.** The story file uses the base component filename followed by `.stories.tsx` (`service-status-card.stories.tsx`).
+3. **Automated testing separation.** Stories focus on component presentation and visual states. For automated testing of component stories through Vitest, refer to [docs/testing/stories.md](../testing/stories.md).
+
+### Component Story Format (CSF v3)
+
+Stories follow Component Story Format (CSF v3) using types from `@storybook/react`:
+
+```tsx
+import type { Meta, StoryObj } from "@storybook/react";
+import { Button } from "./button";
+
+const meta: Meta<typeof Button> = {
+  title: "Shared/UI/Button",
+  component: Button,
+  tags: ["autodocs"],
+  args: {
+    children: "Button",
+    variant: "default",
+    size: "default",
+  },
+  argTypes: {
+    variant: {
+      control: "select",
+      options: [
+        "default",
+        "destructive",
+        "outline",
+        "secondary",
+        "ghost",
+        "link",
+      ],
+      description: "Visual style variant",
+    },
+    size: {
+      control: "select",
+      options: ["default", "sm", "lg", "icon"],
+      description: "Button dimensions",
+    },
+    disabled: {
+      control: "boolean",
+      description: "Disables user interaction",
+    },
+  },
+};
+
+export default meta;
+type Story = StoryObj<typeof Button>;
+
+export const Default: Story = {};
+
+export const Destructive: Story = {
+  args: {
+    variant: "destructive",
+    children: "Delete item",
+  },
+};
+
+export const Small: Story = {
+  args: {
+    size: "sm",
+    children: "Compact",
+  },
+};
+
+export const Disabled: Story = {
+  args: {
+    disabled: true,
+    children: "Unavailable",
+  },
+};
+```
+
+### Visual states to cover
+
+Author stories covering:
+
+- **Default state.** The component rendered with default props.
+- **Visual variants.** Every visual style option (such as default, secondary, destructive, outline).
+- **Size variants.** Dimension variations (such as sm, md, lg, icon).
+- **Loading and skeleton states.** Skeletons and busy spinners using `data-slot="skeleton"`.
+- **Disabled state.** Non-interactive states with proper opacity and disabled styling.
+- **Overflow behavior.** Text strings that push boundary limits to verify wrapping and truncation.
+
+### Decorators and layout wrappers
+
+When a component requires a layout boundary, fixed dimensions, or contextual styling, declare a decorator on the story or metadata:
+
+```tsx
+export const InNarrowContainer: Story = {
+  decorators: [
+    (Story) => (
+      <div className="max-w-xs border border-border p-4">
+        <Story />
+      </div>
+    ),
+  ],
+};
+```
+
+### Pure presentation principles
+
+1. **Props-driven data.** Presentational components accept displayed values, states, and callbacks through props. Do not initiate network requests or read browser state directly inside presentational components.
+2. **Deterministic rendering.** Stories must render identically on every load. Avoid random numbers, timestamps, or unsynced asynchronous timers in story definitions.
 
 ## Naming conventions and file structure
 

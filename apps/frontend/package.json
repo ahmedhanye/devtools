@@ -8,6 +8,8 @@
     "build": "next build",
     "start": "next start",
     "test": "vitest run",
+    "test:unit": "vitest run unit",
+    "test:e2e": "vitest run stories",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "lint:fsd": "steiger ./src",
