@@ -48,7 +48,7 @@ When the user states how something works, check whether the code agrees. If you 
 
 When a term is resolved, infer which context it belongs to (or ask) and update that context file in `docs/glossary/` right there using the format in [GLOSSARY-FORMAT.md](./GLOSSARY-FORMAT.md). If a new context is introduced, add it to `GLOSSARY-MAP.md`. Don't batch these up: capture them as they happen.
 
-Domain glossaries should be totally devoid of implementation details and CI/CD/workflow rules. Verification gates belong in `.agents/rules/verification.md`; issue tracking belongs in `CONTRIBUTING.md`.
+Domain glossaries should be totally devoid of implementation details and CI/CD/workflow rules. Verification gates belong in `TESTING.md`; issue tracking belongs in `CONTRIBUTING.md`.
 
 ### Offer ADRs sparingly
 

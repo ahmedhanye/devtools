@@ -14,7 +14,8 @@ Follow these steps before writing code:
 1. **Locate the domain root guide:**
    Identify the affected domain and open the corresponding root guide:
    - For system components, lifecycles, or runtime topology: read `ARCHITECTURE.md`.
-   - For language rules, API patterns, CLI conventions, or testing: read `CODING_STANDARDS.md`.
+   - For language rules, package boundaries, API patterns, or CLI conventions: read `CODING_STANDARDS.md`.
+   - For testing philosophy, test levels, verification commands, or test authoring: read `TESTING.md`.
    - For git, branch, commit, PR, or issue workflows: read `CONTRIBUTING.md`.
    - For domain vocabulary and ADRs: read `GLOSSARY-MAP.md` and `docs/adr/`.
 
@@ -36,7 +37,7 @@ Apply these standards when editing documentation:
    Commit documentation updates in the same commit and pull request as the code changes that triggered them. Do not postpone documentation updates to separate follow-up tickets.
 
 2. **Maintain root-and-leaf parity:**
-   When adding, moving, or removing a leaf document under `docs/`, update the table of contents and summary references in the corresponding root document (`ARCHITECTURE.md`, `CODING_STANDARDS.md`, or `CONTRIBUTING.md`) within the same changeset.
+   When adding, moving, or removing a leaf document under `docs/`, update the table of contents and summary references in the corresponding root document (`ARCHITECTURE.md`, `CODING_STANDARDS.md`, `TESTING.md`, or `CONTRIBUTING.md`) within the same changeset.
 
 3. **Instruction hygiene:**
    Follow `.agents/skills/unslop`.

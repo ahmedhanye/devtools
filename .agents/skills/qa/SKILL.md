@@ -1,116 +1,88 @@
 ---
 name: qa
-description: Generate two verification artifacts for code changes without requiring the reviewer to read code or run tests, providing an interactive end-to-end checklist for QA and a logic synthesis for engineers.
+description: Three-axis quality assurance and test verification across black-box, gray-box, and white-box domains.
 disable-model-invocation: true
 ---
 
 # Quality assurance
 
-Generate two verification artifacts for a code change, branch, or pull request. The artifacts give reviewers everything they need to evaluate changes without reading raw code or running automated test suites and verification scripts.
+Run a three-axis quality assurance review across any repository. The coordinator captures baseline metadata, partitions changed source and test files across three non-overlapping testing axes, dispatches three parallel subagents, and presents a deduplicated summary in chat. Keep tracked repository files untouched throughout the review.
 
-Do not run linters, test suites, or package verification commands. The agent inspects code changes statically and synthesizes verification material.
+## Coordinator workflow
 
-## 1. Inspect target changes and scope
+### 1. Capture baseline metadata and discover standards in one batch
 
-Determine the target and declared scope from the user prompt:
+- **Diff-scoped mode.** Run one batched non-interactive command (up to 10 seconds before backgrounding) creating `.scratch/qa/<timestamp>-<slug>/` (UTC `date -u +%Y-%m-%dT%H-%M-%SZ` and a kebab-case slug) and `.scratch/qa/<timestamp>-<slug>/context.md` with `git status -s`, `git log <base>..HEAD --oneline`, `git diff <base> --name-status --diff-filter=d`, and issue or PR metadata (`gh issue view <id> --json title,body` or `gh pr view --json number,title,body`). Stop if the ref is invalid or diff is empty.
+- **Full-repo baseline mode.** Create `.scratch/qa/<timestamp>-<slug>/` and write the active source and test file inventory into `.scratch/qa/<timestamp>-<slug>/context.md`.
 
-1. **Pull request**: If the prompt names a PR number or URL, inspect the declared intent with `gh pr view <number>` and inspect the diff with `gh pr diff <number>`.
-2. **Specific commits or files**: If the prompt names a commit, ref, or file path, inspect the commit messages with `git log -1 <ref>` and inspect the diff with `git diff <ref>`.
-3. **Feature or concept**: If the prompt names a feature, locate relevant commits with `git log --grep="<term>"` and inspect the diff with `git diff`.
-4. **Default**: If the prompt names no target, inspect `git diff main...HEAD`.
+In the same turn, read repository testing standards (`TESTING.md`, `CONTRIBUTING.md`, or `AGENTS.md`, if present) and build manifests (`package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`, or `Makefile`) in parallel to identify test conventions, runner scripts, static analyzers, architecture linters, and coverage gates without reading the subagent playbooks.
 
-Inspect file statistics and diff hunks:
+### 2. Partition files and commands by paired test level and inspection lens
 
-```bash
-git diff <target> --stat
-```
+Assign every active test file, verification command, and modified source file to its matching axis (whether the repository separates test levels by filename suffix, directory layout, or test content) so subagents run with zero duplicate suite executions or overlapping code audits:
 
-Map the diff to all touched capabilities across workspaces:
-- Workspace manifests: read `package.json` in each touched workspace to check the exact `name` field for `bun --filter` commands and inspect available scripts. Do not assume the directory name matches the package name.
-- HTTP routes and middleware: read the router factory and route files to confirm exact URL paths. Do not guess version prefixes like `/v1/`. Read middleware source to check which HTTP methods, headers, and conditionals trigger security branches before writing request commands.
-- User surfaces: list all modified interfaces (CLI commands, HTTP endpoints, web pages, component stories, documentation pages) to test each affected area.
+| Axis          | Assigned test suites                                                                                                                     | Assigned static and coverage checks                                                                     | Source files and inspection lens                                                                                                                                                                                                    |
+| :------------ | :--------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------ | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Black-box** | End-to-end (`*.e2e.*`, `e2e/`), CLI subprocess, browser, smoke, and interactive UI story (`*.stories.*`, where applicable) suites        | Build smoke checks                                                                                      | CLI binaries, command flag parsers, public UI components, and end-to-end user workflows (audited for external observable behavior, exit codes, stream routing, and interactive accessibility)                                       |
+| **Gray-box**  | Integration suites (`*.integration.*`, `integration/` covering HTTP routes, middleware, daemons, databases, adapters, and loaders)       | Architectural boundary linters, layer linters, and static security scanners                             | API servers, route handlers, middleware, static-asset handlers, database clients and migrations, and cross-package adapters (audited through module seams, HTTP/wire requests, and persistence lifecycles)                          |
+| **White-box** | Unit suites (`*.unit.*`, `unit/`, or co-located unit tests covering pure functions, schemas, domain errors, hooks, and build/repo tools) | Typecheckers, linters, dead-code, duplication, complexity analyzers, and coverage + diff-coverage gates | All modified executable source files paired with unit suites (audited for internal control-flow branches, default seam-pair parameters, algebraic properties, and surviving mutants; exclude markdown prose from mutation analysis) |
 
-Anchor verification to the author's declared scope in the pull request description or commit log. Never invent verification steps for features that the diff touches partially or that remain unbuilt.
+Partitioning rules:
 
-Completion criterion: Target scope, commit log, diff statistics, package manifest names, exact route paths, and affected user surfaces collected.
+1. **Deduplicate umbrella scripts.** Assign the single command that executes each suite once. Assign shared coverage collection exclusively to the White-box subagent, and omit a separate unit test run when the coverage script already runs the unit suites.
+2. **Pair source files with their unit and integration tests.** When a modified source module has both a unit suite and an integration or E2E suite, list the file for White-box branch/mutation auditing against its unit suite and for Gray-box or Black-box contract auditing against its integration or E2E suite.
 
-## 2. Author verification artifacts
+### 3. Spawn three parallel subagents to execute and write the reports
 
-Create two separate session artifacts in the agent session storage directory:
+Spawn three subagents in parallel in a single turn (or execute sequentially if the runtime does not support subagents):
 
-1. `qa_<target_slug>.md`: Interactive end-to-end verification checklist for manual testers.
-2. `engineer_<target_slug>.md`: Architectural synthesis, diff breakdown, and logic review for developers.
+- **Black-box subagent.** Playbook: [`black-box-testing.md`](black-box-testing.md). Target report: `.scratch/qa/<timestamp>-<slug>/black-box-testing.md`.
+- **Gray-box subagent.** Playbook: [`gray-box-testing.md`](gray-box-testing.md). Target report: `.scratch/qa/<timestamp>-<slug>/gray-box-testing.md`.
+- **White-box subagent.** Playbook: [`white-box-testing.md`](white-box-testing.md). Target report: `.scratch/qa/<timestamp>-<slug>/white-box-testing.md`.
 
-Use the file creation tool with artifact metadata for each document. Format both with standard markdown and link each document to its companion at the top.
+Keep each dispatch prompt under 200 words: pass this skill path (`.agents/skills/qa/SKILL.md`), the subagent's axis playbook path, `.scratch/qa/<timestamp>-<slug>/context.md`, any axis-specific testing guide paths discovered in step 1, assigned source files, test files, batched shell commands, and target report path. Await all three subagents (ending your turn immediately if your runtime dispatches subagents asynchronously) without polling subagent status.
 
-### Document 1: QA checklist (`qa_<target_slug>.md`)
+### 4. Read subagent reports and present deduplicated summary
 
-Write this document for a reviewer verifying the software interactively from an end-user perspective. Direct the reviewer to verify everything end-to-end without inspecting source code or architecture.
+Read `.scratch/qa/<timestamp>-<slug>/{black,gray,white}-box-testing.md` in parallel to verify axis alignment and deduplicate findings across reports. Reply in chat with a summary of **at most 15 lines** covering:
 
-Structure the document with these parts:
+- Verification coverage and test pass/fail totals across the Black-box, Gray-box, and White-box passes.
+- Deduplicated core defects, missing tests, and standards violations discovered across the three axes.
+- Estimated developer effort for fixes.
+- Links to `.scratch/qa/<timestamp>-<slug>/{black,gray,white}-box-testing.md`.
+- Any `Human verification required` checks from the reports (omit this bullet completely when all checks were verified by machine).
 
-1. **Header**: Link to `engineer_<target_slug>.md`, target reference or PR link, diff statistics, and declared intent in one or two sentences.
-2. **Intentions and declared purpose**: State what problem the change solves and what it was intended to achieve in two or three sentences.
-3. **Before and after results**: Contrast observable user-facing behavior before and after the change using a concise comparison table.
-4. **End-to-end verification scenarios**: Group verification items under relevant functional areas (CLI commands, user flows, service integrations, UI viewports). Sequence items in logical execution order, placing provisioning, installation, or prerequisite steps before scenarios that depend on them. Format each item cleanly using nested lists, placing commands in fenced code blocks for one-click copying:
+---
 
-````markdown
-- [ ] **Scenario title**
-  - **Action / Command:**
-    ```bash
-    command --flag value
-    ```
-  - **Expected:** Observable result, UI element, or exit code.
-````
+## Shared subagent protocol
 
-For UI flows without a terminal command, format actions as numbered or bulleted steps instead of a code block. Never use inline backticks for executable shell commands.
+Every QA subagent follows these four shared steps alongside its axis playbook:
 
-Every command must run reliably when pasted into a terminal:
-- Sequence prerequisites first so later commands find the assets they depend on.
-- Use the package manifest name from `package.json` with `bun --filter`. Never guess workspace filter names from folder paths.
-- Use exact route paths confirmed from router source files.
-- Match middleware triggers: test the HTTP verbs, headers, and bodies that activate the intended branch.
-- Test all modified user surfaces: when component code or `.stories.tsx` files change, add a Storybook scenario (`storybook dev`); when application pages or layouts change, add a web dev server scenario; when documentation changes, add a docs server scenario.
-- Do not strip runtime directories like `~/.bun/bin` from `PATH` when testing fallback paths or missing dependencies.
-- Do not pass dummy fallback binaries, such as `/bin/sh` in place of a browser executable, that cause assertion failures.
-- Use explicit flags or isolated temporary directories to test negative and fallback paths.
+### 1. First-turn parallel batching and file loading
 
-Reserve alert callout blocks (`> [!NOTE]`) for genuine environment constraints or gotchas. Do not add boilerplate notes explaining who the document is for.
+1. In your first turn, read `.agents/skills/qa/SKILL.md`, your assigned axis playbook, `.scratch/qa/<timestamp>-<slug>/context.md`, and prompt testing guides in a single parallel batch while launching assigned shell commands in one or two non-interactive invocations (up to 10 seconds before backgrounding). Rely on `context.md` for git history, issue descriptions, and diff summaries rather than re-running git commands.
+2. While backgrounded commands run, read assigned source and test files in whole-file parallel batches (10 to 15 files per turn) without polling task status; end your turn only when all file reads are complete.
 
-### Document 2: Engineer synthesis (`engineer_<target_slug>.md`)
+### 2. Probe hygiene and isolation
 
-Write this document for an engineer reviewing architectural integrity, logic flow, and test coverage. Synthesize technical facts without dumping raw code files.
+Run delta probes in one concise inline command (under 40 lines) with per-probe timeouts (`AbortSignal.timeout(3000)` or `timeout 3s`), ephemeral ports (`port: 0`), loopback bindings, in-memory or OS-temp storage, and sanitized environment variables (`HOST`, `PORT`). Keep temporary probe files inside your conversation/session scratch directory or OS temp directory and clean up all temporary directories and child processes before finishing. Never write probe files to the workspace or `.scratch/`.
 
-Structure the document with these parts:
+### 3. Verify uncertain findings via research
 
-1. **Header**: Link to `qa_<target_slug>.md`, target reference or PR link, diff statistics, and declared intent in one or two sentences.
-2. **Git diff synthesis**: Group changes by module or architectural layer in a compact table. Summarize structural additions and deletions rather than listing dozens of individual files.
-3. **Architectural effect**: Summarize in three or four bullet points how the change affects subsystem boundaries, Feature-Sliced Design layers, state persistence, or data contracts.
-4. **Code implementation and architecture logic**: Explain operational logic, algorithmic flow, domain invariants, state machine transitions, and boundary interactions.
-5. **Test scenario logic**: Synthesize the behaviors and edge cases guarded by automated tests, explaining what the assertions verify.
+Before writing your report, verify any candidate finding where you are not 100% certain it is a real defect (versus an intentional design contract, documented exemption, or framework standard) following [`.agents/skills/research/SKILL.md`](../research/SKILL.md) when present or checking primary sources directly:
 
-### Contextual diagrams
+1. **Codebase ground truth.** Inspect repository ADRs, TSDoc contracts, testing guides, and commit history (`git log -S` or `git show`) for intentional contracts or documented exemptions.
+2. **External primary sources.** When a finding depends on external libraries, protocols, accessibility specs, or runtime APIs, use search tools or a runtime check to verify official documentation rather than relying on training memory.
+3. **Counter-evidence and filtering.** Run a minimal reproduction to confirm observable behavior, discard any candidate disproven by evidence, and cite the verified primary source, ADR, or commit in confirmed findings.
 
-Mermaid diagrams are optional and contextual. Do not force diagrams into fixed sections or add routine sequence diagrams to test scenarios.
+### 4. Report anatomy and completion reply
 
-Include a diagram only when visual representation clarifies complex relationships:
+Write `.scratch/qa/<timestamp>-<slug>/{black,gray,white}-box-testing.md` with three required sections (`1` to `3`) and two conditional sections (`4` and `5`). When a conditional section has zero items, leave out its heading and body entirely rather than writing a "None required" or "Omitted" placeholder:
 
-- Use a high-level flowchart (`flowchart TD`) for multi-step data pipelines or branching subsystems.
-- Use a state diagram (`stateDiagram-v2`) for complex lifecycle or state machine transitions.
-- Keep all diagrams under 8 nodes so they remain legible at a glance.
-- Omit diagrams entirely when text or tables explain the change clearly.
+1. **Logic and scope understanding.** Concise axis-scoped inventory of audited entrypoints, seams, or internal logic. Include a compact Mermaid diagram (`flowchart TD`, `sequenceDiagram`, or `stateDiagram-v2`, at most 8 nodes) only when it clarifies non-trivial workflows, seams, or control flows.
+2. **Existing test suite audit.** Assigned test files, pass/fail counts, level-separation compliance, and assertion/seam quality.
+3. **Agent-executed live checks.** Exact test runner, static analysis, coverage, and delta probe commands executed, with exit codes and observed outputs.
+4. **Problems, missing tests, and smells (include only when actionable findings exist).** Actionable defects, surviving mutants, missing tests, and standards violations requiring code or test changes (record compliant invariants in Section 3). Format each finding with **Category**, **Location** (`file:line` or entrypoint), **Failure trace** (concrete input, payload, or operator mutation, observed vs expected outcome, and primary-source or ADR citation), and **Recommended fix**.
+5. **Human verification required (include only when modified behavior cannot be verified by machine).** Include a check only when all three conditions hold: (a) the target code or workflow was directly modified in the current scope, (b) the behavior requires human sensory judgment, interactive TTY ergonomics, or unmockable external credentials that no test runner, CLI probe, or headless browser in the workspace can verify, and (c) no automated test or delta probe already covers it. Sequence prerequisites first, followed by copy-pasteable commands with explicit flags and expected outcomes.
 
-### Content rules and prohibitions
-
-- **No content duplication**: The QA document covers user-facing end-to-end behavior only. The Engineer document covers architecture, logic flow, and test coverage only.
-- **No recommendations**: Never add recommendations, suggestions, or advice for improvements.
-- **No bugs or fixes**: Never report bug investigations, code smells, or remediation patches.
-- **No automated test execution commands**: Never tell the reviewer to run test runners (`bun test`, `vitest`), linters, or build scripts.
-
-Completion criterion: Both artifacts created in session storage and cross-linked.
-
-## 3. Deliver chat pointer
-
-Keep the chat response concise. Direct the user to both generated markdown artifacts in session storage with clickable links.
-
-Completion criterion: Brief response with markdown links to both session artifacts sent.
+Reply to the coordinator in under 150 words confirming the written report path, test pass/fail counts, coverage or probe totals, and any verified findings or required human checks.

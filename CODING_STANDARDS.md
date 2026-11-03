@@ -18,14 +18,14 @@ All contributions across applications and packages must adhere to these foundati
 
 ## Standards directory
 
-Detailed domain standards live under `docs/coding-standards/`:
+Detailed domain standards live under `docs/coding-standards/` and `TESTING.md`:
 
 - [TypeScript standards](docs/coding-standards/typescript.md): Language-level strictness, error causes, Zod schema contracts, and type hygiene.
 - [Monorepo package standards](docs/coding-standards/packages.md): Unidirectional dependencies, direct source exports, centralized configuration seams, and deep module design.
 - [CLI tool standards](docs/coding-standards/cli.md): Output streams (`stdout`/`stderr`), `--json` formatting, flag conventions, actionable errors, and programmatic library seams.
-- [HTTP API standards](docs/coding-standards/api.md): Hono architecture, loopback security, standardized error responses, and in-memory testing.
-- [Frontend application standards](docs/coding-standards/frontend.md): Feature-Sliced Design v2.1 layers, Next.js App Router boundary adapters, React 19 standards, and hydration safety.
-- [Testing standards](docs/coding-standards/testing.md): Behavioral assertions, prohibited testing anti-patterns, hermetic test resources, and workspace test suites.
+- [HTTP API standards](docs/coding-standards/api.md): Hono architecture, loopback security, and standardized error responses.
+- [Frontend application standards](docs/coding-standards/frontend.md): Feature-Sliced Design v2.1 layers, Storybook component presentation, React 19 standards, and hydration safety.
+- [Testing standards](TESTING.md): Behavioral assertions, prohibited testing anti-patterns, hermetic test resources, and testing guides.
 - [JSDoc and TSDoc standards](docs/coding-standards/jsdoc.md): Formatting conventions, `@remarks` context, clean `@param` tags, and `@throws` declarations.
 
 ## Architecture and domain pointers

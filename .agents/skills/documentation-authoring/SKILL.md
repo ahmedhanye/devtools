@@ -11,7 +11,7 @@ Author technical documentation for the documentation platform (`site/`, `@devtoo
 
 - **Diátaxis blueprints**: Read [references/diataxis-quadrants.md](references/diataxis-quadrants.md) for quadrant specifications, structural templates, and content boundaries.
 - **Fumadocs reference**: Read [references/fumadocs-features.md](references/fumadocs-features.md) for MDX components, Shiki code highlighting, styling tokens, accessibility standards, and compilation diagnostics.
-- **Verification rules**: Consult [../../rules/verification.md](../../rules/verification.md) for compiler verification commands and test invariants.
+- **Verification rules**: Consult [../../../TESTING.md](../../../TESTING.md) for compiler verification commands and test invariants.
 
 ## Authoring workflow
 
@@ -68,6 +68,6 @@ description: Configure runtime parameters and start the local background daemon.
 
 ### 6. Verify documentation changes
 
-1. Run the change-scoped verification commands defined in [../../rules/verification.md](../../rules/verification.md) for documentation content.
+1. Run the change-scoped verification commands defined in [../../../TESTING.md](../../../TESTING.md) for documentation content.
 2. Resolve any MDX compilation, broken link, or syntax diagnostics using the troubleshooting guide in [references/fumadocs-features.md](references/fumadocs-features.md).
-3. Completion criterion: Verification commands specified in [../../rules/verification.md](../../rules/verification.md) exit with code 0 without errors or broken links.
+3. Completion criterion: Verification commands specified in [../../../TESTING.md](../../../TESTING.md) exit with code 0 without errors or broken links.

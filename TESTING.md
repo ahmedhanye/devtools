@@ -1,0 +1,85 @@
+# DevTools testing standards
+
+Testing philosophy, hermetic isolation rules, prohibited anti-patterns, test level separation, QA axis partitioning, and smart CLI verification across the DevTools monorepo.
+
+## Core testing philosophy and invariants
+
+Compilers and static analyzers enforce structural code invariants (`tsc --noEmit`, `oxlint`, `fallow`, `steiger`, `react-doctor`). Reserve automated runtime test suites for observable runtime behaviors, schema boundaries, state transitions, and error handling that static typechecking and linting cannot verify.
+
+### Hermetic isolation and authoring rules
+
+- **Hermetic resources.** Test suites run concurrently and deterministically without shared mutable state. Loopback daemons and servers bind ephemeral port `0` (`port: 0`), SQLite tests use in-memory databases (`path: ":memory:"`), Hono API routes use socketless `app.request()`, and file-writing tests use isolated temporary directories (`fs.mkdtempSync()`).
+- **The seam-pair rule, call-chain forwarding, and global state isolation.** Centralize environment reads into `config.ts` with `env?: Record<string, string | undefined>` per [ADR 0002](docs/adr/0002-package-configuration-and-environment-seams.md) rather than mutating global `process` or `Bun` properties (`process.getuid`, `Bun.stdin`, ambient `process.env`). Functions branching on runtime environment state (`isTTY`, `process.platform`, `process.getuid`, process signals) or external boundaries (`spawnCommand`, browser binaries) accept an optional seam parameter with production defaults and test **both** the injected seam path and the default omitted-argument path in separate unit tests. Intermediate helper functions in a call chain must forward the complete configuration and environment seam object to lower-tier helpers.
+- **Vertical TDD slices at agreed seams.** Work in vertical red-green-refactor cycles per [`.agents/skills/tdd/SKILL.md`](.agents/skills/tdd/SKILL.md): write one failing test at a public seam, implement the minimal code to pass it, then repeat.
+- **100% diff coverage gate.** Pull requests require 100% LCOV line coverage (`DA:` hits > 0) on modified executable lines via `bun run test:coverage && bun run verify:diff-coverage`.
+  - `scripts/collect-coverage.ts` cleans and merges workspace LCOV reports into `coverage/lcov.info` (running `bunx fumadocs-mdx` before `site` coverage); run only one coverage command at a time.
+  - `scripts/verify-diff-coverage.ts` exempts type-only files (verified via `Bun.Transpiler`), `*.test.*`, `*.spec.*`, `*.stories.*`, `*.d.ts`, `*.config.*`, `.storybook/**`, `scripts/**`, `.agents/**`, and thin Next.js App Router entrypoints (`apps/frontend/src/app/**/*.next.{ts,tsx}`).
+
+### Prohibited testing anti-patterns and false-positive guards
+
+Reject these nine test anti-patterns across all workspaces:
+
+| Anti-pattern                             | Why it fails                                                                    | What to assert instead                                                                          |
+| :--------------------------------------- | :------------------------------------------------------------------------------ | :---------------------------------------------------------------------------------------------- |
+| **1. Static copy and prose**             | Breaks on wording edits and tests zero logic                                    | Semantic HTML landmarks (`<header>`, `<main>`, `<nav>`, `<footer>`) or structured schema fields |
+| **2. Hardcoded collection counts**       | `expect(pages.length).toBe(13)` breaks whenever content is added                | Non-empty collection (`length > 0`) plus per-item schema validation                             |
+| **3. Exact nav or heading strings**      | Couples tests to information architecture labels                                | Query symmetry (`source.getPage(slug)` resolves the same page as `source.getPageByUrl(url)`)    |
+| **4. Utility CSS classes**               | `expect(html).toContain("bg-primary")` couples tests to Tailwind tokens         | Accessible ARIA roles (`getByRole`), semantic elements, or `data-slot` attributes               |
+| **5. Trivial constant or type equality** | `expect(CODE).toBe("CODE")` tests JavaScript assignment                         | Schema parsing (`ApiErrorResponseSchema.parse(payload)`) or behavioral output                   |
+| **6. Tautological assertions**           | Recomputes expected values with the production formula, passing by construction | Independent known-good literal values from the specification                                    |
+| **7. Implementation-coupled mocks**      | Spies on internal helpers, asserts call order, or queries DB side channels      | Public module return values and state; mock only at external system boundaries                  |
+| **8. Weak coverage padding**             | Calls functions with `expect(res).toBeDefined()` only to satisfy LCOV line hits | Exact domain properties, error codes, and mutation-killing boundary values                      |
+| **9. Unverified snapshot abuse**         | Large snapshots lock in bugs and encourage blind snapshot updates               | Targeted structural or inline schema assertions                                                 |
+
+When auditing tests during code review or `/qa`, apply these repository false-positive guards:
+
+- **CLI `--help` output vs decorative UI prose.** Asserting command descriptions and flag names in CLI `--help` output (`apps/cli/tests/cli.e2e.test.ts`) verifies a public CLI contract and is not Anti-pattern #1.
+- **Interactive vs stateless Storybook stories.** Stateful interactive components (`Dialog`, `Drawer`, `DropdownMenu`, `Sheet`, `Tooltip`, forms) require `play()` interaction tests using `storybook/test`, whereas stateless presentational primitives (`Badge`, `Card`, `Separator`, `Skeleton`) require only visual component stories (`docs/testing/stories.md`).
+- **Barrel export smoke checks and repository self-checks.** Evaluate full test files and sibling suites before flagging `index.unit.test.ts` barrel export checks alongside behavioral schema tests, or intentional repository self-check tests in `scripts/*.unit.test.ts` alongside hermetic temporary-directory unit tests.
+- **Duplication triage.** Filter static duplication analyzer (`fallow:dupes`) output to ignore idiomatic boilerplate such as TSDoc comments, distinct domain error subclasses (`@devtools/core`), and declarative Drizzle ORM column definitions (`packages/db`).
+
+## Test level separation, file naming, and QA axis routing
+
+Automated tests are partitioned into three non-overlapping levels by visibility and execution cost:
+
+| Test level                    | Target file pattern              | Package script     | Visibility                       | Execution scope and QA commands                                                                                                                                                                                                                                                                                 |
+| :---------------------------- | :------------------------------- | :----------------- | :------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **White-box (Unit)**          | `*.unit.test.ts`                 | `test:unit`        | Code internals, AST, branches    | Pure functions, Zod schemas, error classes, React hooks (`renderHook` without JSX), `scripts/`.<br>QA checks: `bun run check`, `bun run typecheck`, `bun run lint:agents`, `bun run fallow:dead-code`, `bun run fallow:dupes`, `bun run fallow:health`, `bun run test:coverage && bun run verify:diff-coverage` |
+| **Gray-box (Integration)**    | `*.integration.test.ts`          | `test:integration` | Module seams, contracts, schemas | Socketless Hono routes (`app.request()`), loopback daemon (`port: 0`), `:memory:` SQLite migrations, adapter seams, `site` route loaders.<br>QA checks: `bun test <assigned *.integration.test.ts>`, `bun run fallow:arch`, `bun run fallow:security`, `bun run lint:fsd`                                       |
+| **Black-box (E2E & Stories)** | `*.e2e.test.ts`, `*.stories.tsx` | `test:e2e`         | External observable behavior     | Subprocess CLI binaries (`Bun.spawn`), Storybook component stories (`play()`), `build:smoke`.<br>QA checks: `bun run test:e2e && bun run build:smoke` (note: root `test:e2e` already runs `@devtools/frontend`'s `test:e2e` story suite)                                                                        |
+
+**Single-level file rule.** Place one test level per file using its matching suffix (`*.unit.test.ts`, `*.integration.test.ts`, `*.e2e.test.ts`, or `*.stories.tsx`). Keep unit, integration, and end-to-end `describe` blocks in separate files.
+
+## Smart CLI verification for agents
+
+Run the narrowest checks that prove modified files work. Pass `CI=true` and non-interactive flags (`--no-pager`, `PAGER=cat`) to keep output compact:
+
+| Changed paths                                           | Iterative checks (during edits)                                                                                                                                           | Completion checks (before handoff or review)                                                                                                                                                            |
+| :------------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `docs/**`, root `*.md`                                  | `bunx prettier --check <files>`                                                                                                                                           | `bunx prettier --check <files>`                                                                                                                                                                         |
+| `.agents/**`                                            | `bun scripts/verify-agents-governance.ts <files>`<br>`bunx prettier --check <files>`                                                                                      | `bun run lint:agents`<br>`bunx prettier --check <files>`                                                                                                                                                |
+| `.github/workflows/**`, `.github/actions/**`, `**/*.sh` | `bun run lint:workflows`                                                                                                                                                  | `bun run lint:workflows`                                                                                                                                                                                |
+| `scripts/**`                                            | `bunx oxlint --deny-warnings <files>`<br>`bunx prettier --check <files>`<br>`bun test <test-files>`                                                                       | `bunx oxlint --deny-warnings scripts/`<br>`bunx prettier --check scripts/`<br>`bun test scripts/`                                                                                                       |
+| `packages/<pkg>/**`                                     | `bunx oxlint --deny-warnings <files>`<br>`bunx prettier --check <files>`<br>`bun --filter @devtools/<pkg> typecheck`<br>`bun test <test-files>`                           | `bun --filter @devtools/<pkg> test`<br>`bun run fallow:dead-code`<br>`bun run fallow:arch`                                                                                                              |
+| `apps/api/**`, `apps/cli/**`                            | `bunx oxlint --deny-warnings <files>`<br>`bunx prettier --check <files>`<br>`bun --filter @devtools/<pkg> typecheck`<br>`bun test <test-files>`                           | `bun --filter @devtools/<pkg> test`<br>`bun run fallow:dead-code`<br>`bun run fallow:arch`<br>(If CLI bin/bundling changed: `bun run build:smoke`)                                                      |
+| `apps/frontend/**`                                      | `bunx oxlint --deny-warnings <files>`<br>`bunx prettier --check <files>`<br>`bun --filter @devtools/frontend typecheck`<br>`bun --filter @devtools/frontend test <files>` | `bun --filter @devtools/frontend test`<br>`bun run lint:fsd`<br>`bun run lint:design`<br>`CI=true bunx react-doctor --project apps/frontend --scope changed`<br>`bun --filter @devtools/frontend build` |
+| `site/content/**`                                       | `bunx prettier --check <files>`<br>`bun --filter @devtools/site typecheck`                                                                                                | `bun --filter @devtools/site build`                                                                                                                                                                     |
+| `site/src/**`, `site/tests/**`                          | `bunx oxlint --deny-warnings <files>`<br>`bunx prettier --check <files>`<br>`bun --filter @devtools/site typecheck`<br>`bun --filter @devtools/site test`                 | `CI=true bunx react-doctor --project site --scope changed`<br>`bun --filter @devtools/site build`                                                                                                       |
+| Root configs or multi-workspace changes                 | Matching workspace iterative checks above                                                                                                                                 | `bun run verify`                                                                                                                                                                                        |
+
+### Gate selection rules
+
+1. **Docs, rules, or workflow-only changes.** Stop after the row's completion checks exit `0`; skip `bun run verify`, `bun run verify:fast`, and test suites when no executable code changed.
+2. **Single-workspace code changes.** Run the row's iterative checks while editing, then run the row's completion checks plus `bun run test:coverage && bun run verify:diff-coverage`.
+3. **Cross-cutting code changes.** Run `bun run verify` once as the final pre-review gate after all edits are complete.
+4. **Staged secrets check.** After `git add`, run `bun scripts/verify-staged-secrets.ts` to confirm no credentials or unignored tokens (`// trufflehog:ignore`) are staged.
+
+## Testing guides
+
+Detailed testing standards and authoring recipes live under `docs/testing/`:
+
+- [Box testing standards](docs/testing/box-testing.md). Black-box, gray-box, and white-box methodologies, adversarial wire and parser probes, machine vs human verification boundaries, architectural and security gates, and the monorepo workspace matrix.
+- [Storybook component testing](docs/testing/stories.md). Presentational component stories (`*.stories.tsx`) in `apps/frontend`, `storybookStoriesPlugin` CSF requirements, `play()` interaction tests using `storybook/test`, and Next.js mocks.
+- [Unit testing](docs/testing/unit-tests.md). Authoring `*.unit.test.ts` suites for pure functions, `@devtools/core` Zod schemas, typed domain errors, seam-pair environment branches, property invariants, and React hooks without JSX.
+- [Integration testing](docs/testing/integration-tests.md). Authoring `*.integration.test.ts` suites for socketless Hono routes (`createApp`), ephemeral daemons (`startDaemon`), in-memory SQLite (`createDb`, `runMigrations`, singleton `getDb` lifecycle), cross-package adapters, and `site` loaders.
+- [End-to-end testing](docs/testing/e2e-tests.md). Authoring `*.e2e.test.ts` suites for CLI binaries (`Bun.spawn`), full-stack daemon delivery, stream separation (`stdout` vs `stderr`), signal handling (`SIGINT`, `SIGTERM`), and process cleanup.
