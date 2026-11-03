@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BrowserNotFoundError, InvalidBrowserPathError } from "../src/errors";
 import { getBrowserStatus, resolveBrowserPath } from "../src/waterfall";
 
 describe("Browser Resolution Waterfall", () => {
   const testDir = join(
-    homedir(),
+    tmpdir(),
     ".devtools-test-waterfall-" + Math.random().toString(36).slice(2),
   );
 
@@ -134,6 +134,41 @@ describe("Browser Resolution Waterfall", () => {
 
     expect(resolution.executablePath).toBe(mockEdgeBin);
     expect(resolution.source).toBe("edge");
+  });
+
+  test("Tier 2: probes tool caches and resolves Playwright or Puppeteer browser candidate", async () => {
+    const mockBin = join(testDir, "playwright-chrome.sh");
+    writeFileSync(mockBin, '#!/bin/sh\necho "Chromium 128.0.0"\n');
+    chmodSync(mockBin, 0o755);
+
+    let passedSeam: any;
+    const resolution = await resolveBrowserPath(
+      {
+        env: {
+          CHROME_PATH: undefined,
+          DEVTOOLS_CHROME_PATH: undefined,
+          CUSTOM_SEAM: "verified",
+        },
+      },
+      {
+        probeManagedCache: async () => null,
+        probeSystemInstallations: async () => [],
+        probeAlternativeBrowsers: async () => [],
+        probeToolCaches: async (_target, seam) => {
+          passedSeam = seam;
+          return [
+            {
+              path: mockBin,
+              source: "playwright",
+            },
+          ];
+        },
+      },
+    );
+
+    expect(resolution.executablePath).toBe(mockBin);
+    expect(resolution.source).toBe("playwright");
+    expect(passedSeam?.env?.CUSTOM_SEAM).toBe("verified");
   });
 
   test("Tier 3: throws BrowserNotFoundError with actionable remediation guidance when no browser is found", async () => {

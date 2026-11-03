@@ -43,3 +43,25 @@ export const RuntimeConfigSchema = z
  * Validated runtime configuration inferred from {@link RuntimeConfigSchema}.
  */
 export type RuntimeConfig = z.infer<typeof RuntimeConfigSchema>;
+
+/**
+ * Resolves a TCP port number from a raw environment string.
+ *
+ * @remarks
+ * Strips leading/trailing whitespace and checks for integer digit sequences.
+ * Returns `NaN` for non-integer or malformed strings so callers can delegate validation
+ * to {@link RuntimeConfigSchema}. Returns `undefined` if `portStr` is undefined.
+ *
+ * @param portStr - Raw port string from environment variables (e.g., `process.env.PORT`).
+ * @returns Parsed integer port number, `NaN` if string is non-numeric, or `undefined` if `portStr` is undefined.
+ */
+export function parsePortFromEnv(portStr?: string): number | undefined {
+  if (portStr === undefined) {
+    return undefined;
+  }
+  const trimmed = portStr.trim();
+  if (/^-?\d+$/.test(trimmed)) {
+    return Number.parseInt(trimmed, 10);
+  }
+  return Number.NaN;
+}

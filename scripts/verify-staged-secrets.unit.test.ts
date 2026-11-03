@@ -37,6 +37,8 @@ describe("maskSecret", () => {
       "ghp_12**********************************",
     );
     expect(maskSecret("short")).toBe("*****");
+    expect(maskSecret("12345678")).toBe("********");
+    expect(maskSecret("123456789")).toBe("123******");
   });
 });
 
@@ -200,10 +202,16 @@ describe("getStagedFiles", () => {
   });
 
   it("excludes deleted files and handles staged deletions without errors", () => {
-    const deletedFiles = new Set(["deleted-file.ts"]);
-    const candidateFiles = ["deleted-file.ts", "active.ts"];
-    const filesToScan = candidateFiles.filter((f) => !deletedFiles.has(f));
-    expect(filesToScan).toEqual(["active.ts"]);
+    const mockSpawn = (args: string[]) => {
+      if (args.includes("--diff-filter=d")) {
+        return { exitCode: 0, stdout: "active.ts\0" };
+      }
+      return { exitCode: 0, stdout: "deleted-file.ts\0" };
+    };
+    const stagedFiles = getStagedFiles(mockSpawn as any);
+    const deletedFiles = getStagedDeletedFiles(mockSpawn as any);
+    expect(stagedFiles).toEqual(["active.ts"]);
+    expect(deletedFiles).toEqual(new Set(["deleted-file.ts"]));
   });
 
   it("fails closed when git diff exits with non-zero code", () => {

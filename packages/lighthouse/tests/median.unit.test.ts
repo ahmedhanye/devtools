@@ -74,13 +74,13 @@ describe("computeRepresentativeRun (Euclidean distance to median FCP and TTI)", 
           runIndex: 0,
           fcpMs: 1200,
           interactiveMs: 1800,
-          distanceSquared: (1200 - 910) ** 2 + (1800 - 1820) ** 2,
+          distanceSquared: 84500,
         },
         {
           runIndex: 1,
           fcpMs: 700,
           interactiveMs: 2500,
-          distanceSquared: (700 - 910) ** 2 + (2500 - 1820) ** 2,
+          distanceSquared: 506500,
         },
         {
           runIndex: 2,
@@ -92,16 +92,28 @@ describe("computeRepresentativeRun (Euclidean distance to median FCP and TTI)", 
           runIndex: 3,
           fcpMs: 900,
           interactiveMs: 1400,
-          distanceSquared: (900 - 910) ** 2 + (1400 - 1820) ** 2,
+          distanceSquared: 176500,
         },
         {
           runIndex: 4,
           fcpMs: 1500,
           interactiveMs: 3000,
-          distanceSquared: (1500 - 910) ** 2 + (3000 - 1820) ** 2,
+          distanceSquared: 1740500,
         },
       ],
     });
+  });
+
+  it("breaks equidistant ties by selecting the lower runIndex", () => {
+    // Both run 0 and run 1 have identical distance from median
+    const runs = [
+      makeIteration(1000, 2000, 100, "run0"),
+      makeIteration(1000, 2000, 100, "run1"),
+    ];
+
+    const result = computeRepresentativeRun(runs);
+    expect(result.runIndex).toBe(0);
+    expect(result.representative).toBe(runs[0]!);
   });
 
   it("falls back to total-blocking-time (or 0) when interactive is 0 or missing", () => {

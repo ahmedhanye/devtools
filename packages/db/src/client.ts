@@ -1,6 +1,7 @@
 import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import type { Database } from "bun:sqlite";
 import type { EnvMap } from "@devtools/core";
+import { resolveDatabasePath } from "./config";
 import { createSqliteConnection } from "./connection";
 import * as schema from "./schema";
 
@@ -41,6 +42,7 @@ export function createDb(options: CreateDbOptions = {}): DevtoolsDb {
 
 let devtoolsDbInstance: DevtoolsDb | null = null;
 let devtoolsSqliteConnection: Database | null = null;
+let devtoolsDbPath: string | null = null;
 
 /**
  * Returns the lazily initialized process-wide {@link DevtoolsDb} singleton.
@@ -53,11 +55,28 @@ let devtoolsSqliteConnection: Database | null = null;
  * @returns Shared {@link DevtoolsDb} singleton instance.
  */
 export function getDb(options: CreateDbOptions = {}): DevtoolsDb {
+  if (
+    devtoolsDbInstance &&
+    (options.path !== undefined || options.env !== undefined) &&
+    options.connection === undefined
+  ) {
+    const requestedPath = resolveDatabasePath({
+      customPath: options.path,
+      env: options.env,
+    });
+    if (devtoolsDbPath !== null && requestedPath !== devtoolsDbPath) {
+      closeDb();
+    }
+  }
+
   if (!devtoolsDbInstance) {
     devtoolsSqliteConnection =
       options.connection ??
       createSqliteConnection({ path: options.path, env: options.env });
     devtoolsDbInstance = drizzle({ client: devtoolsSqliteConnection, schema });
+    devtoolsDbPath = options.connection
+      ? null
+      : resolveDatabasePath({ customPath: options.path, env: options.env });
   }
   return devtoolsDbInstance;
 }
@@ -78,6 +97,7 @@ export function closeDb(): void {
     devtoolsSqliteConnection = null;
   }
   devtoolsDbInstance = null;
+  devtoolsDbPath = null;
 }
 
 /**

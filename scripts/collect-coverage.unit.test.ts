@@ -73,6 +73,14 @@ end_of_record
       const normalized = normalizeLcovPaths(entry, repoRoot);
       expect(normalized).toContain("SF:packages/db/src/client.ts");
     });
+
+    it("is idempotent when applied repeatedly", () => {
+      const input = `SF:src/components/button.tsx\nDA:1,1\nend_of_record`;
+      const workspaceDir = path.join(repoRoot, "apps/frontend");
+      const first = normalizeLcovPaths(input, workspaceDir, repoRoot);
+      const second = normalizeLcovPaths(first, repoRoot, repoRoot);
+      expect(second).toBe(first);
+    });
   });
 
   describe("mergeLcovContents", () => {
