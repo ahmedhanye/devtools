@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import { expect, fn, userEvent, within } from "storybook/test";
 import { Button } from "./button";
 
 const meta: Meta<typeof Button> = {
@@ -79,5 +80,20 @@ export const Disabled: Story = {
   args: {
     disabled: true,
     children: "Disabled Button",
+  },
+};
+
+export const ClickedWithKeyboardAndPointer: Story = {
+  args: {
+    children: "Interactive Button",
+    onClick: fn(),
+  },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    const button = canvas.getByRole("button", { name: "Interactive Button" });
+
+    await expect(button).toBeInTheDocument();
+    await userEvent.click(button);
+    await expect(args.onClick).toHaveBeenCalledTimes(1);
   },
 };

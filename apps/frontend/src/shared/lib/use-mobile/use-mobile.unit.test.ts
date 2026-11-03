@@ -25,6 +25,7 @@ describe("useIsMobile", () => {
 
     const { result, unmount } = renderHook(() => useIsMobile());
     expect(result.current).toBe(true);
+    expect(window.matchMedia).toHaveBeenCalledWith("(max-width: 767px)");
     expect(addEventListener).toHaveBeenCalledWith(
       "change",
       expect.any(Function),
