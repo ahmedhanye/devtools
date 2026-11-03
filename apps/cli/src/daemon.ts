@@ -1,7 +1,11 @@
 import { existsSync, statSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { createApp } from "@devtools/api";
-import { type EnvMap, RuntimeConfigSchema } from "@devtools/core";
+import {
+  type EnvMap,
+  RuntimeConfigSchema,
+  parsePortFromEnv,
+} from "@devtools/core";
 import {
   closeDb,
   getDb,
@@ -72,6 +76,29 @@ export function resolveStaticDir(
   return resolve(import.meta.dir, "../../frontend/dist");
 }
 
+type ConfigValidationError = Extract<
+  ReturnType<typeof RuntimeConfigSchema.safeParse>,
+  { success: false }
+>["error"];
+
+function formatDaemonValidationError(
+  error: ConfigValidationError,
+  portOverride: number | undefined,
+  envPort: string | undefined,
+): Error {
+  const portIssue = error.issues.find((issue) => issue.path.includes("port"));
+  if (portIssue && portOverride === undefined && envPort !== undefined) {
+    return new Error(
+      `Invalid environment variable PORT="${envPort}": must be an integer between 0 and 65535`,
+      { cause: error },
+    );
+  }
+  const firstIssue = error.issues[0];
+  return new Error(firstIssue?.message ?? "Invalid daemon configuration", {
+    cause: error,
+  });
+}
+
 /**
  * Resolves and validates daemon host, port, and static asset directory configuration
  * against {@link RuntimeConfigSchema}.
@@ -86,20 +113,25 @@ export function resolveDaemonConfig(options: StartDaemonOptions = {}): {
   staticDir?: string;
 } {
   const currentEnv = options.env ?? process.env;
-  const rawPort =
-    options.port !== undefined
-      ? options.port
-      : currentEnv.PORT !== undefined
-        ? Number.parseInt(currentEnv.PORT, 10)
-        : undefined;
+  const rawPort = options.port ?? parsePortFromEnv(currentEnv.PORT);
   const rawHost = options.host ?? currentEnv.HOST;
   const rawStaticDir = options.staticDir ?? currentEnv.DEVTOOLS_STATIC_DIR;
 
-  const validated = RuntimeConfigSchema.parse({
+  const result = RuntimeConfigSchema.safeParse({
     ...(rawPort !== undefined ? { port: rawPort } : {}),
     ...(rawHost !== undefined ? { host: rawHost } : {}),
     ...(rawStaticDir !== undefined ? { staticDir: rawStaticDir } : {}),
   });
+
+  if (!result.success) {
+    throw formatDaemonValidationError(
+      result.error,
+      options.port,
+      currentEnv.PORT,
+    );
+  }
+
+  const validated = result.data;
 
   return {
     host: validated.host,
@@ -164,7 +196,12 @@ export async function serveStaticAsset(
   }
 
   const baseDir = resolve(staticDir);
-  const decodedPath = decodeURIComponent(urlPath);
+  let decodedPath: string;
+  try {
+    decodedPath = decodeURIComponent(urlPath);
+  } catch {
+    return new Response("Bad Request", { status: 400 });
+  }
   const safePath = resolve(baseDir, "." + decodedPath);
 
   if (safePath !== baseDir && !safePath.startsWith(baseDir + sep)) {

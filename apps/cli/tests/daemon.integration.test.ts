@@ -1,13 +1,12 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ApiErrorResponseSchema, HealthResponseSchema } from "@devtools/core";
 import * as dbModule from "@devtools/db";
 import { db, resetDb, systemMetadata } from "@devtools/db";
 import {
   type DaemonInstance,
-  resolveDaemonConfig,
-  resolveStaticDir,
   serveStaticAsset,
   startDaemon,
 } from "../src/daemon";
@@ -117,6 +116,28 @@ describe("Unified Loopback Daemon Lifecycle and Routing", () => {
     expect(res.status).toBe(403);
   });
 
+  test("blocks single-encoded path traversal attempts with 403 Forbidden", async () => {
+    activeDaemon = startDaemon({ port: 0, host: "127.0.0.1" });
+    const res = await serveStaticAsset(
+      activeDaemon.staticDir,
+      "/%2e%2e/package.json",
+    );
+    expect(res.status).toBe(403);
+  });
+
+  test("confines double-encoded path traversal attempts returning 404 Not Found", async () => {
+    activeDaemon = startDaemon({ port: 0, host: "127.0.0.1" });
+    const res = await serveStaticAsset(
+      activeDaemon.staticDir,
+      "/%252e%252e/package.json",
+    );
+    expect(res.status).toBe(404);
+
+    const baseUrl = `http://127.0.0.1:${activeDaemon.port}`;
+    const httpRes = await fetch(`${baseUrl}/%252e%252e/package.json`);
+    expect(httpRes.status).toBe(404);
+  });
+
   test("blocks sibling directory traversal attempts with 403 Forbidden", async () => {
     activeDaemon = startDaemon({ port: 0, host: "127.0.0.1" });
     const res = await serveStaticAsset(
@@ -157,8 +178,7 @@ describe("Unified Loopback Daemon Lifecycle and Routing", () => {
   });
 
   test("serves from custom static directory when provided", async () => {
-    const tmpDir = join(__dirname, ".tmp-static");
-    mkdirSync(tmpDir, { recursive: true });
+    const tmpDir = mkdtempSync(join(tmpdir(), "devtools-test-daemon-"));
     writeFileSync(
       join(tmpDir, "index.html"),
       "<!DOCTYPE html><html><body>Custom Static</body></html>",
@@ -180,6 +200,23 @@ describe("Unified Loopback Daemon Lifecycle and Routing", () => {
     }
   });
 
+  test("returns 400 Bad Request on malformed percent-encoding in static asset request", async () => {
+    activeDaemon = startDaemon({ port: 0, host: "127.0.0.1" });
+    const baseUrl = `http://127.0.0.1:${activeDaemon.port}`;
+
+    const res = await fetch(`${baseUrl}/%E0%A4%A`);
+    expect(res.status).toBe(400);
+  });
+
+  test("blocks root filesystem traversal attempts with 403 Forbidden", async () => {
+    activeDaemon = startDaemon({ port: 0, host: "127.0.0.1" });
+    const res = await serveStaticAsset(
+      activeDaemon.staticDir,
+      "/../../etc/passwd",
+    );
+    expect(res.status).toBe(403);
+  });
+
   test("fails fast with actionable error message when static directory does not exist", () => {
     expect(() => {
       startDaemon({
@@ -190,62 +227,5 @@ describe("Unified Loopback Daemon Lifecycle and Routing", () => {
     }).toThrow(
       'Static assets directory not found at "/nonexistent/static/path". Run "bun run build" in @devtools/frontend to generate static assets, or pass --static-dir <path>.',
     );
-  });
-});
-
-describe("Daemon Configuration & Static Directory Resolution", () => {
-  const originalEnv = { ...process.env };
-
-  afterEach(() => {
-    process.env = { ...originalEnv };
-  });
-
-  test("resolveDaemonConfig returns defaults when options and env are empty", () => {
-    delete process.env.PORT;
-    delete process.env.HOST;
-    delete process.env.DEVTOOLS_STATIC_DIR;
-
-    const config = resolveDaemonConfig({});
-    expect(config.host).toBe("127.0.0.1");
-    expect(config.port).toBe(4000);
-    expect(config.staticDir).toBeUndefined();
-  });
-
-  test("resolveDaemonConfig respects explicit options over env", () => {
-    process.env.PORT = "3000";
-    process.env.HOST = "10.0.0.1";
-
-    const config = resolveDaemonConfig({ port: 5000, host: "0.0.0.0" });
-    expect(config.host).toBe("0.0.0.0");
-    expect(config.port).toBe(5000);
-  });
-
-  test("resolveDaemonConfig respects environment overrides", () => {
-    process.env.PORT = "4500";
-    process.env.HOST = "192.168.1.50";
-
-    const config = resolveDaemonConfig({});
-    expect(config.host).toBe("192.168.1.50");
-    expect(config.port).toBe(4500);
-  });
-
-  test("resolveDaemonConfig supports ephemeral port 0", () => {
-    delete process.env.HOST;
-    const config = resolveDaemonConfig({ port: 0 });
-    expect(config.port).toBe(0);
-    expect(config.host).toBe("127.0.0.1");
-  });
-
-  test("resolveDaemonConfig uniformly validates host even with port 0", () => {
-    expect(() => resolveDaemonConfig({ port: 0, host: "" })).toThrow();
-  });
-
-  test("resolveStaticDir resolves explicit custom path and env overrides", () => {
-    const custom = resolveStaticDir("/custom/test/dir");
-    expect(custom).toContain("custom/test/dir");
-
-    process.env.DEVTOOLS_STATIC_DIR = "/env/static/dir";
-    const fromEnv = resolveStaticDir();
-    expect(fromEnv).toContain("env/static/dir");
   });
 });

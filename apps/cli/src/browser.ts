@@ -3,6 +3,7 @@ import type {
   getBrowserStatus as GetBrowserStatusFn,
   installBrowser as InstallBrowserFn,
 } from "@devtools/browser";
+import type { EnvMap } from "@devtools/core";
 import { Command } from "commander";
 import pc from "picocolors";
 
@@ -16,6 +17,8 @@ export interface BrowserStatusOptions {
   chromePath?: string;
   /** Custom managed browser cache directory (`--path`). */
   path?: string;
+  /** Optional environment variable map seam for hermetic testing. */
+  env?: EnvMap;
 }
 
 /**
@@ -24,6 +27,8 @@ export interface BrowserStatusOptions {
 export interface BrowserInstallOptions {
   /** Custom target directory to download and unpack the browser into (`--path`). */
   path?: string;
+  /** Optional environment variable map seam for hermetic testing. */
+  env?: EnvMap;
 }
 
 /**
@@ -31,24 +36,36 @@ export interface BrowserInstallOptions {
  * in either human-readable or `--json` format and exiting with code `1` if unresolved.
  *
  * @param options - Parsed CLI status options.
- * @param deps - Optional injected `getBrowserStatus` implementation for unit testing.
+ * @param deps - Optional injected `getBrowserStatus` implementation and exit seam for unit testing.
  */
 export async function runBrowserStatusCommand(
   options: BrowserStatusOptions = {},
-  deps?: { getBrowserStatus?: typeof GetBrowserStatusFn },
+  deps?: {
+    getBrowserStatus?: typeof GetBrowserStatusFn;
+    exit?: (code?: number) => void;
+  },
 ): Promise<void> {
+  const exit = (code = 1) => {
+    if (deps?.exit) {
+      deps.exit(code);
+      return;
+    }
+    process.exit(code);
+  };
+
   const doStatus =
     deps?.getBrowserStatus ??
     (await import("@devtools/browser")).getBrowserStatus;
   const status: BrowserStatus = await doStatus({
     chromePath: options.chromePath,
     cacheDir: options.path,
+    env: options.env,
   });
 
   if (options.json) {
     console.log(JSON.stringify(status, null, 2));
     if (!status.found) {
-      process.exit(1);
+      exit(1);
     }
     return;
   }
@@ -60,7 +77,7 @@ export async function runBrowserStatusCommand(
     console.log(`  ${pc.bold("Source:")}  ${status.source}`);
   } else {
     console.error(pc.red(status.error));
-    process.exit(1);
+    exit(1);
   }
 }
 
@@ -97,8 +114,17 @@ export async function runBrowserInstallCommand(
     installBrowser?: typeof InstallBrowserFn;
     isTTY?: boolean;
     writeStderr?: (chunk: string) => void;
+    exit?: (code?: number) => void;
   },
 ): Promise<void> {
+  const exit = (code = 1) => {
+    if (deps?.exit) {
+      deps.exit(code);
+      return;
+    }
+    process.exit(code);
+  };
+
   const isTTY = deps?.isTTY ?? Boolean(process.stderr.isTTY);
   const writeStderr =
     deps?.writeStderr ?? ((chunk: string) => process.stderr.write(chunk));
@@ -112,6 +138,7 @@ export async function runBrowserInstallCommand(
   try {
     const installed = await doInstall({
       cacheDir: options.path,
+      env: options.env,
       onProgress: createDownloadProgressReporter(isTTY, writeStderr),
     });
 
@@ -130,7 +157,7 @@ export async function runBrowserInstallCommand(
     }
     const message = err instanceof Error ? err.message : String(err);
     console.error(pc.red(`Failed to install browser: ${message}`));
-    process.exit(1);
+    exit(1);
   }
 }
 

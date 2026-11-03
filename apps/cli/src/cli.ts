@@ -1,5 +1,5 @@
 import { APP_VERSION, type EnvMap } from "@devtools/core";
-import { Command } from "commander";
+import { Command, InvalidArgumentError } from "commander";
 import pc from "picocolors";
 import { registerBrowserCommands } from "./browser";
 import {
@@ -214,10 +214,11 @@ export function createProgram(): Command {
     .command("web")
     .description("Start the unified local loopback daemon")
     .option("-p, --port <number>", "Port to bind (default: 4000)", (val) => {
-      const parsed = Number.parseInt(val, 10);
-      if (Number.isNaN(parsed)) {
-        throw new Error(`Invalid port number: "${val}"`);
+      const trimmed = val.trim();
+      if (!/^-?\d+$/.test(trimmed)) {
+        throw new InvalidArgumentError(`Invalid port number: "${val}"`);
       }
+      const parsed = Number.parseInt(trimmed, 10);
       return parsed;
     })
     .option("-H, --host <string>", "Host to bind (default: 127.0.0.1)")

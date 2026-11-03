@@ -11,6 +11,7 @@ import { createHealthRoutes } from "./routes/health";
 export {
   createLoopbackProtectionMiddleware,
   formatError,
+  isLoopbackHostHeader,
   isLoopbackOrigin,
 } from "./middleware/security";
 export { createHealthRoutes } from "./routes/health";

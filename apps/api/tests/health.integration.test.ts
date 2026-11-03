@@ -45,6 +45,14 @@ describe("Health API Endpoint (/api/health) & Security Boundaries", () => {
     expect(parsed.error.message).toBeTruthy();
   });
 
+  test("rejects mutating HTTP methods (POST, DELETE) against /api/health with 404 Not Found", async () => {
+    const postRes = await app.request("/api/health", { method: "POST" });
+    expect(postRes.status).toBe(404);
+
+    const deleteRes = await app.request("/api/health", { method: "DELETE" });
+    expect(deleteRes.status).toBe(404);
+  });
+
   test("returns 500 with ApiErrorResponseSchema on internal error", async () => {
     const customApp = createApp();
     customApp.get("/test-error", () => {
@@ -206,6 +214,27 @@ describe("Health API Endpoint (/api/health) & Security Boundaries", () => {
       },
     });
     expect(emptyBodyRes.status).toBe(200);
+  });
+
+  test("rejects non-loopback Host header with 403 Forbidden on all HTTP methods", async () => {
+    const res = await app.request("/api/health", {
+      headers: {
+        Host: "evil.example.com",
+      },
+    });
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    const parsed = ApiErrorResponseSchema.parse(json);
+    expect(parsed.error.code).toBe(API_ERROR_CODES.FORBIDDEN);
+    expect(parsed.error.message).toBe("Non-loopback Host header is forbidden");
+
+    // Accepts valid loopback Host header
+    const validRes = await app.request("/api/health", {
+      headers: {
+        Host: "127.0.0.1:4000",
+      },
+    });
+    expect(validRes.status).toBe(200);
   });
 
   test("formatError includes optional details when provided", () => {
