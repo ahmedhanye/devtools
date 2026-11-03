@@ -158,7 +158,7 @@ async function probeFallbackCandidates(
 
   const probeToolCaches = deps?.probeToolCaches ?? defaultProbeToolCaches;
   return findFirstRunnableCandidate(
-    await probeToolCaches(undefined, env),
+    await probeToolCaches(undefined, seam),
     verify,
     timeoutMs,
   );

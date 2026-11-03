@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { type RuntimeConfig, RuntimeConfigSchema } from "../src/config";
+import {
+  type RuntimeConfig,
+  RuntimeConfigSchema,
+  parsePortFromEnv,
+} from "../src/config";
 
 describe("RuntimeConfigSchema", () => {
   it("resolves default values when parsed with an empty object", () => {
@@ -51,5 +55,42 @@ describe("RuntimeConfigSchema", () => {
         extraParam: "forbidden",
       }),
     ).toThrow();
+  });
+});
+
+describe("parsePortFromEnv", () => {
+  it("returns undefined when portStr is undefined", () => {
+    expect(parsePortFromEnv(undefined)).toBeUndefined();
+    expect(parsePortFromEnv()).toBeUndefined();
+  });
+
+  it("parses valid integer strings", () => {
+    expect(parsePortFromEnv("0")).toBe(0);
+    expect(parsePortFromEnv("3000")).toBe(3000);
+    expect(parsePortFromEnv("65535")).toBe(65535);
+    expect(parsePortFromEnv("99999")).toBe(99999);
+  });
+
+  it("trims whitespace from port strings", () => {
+    expect(parsePortFromEnv("  4000  ")).toBe(4000);
+    expect(parsePortFromEnv("\t8080\n")).toBe(8080);
+  });
+
+  it("parses negative integer strings", () => {
+    expect(parsePortFromEnv("-1")).toBe(-1);
+    expect(parsePortFromEnv(" -500 ")).toBe(-500);
+  });
+
+  it("returns NaN for decimal, non-numeric, or mixed strings", () => {
+    expect(parsePortFromEnv("3000.5")).toBeNaN();
+    expect(parsePortFromEnv("abc")).toBeNaN();
+    expect(parsePortFromEnv("4000abc")).toBeNaN();
+    expect(parsePortFromEnv("12e3")).toBeNaN();
+    expect(parsePortFromEnv("0x10")).toBeNaN();
+  });
+
+  it("returns NaN for empty or whitespace-only strings", () => {
+    expect(parsePortFromEnv("")).toBeNaN();
+    expect(parsePortFromEnv("   ")).toBeNaN();
   });
 });

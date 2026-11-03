@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
-import { homedir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { installBrowser } from "../src/installer";
 
 describe("Browser Installer", () => {
   const testDir = join(
-    homedir(),
+    tmpdir(),
     ".devtools-test-installer-" + Math.random().toString(36).slice(2),
   );
 
@@ -98,5 +98,28 @@ describe("Browser Installer", () => {
     await expect(
       installBrowser({ cacheDir: testDir }, mockDeps),
     ).rejects.toThrow("Network timeout during browser archive download");
+  });
+
+  test("installBrowser resolves cache directory from options.env when options.cacheDir is omitted", async () => {
+    const envCacheDir = join(testDir, "env-cache");
+    let capturedOptions: any = null;
+    const mockDeps = {
+      resolveBuildId: async () => "130.0.0",
+      install: async (options: any) => {
+        capturedOptions = options;
+        return {
+          executablePath: join(envCacheDir, "mock"),
+          buildId: "130.0.0",
+          browser: "chrome-headless-shell",
+        };
+      },
+    };
+
+    await installBrowser(
+      { env: { DEVTOOLS_BROWSERS_DIR: envCacheDir } },
+      mockDeps,
+    );
+    expect(existsSync(envCacheDir)).toBe(true);
+    expect(capturedOptions?.cacheDir).toBe(envCacheDir);
   });
 });

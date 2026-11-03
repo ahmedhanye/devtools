@@ -89,6 +89,8 @@ export interface InstallBrowserOptions {
    * Defaults to `~/.devtools/browsers` (or `DEVTOOLS_BROWSERS_DIR`).
    */
   cacheDir?: string;
+  /** Optional environment variable map overriding `process.env`. */
+  env?: EnvMap;
   /**
    * Optional callback invoked periodically during archive download.
    *

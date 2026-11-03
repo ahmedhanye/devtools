@@ -68,6 +68,11 @@ describe("HealthResponseSchema", () => {
     ).toThrow();
   });
 
+  it("accepts boundary uptime of 0", () => {
+    const zeroUptime = { ...validPayload, uptime: 0 };
+    expect(HealthResponseSchema.parse(zeroUptime).uptime).toBe(0);
+  });
+
   it("rejects empty version strings", () => {
     expect(() =>
       HealthResponseSchema.parse({

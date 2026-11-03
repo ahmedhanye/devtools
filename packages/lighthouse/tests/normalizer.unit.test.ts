@@ -557,4 +557,38 @@ describe("normalizeLhr (Lighthouse v13.5.0 LHR normalization)", () => {
       message: "DNS lookup failed",
     });
   });
+
+  it("verifies 0.9 threshold boundary for failedAudits (0.9 excluded, 0.89 included)", () => {
+    const lhrBoundary: RawLighthouseResult = {
+      categories: {
+        performance: {
+          id: "performance",
+          score: 0.9,
+          auditRefs: [
+            { id: "audit-passing-boundary" },
+            { id: "audit-failing-boundary" },
+          ],
+        },
+      },
+      audits: {
+        "audit-passing-boundary": {
+          id: "audit-passing-boundary",
+          title: "Passing boundary",
+          score: 0.9,
+          scoreDisplayMode: "numeric",
+        },
+        "audit-failing-boundary": {
+          id: "audit-failing-boundary",
+          title: "Failing boundary",
+          score: 0.89,
+          scoreDisplayMode: "numeric",
+        },
+      },
+    };
+
+    const { summary } = normalizeLhr(lhrBoundary);
+    const failedIds = summary.failedAudits.map((a) => a.id);
+    expect(failedIds).toContain("audit-failing-boundary");
+    expect(failedIds).not.toContain("audit-passing-boundary");
+  });
 });
