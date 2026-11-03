@@ -3,6 +3,18 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { YAML } from "bun";
 
 /**
+ * Agent Governance Validator
+ *
+ * Exclusively enforces governance and linting for documents under the `.agents/` directory:
+ * - `.agents/rules/*.md`: Frontmatter trigger globs, descriptions, unslop, machine paths, links.
+ * - `.agents/skills/<name>/SKILL.md`: Frontmatter name matching directory, description, unslop, machine paths, links.
+ * - `.agents/AGENTS.md`: Code fences, unslop, machine paths, links.
+ * - `skills-lock.json`: Upstream vendor skill lockfile synchronization and automated exemptions.
+ *
+ * This script does NOT audit general application code or test suites outside `.agents/`.
+ */
+
+/**
  * Structured lint finding produced when validating `.agents/` rules, skills, or instructions.
  */
 export interface Finding {
@@ -37,7 +49,7 @@ export interface ParsedFrontmatter {
 /**
  * Schema of the root `skills-lock.json` file tracking vendor-managed skills.
  */
-export interface SkillsLock {
+interface SkillsLock {
   /** Lockfile schema version. */
   version?: number;
   /** Map of skill directory names to upstream source metadata. */
@@ -711,7 +723,7 @@ function validateSingleAgentFile(
  * @param repoRoot - Repository root directory. Defaults to `process.cwd()`.
  * @returns Object containing all `findings` and `scannedCount`.
  */
-export function verifyAgentRules(
+export function verifyAgentsGovernance(
   targetFiles?: string[],
   repoRoot: string = process.cwd(),
 ): { findings: Finding[]; scannedCount: number } {
@@ -734,16 +746,22 @@ export function verifyAgentRules(
   return { findings, scannedCount };
 }
 
+/** Backwards-compatible alias for {@link verifyAgentsGovernance}. */
+export const verifyAgentRules = verifyAgentsGovernance;
+
 /**
- * CLI execution entrypoint for `bun scripts/verify-agent-rules.ts`.
+ * CLI execution entrypoint for `bun scripts/verify-agents-governance.ts`.
  */
-export function run(): void {
+function run(): void {
   const startTime = performance.now();
   const repoRoot = process.cwd();
   const args = process.argv.slice(2);
   const targetFiles = args.length > 0 ? args : undefined;
 
-  const { findings, scannedCount } = verifyAgentRules(targetFiles, repoRoot);
+  const { findings, scannedCount } = verifyAgentsGovernance(
+    targetFiles,
+    repoRoot,
+  );
   const elapsed = (performance.now() - startTime).toFixed(1);
 
   const errors = findings.filter((f) => f.severity === "error");
@@ -751,7 +769,7 @@ export function run(): void {
 
   if (errors.length > 0) {
     console.error(
-      `\n❌ Agent rules verification failed with ${errors.length} error(s) across ${scannedCount} file(s) in ${elapsed}ms:\n`,
+      `\n❌ Agent governance verification failed with ${errors.length} error(s) across ${scannedCount} file(s) in ${elapsed}ms:\n`,
     );
 
     for (const err of errors) {
@@ -771,7 +789,7 @@ export function run(): void {
 
   if (warnings.length > 0) {
     console.warn(
-      `\n⚠️ ${warnings.length} warning(s) found during agent verification:`,
+      `\n⚠️ ${warnings.length} warning(s) found during agent governance verification:`,
     );
     for (const w of warnings) {
       const loc = w.line ? `:${w.line}` : "";
@@ -780,7 +798,7 @@ export function run(): void {
   }
 
   console.log(
-    `✅ Agent skills and rules verification passed (${scannedCount} file(s) checked in ${elapsed}ms).`,
+    `✅ Agent governance verification passed (${scannedCount} file(s) checked in ${elapsed}ms).`,
   );
 }
 
