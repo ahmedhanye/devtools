@@ -34,7 +34,7 @@ describe("CLI binary end-to-end contract", () => {
   });
 
   it("writes diagnostic error to stderr and exits 1 on invalid port flag", async () => {
-    const proc = Bun.spawn(["bun", binPath, "web", "--port", "99999"], {
+    const proc = Bun.spawn(["bun", binPath, "web", "--port", "invalid"], {
       stdout: "pipe",
       stderr: "pipe",
     });

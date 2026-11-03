@@ -95,7 +95,7 @@ describe("resolveDatabasePath", () => {
 
 For normalizers, parsers, and coverage calculators in `packages/*` and `scripts/`, supplement point assertions with invariant checks:
 
-- **Idempotence.** Running `normalizeLcovPaths` or `toRepoRelative` twice produces the exact same string as running it once (`f(f(x)) === f(x)`).
+- **Idempotence.** Running `toRepoRelative` twice produces the exact same string as running it once (`f(f(x)) === f(x)`).
 - **Metamorphic relations.** In `calculateDiffCoverage` (`scripts/verify-diff-coverage.ts`), adding an uncovered executable line to a git diff hunk must decrease or hold equal `diffCoveragePercent`, while adding a type-only interface declaration (`isTypeOnlySource`) must leave `totalModifiedExecutableLines` unchanged.
 
 ## Writing React hook unit tests with Vitest

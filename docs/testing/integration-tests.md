@@ -25,10 +25,13 @@ describe("Hono API routes and security middleware", () => {
     expect(parsed.status).toBe("ok");
   });
 
-  it("rejects non-loopback Host headers with 403 FORBIDDEN error envelope", async () => {
+  it("rejects mutating requests with non-loopback Origin with 403 FORBIDDEN error envelope", async () => {
     const app = createApp();
-    const res = await app.request("http://127.0.0.1/api/health", {
-      headers: { Host: "evil.example.com" },
+    const res = await app.request("/api/health", {
+      method: "POST",
+      headers: {
+        Origin: "http://evil.example.com",
+      },
     });
 
     expect(res.status).toBe(403);
@@ -87,7 +90,7 @@ describe("Loopback daemon lifecycle", () => {
 
 ## 3. In-memory SQLite persistence and migrations (`packages/db`)
 
-Run persistence integration tests against `:memory:` SQLite instances via `createSqliteConnection({ path: ":memory:" })`, `createDb({ connection })`, and `runMigrations(db)`. Verify migration idempotency, foreign key cascades (`PRAGMA foreign_keys = ON`), and transaction rollbacks:
+Run persistence integration tests against `:memory:` SQLite instances via `createSqliteConnection({ path: ":memory:" })`, `createDb({ connection })`, and `runMigrations(db)`. Verify migration idempotency and transaction rollbacks:
 
 ```ts
 import { describe, expect, it } from "bun:test";
