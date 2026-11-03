@@ -73,5 +73,13 @@ describe("Port Detection Utilities", () => {
   test("findNextAvailablePort returns null for boundary ports", () => {
     expect(findNextAvailablePort(65535)).toBeNull();
     expect(findNextAvailablePort(-5)).toBeNull();
+    expect(findNextAvailablePort(0)).toBeNull();
+  });
+
+  test("findNextAvailablePort supports default hostname and maxAttempts arguments", () => {
+    const available = findNextAvailablePort(59000);
+    expect(available).not.toBeNull();
+    expect(available!).toBeGreaterThan(59000);
+    expect(available!).toBeLessThanOrEqual(59100);
   });
 });

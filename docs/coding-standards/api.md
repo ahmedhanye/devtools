@@ -5,7 +5,7 @@ Engineering standards and conventions for the HTTP API application in `apps/api`
 ## Framework and application structure
 
 1. **Hono application architecture**: The API is built with [Hono](https://hono.dev/), optimized for minimal overhead, native Bun performance, and standard Web Fetch API compatibility.
-2. **Factory-based instantiation**: Export a factory function `createApp(options?: CreateAppOptions)` rather than an ambient singleton. This allows tests and the loopback daemon to instantiate isolated API applications with custom base paths or dependencies:
+2. **Factory-based instantiation**: Export a factory function `createApp(options?: CreateAppOptions)` rather than an ambient singleton. This allows programmatic callers and the loopback daemon to instantiate isolated API applications with custom base paths or dependencies:
    ```ts
    import { Hono } from "hono";
 
@@ -30,6 +30,7 @@ Engineering standards and conventions for the HTTP API application in `apps/api`
    - Reject any request where the `Origin` header is present and does not resolve to a loopback address (`http://localhost:*`, `http://127.0.0.1:*`, `http://[::1]:*`).
    - Inspect `Sec-Fetch-Site` when available and deny `cross-site` requests.
    - Enforce explicit `Content-Type: application/json` on mutation payloads to prevent simple cross-origin form submissions.
+4. **Host header loopback validation (DNS rebinding protection)**: To protect loopback endpoints against DNS rebinding attacks where an external domain resolves to `127.0.0.1`, the loopback security middleware validates the `Host` header across all `/api/*` requests. If a `Host` header is provided, it must resolve to a valid loopback hostname (`localhost`, `127.0.0.1`, `[::1]`, or `::1`, with optional port). Requests with external `Host` headers are rejected with `403 Forbidden` (`ApiErrorResponseSchema`).
 
 ## Request and response validation
 
@@ -57,23 +58,3 @@ Engineering standards and conventions for the HTTP API application in `apps/api`
    - `415 Unsupported Media Type`: Payload missing required `application/json` Content-Type on mutating verbs.
    - `422 Unprocessable Entity`: Schema validation error for request fields.
    - `500 Internal Server Error`: Unhandled server-side failure.
-
-## In-memory testing seams
-
-1. **Socketless testing**: Take advantage of Hono's native `app.request()` method to test HTTP endpoints entirely in memory:
-   ```ts
-   import { describe, expect, it } from "bun:test";
-   import { createApp } from "../src";
-
-   describe("GET /api/health", () => {
-     it("returns healthy status envelope", async () => {
-       const app = createApp({ basePath: "/api" });
-       const res = await app.request("/api/health");
-
-       expect(res.status).toBe(200);
-       const json = await res.json();
-       expect(json.status).toBe("ok");
-     });
-   });
-   ```
-   This eliminates the latency, port binding collisions, and teardown overhead of opening physical TCP network sockets during test runs.

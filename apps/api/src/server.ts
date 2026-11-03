@@ -1,4 +1,8 @@
-import { type EnvMap, RuntimeConfigSchema } from "@devtools/core";
+import {
+  type EnvMap,
+  RuntimeConfigSchema,
+  parsePortFromEnv,
+} from "@devtools/core";
 import type { Server } from "bun";
 import type { Hono } from "hono";
 import { createApp } from "./index";
@@ -48,9 +52,7 @@ export function resolveServerConfig(options: StartServerOptions = {}): {
   const currentEnv = options.env ?? process.env;
   const hostInput = options.host ?? options.hostname ?? currentEnv.HOST;
 
-  const rawPort =
-    options.port ??
-    (currentEnv.PORT ? Number.parseInt(currentEnv.PORT, 10) : undefined);
+  const rawPort = options.port ?? parsePortFromEnv(currentEnv.PORT);
 
   const validated = RuntimeConfigSchema.parse({
     ...(rawPort !== undefined ? { port: rawPort } : {}),
@@ -90,36 +92,88 @@ export function startServer(options: StartServerOptions = {}): ServerInstance {
   };
 }
 
-if (import.meta.main) {
-  const config = resolveServerConfig();
+/**
+ * Dependency injection seams for testing standalone API server startup in {@link runServerCli}.
+ */
+export interface ServerCliDeps {
+  /** Override server configuration resolution. */
+  resolveConfig?: () => { host: string; port: number };
+  /** Override server booting. */
+  start?: (options?: StartServerOptions) => ServerInstance;
+  /** Override stdout logger. */
+  log?: (message: string) => void;
+  /** Override stderr logger. */
+  error?: (message: string, ...rest: unknown[]) => void;
+  /** Override process exit handler. */
+  exit?: (code?: number) => void;
+  /** Override signal listener registration. */
+  onSignal?: (event: "SIGINT" | "SIGTERM", handler: () => void) => void;
+}
+
+/**
+ * Boots the standalone HTTP server application using environment configuration and registers process signal handlers.
+ *
+ * @param deps - Optional dependency injection seams for hermetic in-process testing.
+ * @returns Active {@link ServerInstance} handle or `undefined` if startup failed.
+ */
+export function runServerCli(deps?: ServerCliDeps): ServerInstance | undefined {
+  const resolveConfig = deps?.resolveConfig ?? resolveServerConfig;
+  const start = deps?.start ?? startServer;
+  const log = deps?.log ?? console.log;
+  const error = deps?.error ?? console.error;
+  const exit = deps?.exit ?? process.exit;
+  const onSignal =
+    deps?.onSignal ??
+    ((event, handler) => {
+      process.on(event, handler);
+    });
+
+  let config: { host: string; port: number } | undefined;
   try {
-    const instance = startServer(config);
-    console.log(
+    config = resolveConfig();
+    const instance = start(config);
+    log(
       `Server listening on http://${instance.server.hostname}:${instance.port}`,
     );
 
     const shutdown = () => {
-      console.log("Shutting down server...");
+      log("Shutting down server...");
       instance.stop();
-      process.exit(0);
+      exit(0);
     };
 
-    process.on("SIGINT", shutdown);
-    process.on("SIGTERM", shutdown);
+    onSignal("SIGINT", shutdown);
+    onSignal("SIGTERM", shutdown);
+
+    return instance;
   } catch (err: unknown) {
     if (
+      err &&
+      typeof err === "object" &&
+      "issues" in err &&
+      Array.isArray((err as { issues: unknown }).issues)
+    ) {
+      const messages = (err as { issues: Array<{ message?: string }> }).issues
+        .map((i) => i.message)
+        .filter(Boolean)
+        .join(", ");
+      error(`Invalid server configuration: ${messages}`);
+    } else if (
       err &&
       typeof err === "object" &&
       (("code" in err && (err as { code?: string }).code === "EADDRINUSE") ||
         ("message" in err &&
           String((err as { message?: string }).message).includes("in use")))
     ) {
-      console.error(
-        `Port ${config.port} is already in use. Set PORT=<port> to use an alternate port.`,
+      error(
+        `Port ${config?.port ?? "unknown"} is already in use. Set PORT=<port> to use an alternate port.`,
       );
     } else {
-      console.error("Failed to start server:", err);
+      error("Failed to start server:", err);
     }
-    process.exit(1);
+    exit(1);
+    return undefined;
   }
 }
+
+if (import.meta.main) runServerCli();

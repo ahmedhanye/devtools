@@ -8,6 +8,73 @@ import type { Context, MiddlewareHandler } from "hono";
 const MUTATING_METHODS = new Set(["POST", "PUT", "DELETE", "PATCH"]);
 const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
 
+function isValidPortNumber(portStr: string): boolean {
+  if (!/^\d+$/.test(portStr)) {
+    return false;
+  }
+  const port = Number.parseInt(portStr, 10);
+  return port >= 1 && port <= 65535;
+}
+
+function parseBracketedHost(header: string): boolean {
+  const closingIndex = header.indexOf("]");
+  if (closingIndex === -1) {
+    return false;
+  }
+  const hostname = header.slice(0, closingIndex + 1);
+  const inner = header.slice(1, closingIndex);
+  if (!LOOPBACK_HOSTNAMES.has(hostname) && !LOOPBACK_HOSTNAMES.has(inner)) {
+    return false;
+  }
+  const rest = header.slice(closingIndex + 1);
+  if (!rest) {
+    return true;
+  }
+  if (!rest.startsWith(":")) {
+    return false;
+  }
+  return isValidPortNumber(rest.slice(1));
+}
+
+function parseStandardHost(header: string): boolean {
+  if (header === "::1") {
+    return true;
+  }
+  const parts = header.split(":");
+  if (parts.length === 1 && parts[0] !== undefined) {
+    return LOOPBACK_HOSTNAMES.has(parts[0].toLowerCase());
+  }
+  if (parts.length === 2 && parts[0] !== undefined && parts[1] !== undefined) {
+    const hostname = parts[0];
+    const portStr = parts[1];
+    if (!LOOPBACK_HOSTNAMES.has(hostname.toLowerCase())) {
+      return false;
+    }
+    return isValidPortNumber(portStr);
+  }
+  return false;
+}
+
+/**
+ * Verifies whether an incoming HTTP `Host` header targets a trusted local loopback interface.
+ *
+ * @param hostHeader - Raw `Host` header string (for example, `"localhost:4000"` or `"[::1]:3000"`).
+ * @returns `true` if `hostHeader` resolves to a valid loopback hostname.
+ */
+export function isLoopbackHostHeader(hostHeader: string): boolean {
+  if (!hostHeader || typeof hostHeader !== "string") {
+    return false;
+  }
+  const trimmed = hostHeader.trim();
+  if (!trimmed) {
+    return false;
+  }
+  if (trimmed.startsWith("[")) {
+    return parseBracketedHost(trimmed);
+  }
+  return parseStandardHost(trimmed);
+}
+
 /**
  * Verifies whether a request `Origin` header belongs to a trusted local loopback interface
  * (`localhost`, `127.0.0.1`, or IPv6 `[::1]`).
@@ -111,6 +178,17 @@ function evaluateMutatingRequestViolation(
  */
 export function createLoopbackProtectionMiddleware(): MiddlewareHandler {
   return async (c, next) => {
+    const host = c.req.header("host");
+    if (host && !isLoopbackHostHeader(host)) {
+      return c.json(
+        formatError(
+          API_ERROR_CODES.FORBIDDEN,
+          "Non-loopback Host header is forbidden",
+        ),
+        403,
+      );
+    }
+
     if (MUTATING_METHODS.has(c.req.method)) {
       const violation = evaluateMutatingRequestViolation(c);
       if (violation) {
