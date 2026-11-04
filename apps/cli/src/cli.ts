@@ -2,6 +2,7 @@ import { APP_VERSION, type EnvMap } from "@devtools/core";
 import { Command, InvalidArgumentError } from "commander";
 import pc from "picocolors";
 import { registerBrowserCommands } from "./browser";
+import { registerLighthouseCommands } from "./lighthouse";
 import {
   type DaemonInstance,
   resolveDaemonConfig,
@@ -228,6 +229,7 @@ export function createProgram(): Command {
     });
 
   registerBrowserCommands(program);
+  registerLighthouseCommands(program);
 
   return program;
 }
