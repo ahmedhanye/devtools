@@ -1,4 +1,4 @@
-import type { Command } from "commander";
+import { InvalidArgumentError, Option, type Command } from "commander";
 import type {
   LighthouseAuditCommandOptions,
   LighthouseDiffCommandOptions,
@@ -102,14 +102,24 @@ export function registerLighthouseCommands(
     .command("list")
     .description("List historical Lighthouse audit runs from SQLite")
     .option("-u, --url <url>", "Filter runs by target URL")
-    .option(
-      "-m, --form-factor <mobile|desktop>",
-      "Filter runs by emulation form factor",
+    .addOption(
+      new Option(
+        "-m, --form-factor <mobile|desktop>",
+        "Filter runs by emulation form factor",
+      ).choices(["mobile", "desktop"]),
     )
     .option(
       "-l, --limit <number>",
       "Maximum number of runs to return (default: 10)",
-      (val) => Number.parseInt(val, 10),
+      (val) => {
+        const trimmed = val.trim();
+        if (!/^\d+$/.test(trimmed)) {
+          throw new InvalidArgumentError(
+            `Invalid limit "${val}": must be a non-negative integer`,
+          );
+        }
+        return Number.parseInt(trimmed, 10);
+      },
     )
     .option("--json", "Output audit records as JSON")
     .action(async (options: LighthouseListCommandOptions, cmd: Command) => {

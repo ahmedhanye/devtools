@@ -41,6 +41,33 @@ export async function runLighthouseListCommand(
     return;
   }
 
+  if (
+    options.formFactor !== undefined &&
+    options.formFactor !== "mobile" &&
+    options.formFactor !== "desktop"
+  ) {
+    error(
+      pc.red(
+        `Invalid form-factor "${options.formFactor}": must be "mobile" or "desktop"`,
+      ),
+    );
+    exit(1);
+    return;
+  }
+
+  if (
+    options.limit !== undefined &&
+    (!Number.isInteger(options.limit) || options.limit < 0)
+  ) {
+    error(
+      pc.red(
+        `Invalid limit "${options.limit}": must be a non-negative integer`,
+      ),
+    );
+    exit(1);
+    return;
+  }
+
   try {
     const runs = listRuns(db, {
       url: options.url,

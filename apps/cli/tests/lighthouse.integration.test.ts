@@ -174,6 +174,50 @@ describe("CLI Lighthouse Command Integration", () => {
     expect(capturedOpts?.json).toBe(true);
   });
 
+  test("lighthouse list rejects negative or non-integer limit option via Commander parser", async () => {
+    const program = new Command();
+    program.name("devtools");
+    registerLighthouseCommands(program, {
+      runList: async () => {},
+    });
+    const { getOutput } = setupCommandForTesting(program);
+
+    let errorThrown = false;
+    try {
+      await program.parseAsync(["lighthouse", "list", "-l", "-5"], {
+        from: "user",
+      });
+    } catch {
+      errorThrown = true;
+    }
+
+    expect(errorThrown).toBe(true);
+    expect(getOutput()).toContain(
+      'Invalid limit "-5": must be a non-negative integer',
+    );
+  });
+
+  test("lighthouse list rejects invalid form-factor option via Commander choices", async () => {
+    const program = new Command();
+    program.name("devtools");
+    registerLighthouseCommands(program, {
+      runList: async () => {},
+    });
+    const { getOutput } = setupCommandForTesting(program);
+
+    let errorThrown = false;
+    try {
+      await program.parseAsync(["lighthouse", "list", "-m", "tablet"], {
+        from: "user",
+      });
+    } catch {
+      errorThrown = true;
+    }
+
+    expect(errorThrown).toBe(true);
+    expect(getOutput()).toContain("argument 'tablet' is invalid");
+  });
+
   test("dispatches lighthouse diff subcommand through action handler", async () => {
     let diffCalled = false;
     let capturedId1: string | undefined;
