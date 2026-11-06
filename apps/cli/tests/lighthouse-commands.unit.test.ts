@@ -14,6 +14,7 @@ import {
 import { createProgram } from "../src/cli";
 import { runLighthouseAuditCommand } from "../src/lighthouse/audit";
 import { runLighthouseDiffCommand } from "../src/lighthouse/diff";
+import { stripAnsi } from "../src/lighthouse/formatters/agent";
 import { runLighthouseListCommand } from "../src/lighthouse/list";
 import {
   defaultIsHeadless,
@@ -598,7 +599,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         },
       );
 
-      const out = stdout.join("\n");
+      const out = stripAnsi(stdout.join("\n"));
       expect(out).toContain("Insight Audits & Culprits:");
       expect(out).toContain(
         "Resolved: Ensure text remains visible during webfont load",

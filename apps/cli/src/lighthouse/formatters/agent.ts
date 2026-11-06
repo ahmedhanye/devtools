@@ -11,7 +11,7 @@ const ANSI_REGEX =
   // oxlint-disable-next-line no-control-regex -- strip ANSI escape codes
   /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g;
 
-function stripAnsi(text: string): string {
+export function stripAnsi(text: string): string {
   return text.replace(ANSI_REGEX, "");
 }
 

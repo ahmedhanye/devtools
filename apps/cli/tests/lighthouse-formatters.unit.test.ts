@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 import type { LighthouseRunRow } from "@devtools/db";
 import type { NormalizedLighthouseRun } from "@devtools/lighthouse";
 import { computeInsightDiff } from "../src/lighthouse/diff";
-import { formatAgentMarkdown } from "../src/lighthouse/formatters/agent";
+import {
+  formatAgentMarkdown,
+  stripAnsi,
+} from "../src/lighthouse/formatters/agent";
 import { formatJson } from "../src/lighthouse/formatters/json";
 import {
   formatTerminalDiff,
@@ -340,7 +343,7 @@ describe("Lighthouse Formatters (Unit)", () => {
 
   describe("formatTerminalDiff", () => {
     test("formats pairwise audit comparison with deltas", () => {
-      const output = formatTerminalDiff(sampleRow1, sampleRow2);
+      const output = stripAnsi(formatTerminalDiff(sampleRow1, sampleRow2));
       expect(output).toContain("Baseline:   3f74b419");
       expect(output).toContain("Comparison: 8c91a723");
       expect(output).toContain("Performance");
