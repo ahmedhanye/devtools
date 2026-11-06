@@ -2,11 +2,8 @@ import { APP_VERSION, type EnvMap } from "@devtools/core";
 import { Command, InvalidArgumentError } from "commander";
 import pc from "picocolors";
 import { registerBrowserCommands } from "./browser";
-import {
-  type DaemonInstance,
-  resolveDaemonConfig,
-  startDaemon,
-} from "./daemon";
+import { registerLighthouseCommands } from "./lighthouse";
+import type { DaemonInstance } from "./daemon";
 import { findNextAvailablePort, isPortAvailable } from "./port";
 
 /**
@@ -127,6 +124,7 @@ export async function runWebCommand(
   options: WebCommandOptions = {},
   deps?: WebCommandDeps,
 ): Promise<DaemonInstance | undefined> {
+  const { resolveDaemonConfig, startDaemon } = await import("./daemon");
   let config: ReturnType<typeof resolveDaemonConfig>;
   try {
     config = resolveDaemonConfig(options);
@@ -228,6 +226,7 @@ export function createProgram(): Command {
     });
 
   registerBrowserCommands(program);
+  registerLighthouseCommands(program);
 
   return program;
 }

@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { getDb, type LighthouseRunRow } from "@devtools/db";
 import { resolveArtifactsDir } from "./config";
-import { InvalidAuditOptionsError, LighthouseExecutionError } from "./errors";
+import { InvalidAuditOptionsError } from "./errors";
 import { computeRepresentativeRun } from "./median";
 import { normalizeLhr } from "./normalizer";
 import { insertLighthouseRun } from "./repository";
@@ -13,15 +13,26 @@ import {
   LighthouseThrottlingMethodSchema,
   type ExecuteIterationParams,
   type NormalizedLighthouseRun,
-  type RawLighthouseResult,
   type RunLighthouseAuditOptions,
   type SingleIterationResult,
-  type WorkerPayload,
-  type WorkerResultPayload,
 } from "./types";
-import type { WorkerOutboundMessage } from "./worker";
+import type { WorkerIterationDependencies } from "./worker";
 
-const DEFAULT_WORKER_SCRIPT_PATH = join(import.meta.dir, "worker.ts");
+/**
+ * Executes a single isolated Lighthouse iteration directly in-process:
+ * resolves the Chromium binary, launches headless Chrome, and runs Lighthouse.
+ *
+ * @param params - Iteration parameters.
+ * @param deps - Optional injectable seams.
+ * @returns Resulting LHR and HTML/JSON reports.
+ */
+export async function executeIteration(
+  params: ExecuteIterationParams,
+  deps?: WorkerIterationDependencies,
+): Promise<SingleIterationResult> {
+  const { executeIteration: exec } = await import("./worker");
+  return exec(params, deps);
+}
 
 /**
  * Complete result returned by {@link runLighthouseAudit}.
@@ -89,116 +100,6 @@ function validateAuditOptions(options: RunLighthouseAuditOptions): {
 }
 
 /**
- * Parses a single JSON line emitted by the worker subprocess over `stdout`.
- */
-function handleWorkerLine(
-  line: string,
-  onProgress: ExecuteIterationParams["onProgress"],
-  state: {
-    result: WorkerResultPayload | null;
-    workerError: string | null;
-  },
-): void {
-  const trimmed = line.trim();
-  if (!trimmed.startsWith("{")) {
-    return;
-  }
-  try {
-    const parsed = JSON.parse(trimmed) as WorkerOutboundMessage;
-    if (parsed.type === "progress") {
-      onProgress?.(parsed.event);
-    } else if (parsed.type === "result") {
-      state.result = parsed.result;
-    } else if (parsed.type === "error") {
-      state.workerError = parsed.message;
-    }
-  } catch {
-    // Ignore non-protocol stdout lines from underlying libraries
-  }
-}
-
-/**
- * Executes a single Lighthouse iteration inside an isolated child process.
- *
- * @remarks
- * Uses `Bun.spawn` child process isolation so CPU-bound trace analysis and Speedline decoding
- * never block the parent daemon event loop.
- *
- * @param params - Iteration execution parameters.
- * @param workerScriptPath - Optional path override to the worker script entrypoint.
- * @returns Completed {@link SingleIterationResult} from the child process.
- * @throws {@link LighthouseExecutionError} When the child process exits non-zero or emits an error.
- */
-export async function executeIterationInSubprocess(
-  params: ExecuteIterationParams,
-  workerScriptPath: string = DEFAULT_WORKER_SCRIPT_PATH,
-): Promise<SingleIterationResult> {
-  const payload: WorkerPayload = {
-    url: params.url,
-    formFactor: params.formFactor,
-    throttlingMethod: params.throttlingMethod,
-    categories: params.categories,
-    chromePath: params.chromePath,
-    disableSandbox: params.disableSandbox,
-    env: params.env,
-    runIndex: params.runIndex,
-    totalRuns: params.totalRuns,
-  };
-
-  const proc = Bun.spawn([process.execPath, workerScriptPath], {
-    stdin: new Blob([JSON.stringify(payload)]),
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-
-  const state: {
-    result: WorkerResultPayload | null;
-    workerError: string | null;
-  } = {
-    result: null,
-    workerError: null,
-  };
-
-  const stderrPromise = new Response(proc.stderr).text();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  for await (const chunk of proc.stdout) {
-    buffer += decoder.decode(chunk, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-    for (const line of lines) {
-      handleWorkerLine(line, params.onProgress, state);
-    }
-  }
-  if (buffer.trim()) {
-    handleWorkerLine(buffer, params.onProgress, state);
-  }
-
-  const stderrText = await stderrPromise;
-  const exitCode = await proc.exited;
-
-  if (state.workerError) {
-    throw new LighthouseExecutionError(state.workerError);
-  }
-
-  if (exitCode !== 0 || !state.result) {
-    const detail = stderrText.trim() || `worker exited with code ${exitCode}`;
-    throw new LighthouseExecutionError(
-      `Lighthouse worker subprocess failed: ${detail}`,
-    );
-  }
-
-  const lhr = JSON.parse(state.result.reportJson) as RawLighthouseResult;
-
-  return {
-    lhr,
-    reportJson: state.result.reportJson,
-    reportHtml: state.result.reportHtml,
-  };
-}
-
-/**
  * Executes a full Lighthouse v13 audit across `--runs <N>` iterations.
  *
  * @remarks
@@ -209,14 +110,14 @@ export async function executeIterationInSubprocess(
  * @param options - Audit target URL, form factor, throttling method, run count, and seams.
  * @returns Persisted {@link LighthouseRunRow}, normalized data, and representative run index.
  * @throws {@link InvalidAuditOptionsError} When `options.url` or `options.runs` is invalid.
- * @throws {@link LighthouseExecutionError} When the isolated worker subprocess fails.
+ * @throws {@link WorkerExecutionError} When browser launch or Lighthouse execution fails.
  */
 export async function runLighthouseAudit(
   options: RunLighthouseAuditOptions,
 ): Promise<LighthouseAuditExecutionResult> {
   const startTime = performance.now();
   const validated = validateAuditOptions(options);
-  const executor = options.executor ?? executeIterationInSubprocess;
+  const executor = options.executor ?? executeIteration;
   const targetDb = options.db ?? getDb({ env: options.env });
 
   const iterations: SingleIterationResult[] = [];

@@ -24,6 +24,14 @@ _Avoid_: Raw LHR, summary blob, report metadata
 The cold on-disk file pair (`report.json` and `report.html`) storing the complete Lighthouse Result (LHR) and standalone HTML viewer for a Representative Run.
 _Avoid_: Report dump, raw output, audit cache
 
+**Performance Budget**:
+An automated threshold assertion evaluated via `--fail-under` that enforces minimum category scores (higher-is-better) or maximum Core Web Vitals thresholds (lower-is-better) and exits with non-zero status code on regression.
+_Avoid_: Score gate, perf check, budget limit
+
+**Agent Mode**:
+An un-truncated, token-budgeted (~500 tokens) GitHub Flavored Markdown report format (`--agent`) optimized for AI coding agents that strips generic boilerplate, enforces zero ANSI escape codes, and presents exact DOM selectors, HTML snippets, bounding rectangles, and LCP phase breakdowns.
+_Avoid_: LLM dump, text output, compact report
+
 ## Flagged ambiguities
 
 - **Representative Run vs. Per-Metric Median**: Computing independent medians across metrics produces a synthetic result that contradicts the saved Report Artifact and trace attributions; DevTools always selects one real Representative Run from the batch.
