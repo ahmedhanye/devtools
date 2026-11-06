@@ -85,6 +85,18 @@ export interface WorkerIterationDependencies {
 }
 
 /**
+ * Desktop throttling settings matching official Lighthouse `desktopDense4G`.
+ */
+export const DESKTOP_THROTTLING = {
+  rttMs: 40,
+  throughputKbps: 10 * 1024,
+  cpuSlowdownMultiplier: 1,
+  requestLatencyMs: 0,
+  downloadThroughputKbps: 0,
+  uploadThroughputKbps: 0,
+} as const;
+
+/**
  * Builds the Lighthouse v13 configuration object for a given form factor, throttling method,
  * and category list.
  *
@@ -104,6 +116,7 @@ export function buildLighthouseConfig(options: {
       settings: {
         formFactor: "desktop",
         throttlingMethod: options.throttlingMethod,
+        throttling: DESKTOP_THROTTLING,
         screenEmulation: {
           mobile: false,
           width: 1350,

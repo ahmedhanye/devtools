@@ -19,6 +19,7 @@ import {
   type WorkerPayload,
 } from "../src";
 import {
+  DESKTOP_THROTTLING,
   buildLighthouseConfig,
   extractReportStrings,
   runWorkerIteration,
@@ -272,6 +273,7 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
     });
     expect(desktopCfg.settings?.formFactor).toBe("desktop");
     expect(desktopCfg.settings?.throttlingMethod).toBe("devtools");
+    expect(desktopCfg.settings?.throttling).toEqual(DESKTOP_THROTTLING);
     expect(desktopCfg.settings?.screenEmulation?.mobile).toBe(false);
   });
 
