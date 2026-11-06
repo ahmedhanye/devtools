@@ -147,7 +147,7 @@ describe("SQLite migrations and persistence invariants", () => {
 
 ## 4. Cross-package adapter and repository seams (`packages/browser`, `packages/lighthouse`)
 
-- **Injectable process and network seams.** In `packages/browser` (`detector.ts`, `installer.ts`) and `packages/lighthouse` (`runner.ts`), inject fake process spawners or HTTP fetchers at the adapter seam rather than downloading headless browser archives or launching real Chrome processes in integration tests.
+- **Injectable browser, process, and network seams.** In `packages/browser` (`detector.ts`, `installer.ts`) and `packages/lighthouse` (`runner.ts`), inject fake browser launchers, execution seams, process spawners, or HTTP fetchers at the adapter boundary rather than downloading headless browser archives or launching real Chrome processes in integration tests.
 - **Repository round-trips.** Test `LighthouseRepository` against a migrated `:memory:` database to verify that parent run rows, category scores, core metrics, and diagnostic items persist and cascade-delete accurately.
 
 ## 5. Documentation site routes and loaders (`site`)
