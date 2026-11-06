@@ -139,7 +139,7 @@ export async function runLighthouseAuditCommand(
     if (db) {
       try {
         previousRun = findPrevious(db, {
-          url,
+          url: record.url,
           formFactor,
           excludeId: record.id,
         });

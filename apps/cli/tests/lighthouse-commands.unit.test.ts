@@ -379,6 +379,33 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
       expect(exitCode).toBe(1);
       expect(stderr.join("\n")).toContain("Error parsing budget rules");
     });
+
+    test("passes canonical normalized record.url to findPrevious baseline lookup", async () => {
+      let findPreviousUrl: string | undefined;
+      const stdout: string[] = [];
+
+      await runLighthouseAuditCommand(
+        "http://example.com",
+        {},
+        {
+          runLighthouseAudit: async () => ({
+            normalized: mockNormalizedRun,
+            run: makeSampleRow({
+              url: "http://example.com/",
+            }) as LighthouseRunRow,
+            representativeRunIndex: 0,
+          }),
+          getDb: () => db,
+          findPreviousLighthouseRun: (_db, opts) => {
+            findPreviousUrl = opts.url;
+            return null;
+          },
+          log: (msg) => stdout.push(msg),
+        },
+      );
+
+      expect(findPreviousUrl).toBe("http://example.com/");
+    });
   });
 
   describe("runLighthouseListCommand", () => {
@@ -460,6 +487,48 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
       expect(exitCode).toBe(1);
       expect(errors.join("\n")).toContain(
         "Error retrieving audit runs: Query execution error",
+      );
+    });
+
+    test("exits with 1 when limit is negative or invalid in list command", async () => {
+      let exitCode: number | undefined;
+      const errors: string[] = [];
+
+      await runLighthouseListCommand(
+        { limit: -5 },
+        {
+          getDb: () => db,
+          error: (msg) => errors.push(msg),
+          exit: (code) => {
+            exitCode = code;
+          },
+        },
+      );
+
+      expect(exitCode).toBe(1);
+      expect(errors.join("\n")).toContain(
+        'Invalid limit "-5": must be a non-negative integer',
+      );
+    });
+
+    test("exits with 1 when form-factor is invalid in list command", async () => {
+      let exitCode: number | undefined;
+      const errors: string[] = [];
+
+      await runLighthouseListCommand(
+        { formFactor: "tablet" as never },
+        {
+          getDb: () => db,
+          error: (msg) => errors.push(msg),
+          exit: (code) => {
+            exitCode = code;
+          },
+        },
+      );
+
+      expect(exitCode).toBe(1);
+      expect(errors.join("\n")).toContain(
+        'Invalid form-factor "tablet": must be "mobile" or "desktop"',
       );
     });
   });
@@ -1105,6 +1174,26 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
 
       expect(exitCode).toBe(1);
       expect(errors.join("\n")).toContain("not found");
+    });
+
+    test("runLighthouseOpenCommand exits 1 on empty string run ID", async () => {
+      let exitCode: number | undefined;
+      const errors: string[] = [];
+
+      await runLighthouseOpenCommand(
+        "",
+        {},
+        {
+          getDb: () => db,
+          error: (msg) => errors.push(msg),
+          exit: (code) => {
+            exitCode = code;
+          },
+        },
+      );
+
+      expect(exitCode).toBe(1);
+      expect(errors.join("\n")).toContain('Run ID prefix "" is too short');
     });
 
     test("runLighthouseOpenCommand falls back to process.exit when deps.exit is undefined", async () => {

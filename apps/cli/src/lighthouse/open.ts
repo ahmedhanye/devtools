@@ -119,7 +119,7 @@ export async function runLighthouseOpenCommand(
 
   let run: LighthouseRunRow;
   try {
-    run = id ? resolveRunId(db, id) : resolveLatestRun(db);
+    run = id !== undefined ? resolveRunId(db, id) : resolveLatestRun(db);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     error(pc.red(message));
