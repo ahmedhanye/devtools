@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { LighthouseRunRow } from "@devtools/db";
 import type { NormalizedLighthouseRun } from "@devtools/lighthouse";
+import { computeInsightDiff } from "../src/lighthouse/diff";
 import { formatAgentMarkdown } from "../src/lighthouse/formatters/agent";
 import { formatJson } from "../src/lighthouse/formatters/json";
 import {
@@ -353,6 +354,249 @@ describe("Lighthouse Formatters (Unit)", () => {
     test("returns formatted JSON string", () => {
       const json = formatJson({ hello: "world" });
       expect(JSON.parse(json)).toEqual({ hello: "world" });
+    });
+  });
+
+  describe("Core Web Vitals Threshold Boundaries", () => {
+    test("classifies exact boundary values in agent markdown correctly", () => {
+      const goodRun: NormalizedLighthouseRun = {
+        ...sampleNormalizedRun,
+        metrics: {
+          lcpMs: 2500,
+          cls: 0.1,
+          tbtMs: 200,
+          fcpMs: 1800,
+          siMs: 3400,
+          ttfbMs: 800,
+        },
+      };
+      const goodMd = formatAgentMarkdown(goodRun);
+      expect(goodMd).toContain("| LCP | 2,500 ms | <= 2,500 ms | GOOD |");
+      expect(goodMd).toContain("| CLS | 0.100 | <= 0.100 | GOOD |");
+      expect(goodMd).toContain("| TBT | 200 ms | <= 200 ms | GOOD |");
+      expect(goodMd).toContain("| FCP | 1,800 ms | <= 1,800 ms | GOOD |");
+      expect(goodMd).toContain("| TTFB | 800 ms | <= 800 ms | GOOD |");
+
+      const needsImpRun: NormalizedLighthouseRun = {
+        ...sampleNormalizedRun,
+        metrics: {
+          lcpMs: 2501,
+          cls: 0.101,
+          tbtMs: 201,
+          fcpMs: 1801,
+          siMs: 3401,
+          ttfbMs: 801,
+        },
+      };
+      const needsImpMd = formatAgentMarkdown(needsImpRun);
+      expect(needsImpMd).toContain(
+        "| LCP | 2,501 ms | <= 2,500 ms | NEEDS IMPROVEMENT |",
+      );
+      expect(needsImpMd).toContain(
+        "| CLS | 0.101 | <= 0.100 | NEEDS IMPROVEMENT |",
+      );
+      expect(needsImpMd).toContain(
+        "| TBT | 201 ms | <= 200 ms | NEEDS IMPROVEMENT |",
+      );
+      expect(needsImpMd).toContain(
+        "| FCP | 1,801 ms | <= 1,800 ms | NEEDS IMPROVEMENT |",
+      );
+      expect(needsImpMd).toContain(
+        "| TTFB | 801 ms | <= 800 ms | NEEDS IMPROVEMENT |",
+      );
+
+      const upperNeedsImpRun: NormalizedLighthouseRun = {
+        ...sampleNormalizedRun,
+        metrics: {
+          lcpMs: 4000,
+          cls: 0.25,
+          tbtMs: 600,
+          fcpMs: 3000,
+          siMs: 5800,
+          ttfbMs: 1800,
+        },
+      };
+      const upperNeedsImpMd = formatAgentMarkdown(upperNeedsImpRun);
+      expect(upperNeedsImpMd).toContain(
+        "| LCP | 4,000 ms | <= 2,500 ms | NEEDS IMPROVEMENT |",
+      );
+      expect(upperNeedsImpMd).toContain(
+        "| CLS | 0.250 | <= 0.100 | NEEDS IMPROVEMENT |",
+      );
+      expect(upperNeedsImpMd).toContain(
+        "| TBT | 600 ms | <= 200 ms | NEEDS IMPROVEMENT |",
+      );
+      expect(upperNeedsImpMd).toContain(
+        "| FCP | 3,000 ms | <= 1,800 ms | NEEDS IMPROVEMENT |",
+      );
+      expect(upperNeedsImpMd).toContain(
+        "| TTFB | 1,800 ms | <= 800 ms | NEEDS IMPROVEMENT |",
+      );
+
+      const poorRun: NormalizedLighthouseRun = {
+        ...sampleNormalizedRun,
+        metrics: {
+          lcpMs: 4001,
+          cls: 0.251,
+          tbtMs: 601,
+          fcpMs: 3001,
+          siMs: 5801,
+          ttfbMs: 1801,
+        },
+      };
+      const poorMd = formatAgentMarkdown(poorRun);
+      expect(poorMd).toContain("| LCP | 4,001 ms | <= 2,500 ms | POOR |");
+      expect(poorMd).toContain("| CLS | 0.251 | <= 0.100 | POOR |");
+      expect(poorMd).toContain("| TBT | 601 ms | <= 200 ms | POOR |");
+      expect(poorMd).toContain("| FCP | 3,001 ms | <= 1,800 ms | POOR |");
+      expect(poorMd).toContain("| TTFB | 1,801 ms | <= 800 ms | POOR |");
+    });
+
+    test("classifies exact boundary values in terminal summary correctly", () => {
+      const goodRun: NormalizedLighthouseRun = {
+        ...sampleNormalizedRun,
+        metrics: {
+          lcpMs: 2500,
+          cls: 0.1,
+          tbtMs: 200,
+          fcpMs: 1800,
+          siMs: 3400,
+          ttfbMs: 800,
+        },
+      };
+      const goodTerm = formatTerminalSummary(goodRun);
+      expect(goodTerm).toContain("Good");
+
+      const needsImpRun: NormalizedLighthouseRun = {
+        ...sampleNormalizedRun,
+        metrics: {
+          lcpMs: 2501,
+          cls: 0.101,
+          tbtMs: 201,
+          fcpMs: 1801,
+          siMs: 3401,
+          ttfbMs: 801,
+        },
+      };
+      const needsImpTerm = formatTerminalSummary(needsImpRun);
+      expect(needsImpTerm).toContain("Needs Improvement");
+
+      const poorRun: NormalizedLighthouseRun = {
+        ...sampleNormalizedRun,
+        metrics: {
+          lcpMs: 4001,
+          cls: 0.251,
+          tbtMs: 601,
+          fcpMs: 3001,
+          siMs: 5801,
+          ttfbMs: 1801,
+        },
+      };
+      const poorTerm = formatTerminalSummary(poorRun);
+      expect(poorTerm).toContain("Poor");
+    });
+  });
+
+  describe("computeInsightDiff", () => {
+    test("handles empty or missing summary data gracefully", () => {
+      expect(computeInsightDiff(null, null)).toEqual({
+        resolved: [],
+        regressed: [],
+        clsCulpritDelta: null,
+      });
+      expect(computeInsightDiff(undefined, undefined)).toEqual({
+        resolved: [],
+        regressed: [],
+        clsCulpritDelta: null,
+      });
+    });
+
+    const createInsight = (
+      id: string,
+      title: string,
+      score: number,
+      metricSavings: Record<string, number> = {},
+    ): (typeof sampleNormalizedRun.summary.insights)[number] => ({
+      ...sampleNormalizedRun.summary.insights[0]!,
+      id,
+      title,
+      score,
+      metricSavings,
+    });
+
+    test("computes resolved and regressed insight transitions and CLS culprit deltas", () => {
+      const baseCulprit = sampleNormalizedRun.summary.clsCulprits[0]!;
+      const s1 = {
+        ...sampleNormalizedRun.summary,
+        insights: [
+          createInsight("unused-javascript", "Reduce unused JavaScript", 0.4, {
+            LCP: 600,
+          }),
+          createInsight(
+            "render-blocking-resources",
+            "Eliminate render-blocking resources",
+            0.5,
+            { LCP: 200 },
+          ),
+        ],
+        clsCulprits: [baseCulprit, { ...baseCulprit, score: 0.05 }],
+      };
+
+      const s2 = {
+        ...sampleNormalizedRun.summary,
+        insights: [
+          // unused-javascript resolved (now score 1.0, 0 savings)
+          createInsight(
+            "unused-javascript",
+            "Reduce unused JavaScript",
+            1.0,
+            {},
+          ),
+          // render-blocking-resources still failing
+          createInsight(
+            "render-blocking-resources",
+            "Eliminate render-blocking resources",
+            0.45,
+            { LCP: 220 },
+          ),
+          // unminified-css regressed (new failing insight)
+          createInsight("unminified-css", "Minify CSS", 0.6, { LCP: 150 }),
+        ],
+        clsCulprits: [{ ...baseCulprit, score: 0.02 }],
+      };
+
+      const diff = computeInsightDiff(s1, s2);
+      expect(diff.resolved).toEqual([
+        { id: "unused-javascript", title: "Reduce unused JavaScript" },
+      ]);
+      expect(diff.regressed).toEqual([
+        { id: "unminified-css", title: "Minify CSS" },
+      ]);
+      expect(diff.clsCulpritDelta).toBe(-1); // 1 - 2 = -1
+    });
+
+    test("evaluates boundary conditions for isFailingInsight", () => {
+      // Score exactly 0.9 with 0 savings -> passing
+      const sPass = {
+        ...sampleNormalizedRun.summary,
+        insights: [createInsight("i1", "Insight 1", 0.9, { LCP: 50 })],
+      };
+      // Score 0.89 with 0 savings -> failing
+      const sFailScore = {
+        ...sampleNormalizedRun.summary,
+        insights: [createInsight("i1", "Insight 1", 0.89, {})],
+      };
+      // Score 1.0 with 51ms savings -> failing
+      const sFailSavings = {
+        ...sampleNormalizedRun.summary,
+        insights: [createInsight("i1", "Insight 1", 1.0, { LCP: 51 })],
+      };
+
+      const diff1 = computeInsightDiff(sPass, sFailScore);
+      expect(diff1.regressed).toHaveLength(1);
+
+      const diff2 = computeInsightDiff(sFailSavings, sPass);
+      expect(diff2.resolved).toHaveLength(1);
     });
   });
 });

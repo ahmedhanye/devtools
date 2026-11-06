@@ -17,41 +17,44 @@ packages/lighthouse/
 │   ├── repository.ts          # Drizzle SQLite persistence & queries
 │   ├── runner.ts              # Multi-run orchestrator & worker lifecycle
 │   ├── types.ts               # Zod schemas, domain models, & summary types
-│   └── worker.ts              # Isolated Bun.spawn worker with Chrome port: 0
+│   └── worker.ts              # Headless Chrome iteration execution & Lighthouse lifecycle
 └── tests/                     # Unit & headless Chromium integration test suites
 ```
 
-## Subprocess worker isolation
+## Direct in-process iteration execution
 
-Lighthouse v13 executes CPU-intensive trace analysis, frame-by-frame Speedline decoding, and synchronous report generation while mutating process-global state in `lighthouse-logger`. Running Lighthouse on the main process thread blocks the event loop and corrupts concurrent executions.
-
-Per [ADR 0003](../adr/0003-lighthouse-audit-isolation-and-tiered-storage.md), `@devtools/lighthouse` delegates execution to an isolated worker subprocess:
+`packages/lighthouse` provides direct in-process iteration execution (`executeIteration`) while guaranteeing browser process isolation and deterministic cleanup:
 
 ```mermaid
 sequenceDiagram
+    participant App as Application (CLI / API Daemon)
     participant Runner as Audit Runner (runner.ts)
-    participant Worker as Worker Process (worker.ts)
+    participant Iter as Iteration Executor (worker.ts)
     participant Chrome as Headless Chrome (port: 0)
     participant Disk as Artifact Storage
     participant DB as SQLite (packages/db)
 
-    Runner->>Worker: spawn worker via Bun.spawn (URL, form factor, throttling)
-    Worker->>Chrome: launch on port 0 via chrome-launcher
-    Worker->>Chrome: run Lighthouse programmatic audit
-    Chrome-->>Worker: return raw LHR and HTML report
-    Worker->>Chrome: kill Chrome process (finally block)
-    Worker-->>Runner: emit report JSON and HTML payloads over stdout IPC
+    App->>Runner: runLighthouseAudit(options)
+    loop Each iteration (1..N)
+        Runner->>Iter: executeIteration(params)
+        Iter->>Chrome: launch on port 0 via chrome-launcher
+        Iter->>Chrome: run Lighthouse programmatic audit
+        Chrome-->>Iter: return raw LHR and HTML report
+        Iter->>Chrome: kill Chrome process (finally block)
+        Iter-->>Runner: return SingleIterationResult ({lhr, reportJson, reportHtml})
+    end
     Runner->>Runner: select representative run if multi-run
     Runner->>Runner: normalize scores, Core Web Vitals, and trace insights
     Runner->>Disk: write report.json and report.html to cold storage
     Runner->>DB: insert canonical row into lighthouse_runs
+    Runner-->>App: return LighthouseAuditExecutionResult
 ```
 
-### Worker lifecycle guarantees
+### Execution lifecycle guarantees
 
-1. **Subprocess boundary**: `executeIterationInSubprocess` launches `worker.ts` with `Bun.spawn`, passing the serialized audit payload through standard input (`stdin`) and receiving progress events and final report payloads over standard output (`stdout`) IPC.
+1. **In-process domain purity**: `executeIteration` executes directly within the active JavaScript runtime without spawning child script processes via `Bun.spawn`. Standalone compiled binaries (`dist/devtools`) execute audits out-of-the-box without requiring an external `bun` interpreter or loose script files on disk. Concurrency isolation and background scheduling belong to application service layers (`apps/api`).
 2. **Ephemeral port assignment**: Chrome launches with `port: 0` to let the operating system allocate an available port, avoiding port collisions during concurrent test or audit runs.
-3. **Deterministic cleanup**: A `finally` block in `worker.ts` along with `SIGTERM`/`SIGINT` signal handlers ensures `chrome.kill()` terminates the browser process upon normal completion, unhandled errors, or handled lifecycle signals.
+3. **Deterministic cleanup**: A `finally` block in `executeIteration` along with `SIGTERM`/`SIGINT` signal handlers ensures `chrome.kill()` terminates the browser process upon normal completion, unhandled errors, or handled lifecycle signals.
 
 ## Representative run selection algorithm
 

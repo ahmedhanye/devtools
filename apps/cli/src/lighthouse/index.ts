@@ -1,12 +1,4 @@
 import type { Command } from "commander";
-import { runLighthouseAuditCommand } from "./audit";
-import { runLighthouseDiffCommand } from "./diff";
-import { runLighthouseListCommand } from "./list";
-import {
-  defaultIsHeadless,
-  defaultSpawnOpener,
-  runLighthouseOpenCommand,
-} from "./open";
 import type {
   LighthouseAuditCommandOptions,
   LighthouseDiffCommandOptions,
@@ -14,30 +6,26 @@ import type {
   LighthouseOpenCommandOptions,
 } from "./types";
 
-export * from "./types";
-export * from "./errors";
-export * from "./resolvers";
-export * from "./budgets";
-export * from "./formatters/agent";
-export * from "./formatters/terminal";
-export * from "./formatters/json";
-export {
-  runLighthouseAuditCommand,
-  runLighthouseListCommand,
-  runLighthouseDiffCommand,
-  runLighthouseOpenCommand,
-  defaultIsHeadless,
-  defaultSpawnOpener,
-};
+export type * from "./types";
 
 /**
  * Injectable action handlers seam for testing Commander argument parsing and command dispatch.
  */
 export interface LighthouseCommandHandlers {
-  runAudit?: typeof runLighthouseAuditCommand;
-  runList?: typeof runLighthouseListCommand;
-  runDiff?: typeof runLighthouseDiffCommand;
-  runOpen?: typeof runLighthouseOpenCommand;
+  runAudit?: (
+    url: string,
+    options?: LighthouseAuditCommandOptions,
+  ) => Promise<void>;
+  runList?: (options: LighthouseListCommandOptions) => Promise<void>;
+  runDiff?: (
+    id1: string,
+    id2: string,
+    options: LighthouseDiffCommandOptions,
+  ) => Promise<void>;
+  runOpen?: (
+    id?: string,
+    options?: LighthouseOpenCommandOptions,
+  ) => Promise<void>;
 }
 
 function collectRules(val: string, memo: string[] = []): string[] {

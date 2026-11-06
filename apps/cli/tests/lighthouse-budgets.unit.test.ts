@@ -185,6 +185,25 @@ describe("Lighthouse Budgets (Unit)", () => {
       expect(result.failures[0]?.threshold).toBe(2000);
     });
 
+    test("passes when higher-is-better score exactly equals threshold (boundary condition)", () => {
+      const rules = parseBudgetRules("perf:85,a11y:92");
+      const result = evaluateBudgets(scores, metrics, rules);
+      expect(result.passed).toBe(true);
+      expect(result.failures).toHaveLength(0);
+      expect(result.evaluations[0]?.passed).toBe(true);
+      expect(result.evaluations[1]?.passed).toBe(true);
+    });
+
+    test("passes when lower-is-better metric exactly equals threshold (boundary condition)", () => {
+      const rules = parseBudgetRules("lcp:2200,cls:0.05,tbt:150");
+      const result = evaluateBudgets(scores, metrics, rules);
+      expect(result.passed).toBe(true);
+      expect(result.failures).toHaveLength(0);
+      expect(result.evaluations[0]?.passed).toBe(true);
+      expect(result.evaluations[1]?.passed).toBe(true);
+      expect(result.evaluations[2]?.passed).toBe(true);
+    });
+
     test("fails when evaluated metric is null", () => {
       const nullMetrics = { ...metrics, lcpMs: null };
       const rules = parseBudgetRules("lcp:2500");

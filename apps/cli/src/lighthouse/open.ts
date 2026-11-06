@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import type { DevtoolsDb, LighthouseRunRow } from "@devtools/db";
 import pc from "picocolors";
@@ -33,22 +34,49 @@ export function defaultIsHeadless(
  *
  * @param filePath - Local filesystem path to the HTML report artifact.
  * @param platform - Operating system platform. Defaults to `process.platform`.
+ * @throws {@link LighthouseOpenerError} When opener command fails to spawn or emits error.
  */
 export async function defaultSpawnOpener(
   filePath: string,
   platform: NodeJS.Platform = process.platform,
 ): Promise<void> {
-  const { spawn } = await import("node:child_process");
-  if (platform === "darwin") {
-    spawn("open", [filePath], { detached: true, stdio: "ignore" }).unref();
-  } else if (platform === "win32") {
-    spawn("cmd.exe", ["/c", "start", "", filePath], {
-      detached: true,
-      stdio: "ignore",
-    }).unref();
-  } else {
-    spawn("xdg-open", [filePath], { detached: true, stdio: "ignore" }).unref();
-  }
+  const [cmd, args] =
+    platform === "darwin"
+      ? ["open", [filePath]]
+      : platform === "win32"
+        ? ["cmd.exe", ["/c", "start", "", filePath]]
+        : ["xdg-open", [filePath]];
+
+  return new Promise<void>((resolve, reject) => {
+    try {
+      const child = spawn(cmd, args, { detached: true, stdio: "ignore" });
+      if (typeof child.on === "function") {
+        child.on("error", (err) => {
+          reject(
+            new LighthouseOpenerError(
+              `Failed to open report with ${cmd}: ${err.message}`,
+              { cause: err },
+            ),
+          );
+        });
+        child.on("spawn", () => {
+          child.unref?.();
+          resolve();
+        });
+      } else {
+        child.unref?.();
+        resolve();
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      reject(
+        new LighthouseOpenerError(
+          `Failed to open report with ${cmd}: ${message}`,
+          { cause: err instanceof Error ? err : undefined },
+        ),
+      );
+    }
+  });
 }
 
 /**

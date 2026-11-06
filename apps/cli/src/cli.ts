@@ -3,11 +3,7 @@ import { Command, InvalidArgumentError } from "commander";
 import pc from "picocolors";
 import { registerBrowserCommands } from "./browser";
 import { registerLighthouseCommands } from "./lighthouse";
-import {
-  type DaemonInstance,
-  resolveDaemonConfig,
-  startDaemon,
-} from "./daemon";
+import type { DaemonInstance } from "./daemon";
 import { findNextAvailablePort, isPortAvailable } from "./port";
 
 /**
@@ -128,6 +124,7 @@ export async function runWebCommand(
   options: WebCommandOptions = {},
   deps?: WebCommandDeps,
 ): Promise<DaemonInstance | undefined> {
+  const { resolveDaemonConfig, startDaemon } = await import("./daemon");
   let config: ReturnType<typeof resolveDaemonConfig>;
   try {
     config = resolveDaemonConfig(options);

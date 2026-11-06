@@ -348,6 +348,36 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
       expect(exitCode).toBe(1);
       expect(stderr.join("\n")).toContain("Error parsing budget rules");
     });
+
+    test("exits 1 on invalid budget rule syntax upfront without invoking runLighthouseAudit", async () => {
+      let exitCode: number | undefined;
+      let auditCalled = false;
+      const stderr: string[] = [];
+
+      await runLighthouseAuditCommand(
+        "https://example.com/",
+        { failUnder: "invalid_rule" },
+        {
+          runLighthouseAudit: async () => {
+            auditCalled = true;
+            return {
+              normalized: mockNormalizedRun,
+              run: makeSampleRow() as LighthouseRunRow,
+              representativeRunIndex: 0,
+            };
+          },
+          getDb: () => db,
+          writeStderr: (msg) => stderr.push(msg),
+          exit: (code) => {
+            exitCode = code;
+          },
+        },
+      );
+
+      expect(auditCalled).toBe(false);
+      expect(exitCode).toBe(1);
+      expect(stderr.join("\n")).toContain("Error parsing budget rules");
+    });
   });
 
   describe("runLighthouseListCommand", () => {
@@ -993,6 +1023,66 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         expect(spawned.length).toBe(4);
       } finally {
         spawnSpy.mockRestore();
+      }
+    });
+
+    test("defaultSpawnOpener rejects with LighthouseOpenerError when child process emits error event", async () => {
+      const { EventEmitter } = await import("node:events");
+      const fakeChild = new EventEmitter();
+      (fakeChild as unknown as { unref: () => void }).unref = () => {};
+
+      const spawnSpy = spyOn(cp, "spawn").mockReturnValue(fakeChild as never);
+      try {
+        const promise = defaultSpawnOpener("/path/to/report.html", "linux");
+        fakeChild.emit("error", new Error("ENOENT: missing xdg-open"));
+        await expect(promise).rejects.toThrow(LighthouseOpenerError);
+        await expect(promise).rejects.toThrow("ENOENT: missing xdg-open");
+      } finally {
+        spawnSpy.mockRestore();
+      }
+    });
+
+    test("defaultSpawnOpener resolves when child process emits spawn event", async () => {
+      const { EventEmitter } = await import("node:events");
+      let unrefCalled = false;
+      const fakeChild = Object.assign(new EventEmitter(), {
+        unref: () => {
+          unrefCalled = true;
+        },
+      });
+
+      const spawnSpy = spyOn(cp, "spawn").mockReturnValue(fakeChild as never);
+      try {
+        const promise = defaultSpawnOpener("/path/to/report.html", "linux");
+        fakeChild.emit("spawn");
+        await expect(promise).resolves.toBeUndefined();
+        expect(unrefCalled).toBe(true);
+      } finally {
+        spawnSpy.mockRestore();
+      }
+    });
+
+    test("defaultSpawnOpener rejects with LighthouseOpenerError when spawn throws synchronously", async () => {
+      const spawnSpy = spyOn(cp, "spawn").mockImplementation(() => {
+        throw new Error("sync spawn error");
+      });
+      try {
+        await expect(
+          defaultSpawnOpener("/path/to/report.html", "linux"),
+        ).rejects.toThrow(LighthouseOpenerError);
+      } finally {
+        spawnSpy.mockRestore();
+      }
+
+      const spawnNonErrorSpy = spyOn(cp, "spawn").mockImplementation(() => {
+        throw "string error thrown";
+      });
+      try {
+        await expect(
+          defaultSpawnOpener("/path/to/report.html", "linux"),
+        ).rejects.toThrow("string error thrown");
+      } finally {
+        spawnNonErrorSpy.mockRestore();
       }
     });
 

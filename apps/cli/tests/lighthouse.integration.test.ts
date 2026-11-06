@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Command } from "commander";
 import { registerLighthouseCommands } from "../src/lighthouse/index";
+import type {
+  LighthouseAuditCommandOptions,
+  LighthouseListCommandOptions,
+} from "../src/lighthouse/types";
 
 function setupCommandForTesting(program: Command): {
   getOutput: () => string;
@@ -118,7 +122,7 @@ describe("CLI Lighthouse Command Integration", () => {
 
   test("dispatches lighthouse <url> with custom options and rule collector", async () => {
     let capturedUrl: string | undefined;
-    let capturedOpts: any;
+    let capturedOpts: LighthouseAuditCommandOptions | undefined;
 
     const program = new Command();
     program.name("devtools");
@@ -144,13 +148,13 @@ describe("CLI Lighthouse Command Integration", () => {
     );
 
     expect(capturedUrl).toBe("https://example.com/");
-    expect(capturedOpts.runs).toBe(3);
-    expect(capturedOpts.failUnder).toEqual(["perf:90", "lcp:2500"]);
+    expect(capturedOpts?.runs).toBe(3);
+    expect(capturedOpts?.failUnder).toEqual(["perf:90", "lcp:2500"]);
   });
 
   test("dispatches lighthouse list subcommand through action handler", async () => {
     let listCalled = false;
-    let capturedOpts: any;
+    let capturedOpts: LighthouseListCommandOptions | undefined;
 
     const program = new Command();
     program.name("devtools");
@@ -166,8 +170,8 @@ describe("CLI Lighthouse Command Integration", () => {
     });
 
     expect(listCalled).toBe(true);
-    expect(capturedOpts.limit).toBe(5);
-    expect(capturedOpts.json).toBe(true);
+    expect(capturedOpts?.limit).toBe(5);
+    expect(capturedOpts?.json).toBe(true);
   });
 
   test("dispatches lighthouse diff subcommand through action handler", async () => {

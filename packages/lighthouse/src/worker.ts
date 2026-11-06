@@ -3,18 +3,15 @@ import {
   type BrowserResolution,
   type ResolveBrowserOptions,
 } from "@devtools/browser";
-import { Launcher, launch as defaultLaunchChrome } from "chrome-launcher";
-import defaultRunLighthouse, {
-  desktopConfig,
-  generateReport as defaultGenerateReport,
-} from "lighthouse";
 import { resolveChromeSandboxDisabled } from "./config";
 import { WorkerExecutionError } from "./errors";
 import type {
+  ExecuteIterationParams,
   LighthouseFormFactor,
   LighthouseProgressEvent,
   LighthouseThrottlingMethod,
   RawLighthouseResult,
+  SingleIterationResult,
   WorkerPayload,
   WorkerResultPayload,
 } from "./types";
@@ -102,14 +99,19 @@ export function buildLighthouseConfig(options: {
   const onlyCategories = [...options.categories];
 
   if (options.formFactor === "desktop") {
-    const baseSettings =
-      (desktopConfig as LighthouseConfigShape).settings ?? {};
     return {
       extends: "lighthouse:default",
       settings: {
-        ...baseSettings,
         formFactor: "desktop",
         throttlingMethod: options.throttlingMethod,
+        screenEmulation: {
+          mobile: false,
+          width: 1350,
+          height: 940,
+          deviceScaleFactor: 1,
+          disabled: false,
+        },
+        emulatedUserAgent: false,
         onlyCategories,
       },
     };
@@ -136,10 +138,7 @@ export function buildLighthouseConfig(options: {
 export function extractReportStrings(
   lhr: RawLighthouseResult,
   rawReport: string | string[],
-  renderHtml: (
-    lhr: Parameters<typeof defaultGenerateReport>[0],
-    format: "html",
-  ) => string = defaultGenerateReport,
+  renderHtml?: (lhr: unknown, format: "html") => string,
 ): { reportJson: string; reportHtml: string } {
   if (Array.isArray(rawReport) && rawReport.length >= 2) {
     return {
@@ -149,10 +148,9 @@ export function extractReportStrings(
   }
   const reportJson =
     typeof rawReport === "string" ? rawReport : JSON.stringify(lhr, null, 2);
-  const reportHtml = renderHtml(
-    lhr as Parameters<typeof defaultGenerateReport>[0],
-    "html",
-  );
+  const reportHtml = renderHtml
+    ? renderHtml(lhr, "html")
+    : `<html><body><pre>${reportJson}</pre></body></html>`;
   return { reportJson, reportHtml };
 }
 
@@ -162,43 +160,45 @@ export function extractReportStrings(
  * `lighthouse@13.5.0` with telemetry disabled (`enableErrorReporting: false`), and
  * guarantees `launchedChrome.kill()` inside a `finally` block.
  *
- * @param payload - Worker iteration parameters.
+ * @param params - Iteration execution parameters.
  * @param deps - Optional dependency injection seams for browser resolution, Chrome launch, and Lighthouse execution.
- * @returns The completed {@link WorkerResultPayload} containing the JSON and HTML reports.
+ * @returns The completed {@link SingleIterationResult} containing the parsed LHR and JSON/HTML reports.
  * @throws {@link WorkerExecutionError} When browser resolution fails, Chrome fails to launch, or Lighthouse returns an empty result.
  */
-export async function runWorkerIteration(
-  payload: WorkerPayload,
+export async function executeIteration(
+  params: ExecuteIterationParams,
   deps: WorkerIterationDependencies = {},
-): Promise<WorkerResultPayload> {
+): Promise<SingleIterationResult> {
   const resolveBrowser = deps.resolveBrowser ?? resolveBrowserPath;
   const launchChrome =
     deps.launchChrome ??
-    (defaultLaunchChrome as NonNullable<
+    ((await import("chrome-launcher")).launch as unknown as NonNullable<
       WorkerIterationDependencies["launchChrome"]
     >);
   const runLh =
     deps.runLighthouse ??
-    (defaultRunLighthouse as unknown as NonNullable<
+    ((await import("lighthouse")).default as unknown as NonNullable<
       WorkerIterationDependencies["runLighthouse"]
     >);
+  const Launcher = (await import("chrome-launcher")).Launcher;
 
   const emitStage = (
     stage: LighthouseProgressEvent["stage"],
     message: string,
   ): void => {
-    deps.onProgress?.({
+    const onProgress = deps.onProgress ?? params.onProgress;
+    onProgress?.({
       stage,
       message,
-      runIndex: payload.runIndex,
-      totalRuns: payload.totalRuns,
+      runIndex: params.runIndex,
+      totalRuns: params.totalRuns,
     });
   };
 
   emitStage("locating_browser", "Resolving Chromium executable");
   const browser = await resolveBrowser({
-    chromePath: payload.chromePath,
-    env: payload.env,
+    chromePath: params.chromePath,
+    env: params.env,
   });
 
   emitStage(
@@ -206,8 +206,8 @@ export async function runWorkerIteration(
     `Launching headless Chromium (${browser.version})`,
   );
   const disableSandbox = resolveChromeSandboxDisabled({
-    disableSandbox: payload.disableSandbox,
-    env: payload.env,
+    disableSandbox: params.disableSandbox,
+    env: params.env,
   });
   const chromeFlags = [
     ...Launcher.defaultFlags(),
@@ -233,17 +233,17 @@ export async function runWorkerIteration(
   try {
     emitStage(
       "navigating",
-      `Navigating to ${payload.url} (run ${payload.runIndex + 1}/${payload.totalRuns})`,
+      `Navigating to ${params.url} (run ${params.runIndex + 1}/${params.totalRuns})`,
     );
 
     const config = buildLighthouseConfig({
-      formFactor: payload.formFactor,
-      throttlingMethod: payload.throttlingMethod,
-      categories: payload.categories,
+      formFactor: params.formFactor,
+      throttlingMethod: params.throttlingMethod,
+      categories: params.categories,
     });
 
     const runnerResult = await runLh(
-      payload.url,
+      params.url,
       {
         port: launchedChrome.port,
         hostname: "127.0.0.1",
@@ -269,6 +269,7 @@ export async function runWorkerIteration(
     );
 
     return {
+      lhr: runnerResult.lhr,
       reportJson,
       reportHtml,
     };
@@ -280,87 +281,6 @@ export async function runWorkerIteration(
 }
 
 /**
- * Optional dependencies and I/O seams for {@link runWorkerMain}.
+ * @deprecated Use {@link executeIteration} instead.
  */
-export interface RunWorkerMainDeps {
-  /** Line writer seam (defaults to `process.stdout.write`). */
-  writeLine?: (line: string) => void;
-  /** Iteration executor seam (defaults to `runWorkerIteration`). */
-  executeIteration?: typeof runWorkerIteration;
-  /** Stdin reader seam (defaults to `Bun.stdin.text` when invoked via entrypoint). */
-  readStdin?: () => Promise<string>;
-}
-
-/**
- * CLI entrypoint for the isolated worker subprocess (`bun packages/lighthouse/src/worker.ts <jsonPayload>`).
- *
- * @param argv - Command-line arguments following the script path (`process.argv.slice(2)`).
- * @param deps - Optional output writer, iteration executor, and stdin reader seams for unit testing.
- * @returns Numeric exit code (`0` on success, `1` on error).
- */
-export async function runWorkerMain(
-  argv: readonly string[],
-  deps: RunWorkerMainDeps = {},
-): Promise<number> {
-  const writeLine =
-    deps.writeLine ?? ((line: string) => process.stdout.write(`${line}\n`));
-  const executeIteration = deps.executeIteration ?? runWorkerIteration;
-
-  const sendMessage = (msg: WorkerOutboundMessage): void => {
-    writeLine(JSON.stringify(msg));
-  };
-
-  try {
-    let rawArg = argv[0];
-    if (!rawArg && deps.readStdin) {
-      const stdinText = (await deps.readStdin()).trim();
-      if (stdinText) {
-        rawArg = stdinText;
-      }
-    }
-    if (!rawArg) {
-      throw new WorkerExecutionError("Missing worker JSON payload argument");
-    }
-    const payload = JSON.parse(rawArg) as WorkerPayload;
-    const result = await executeIteration(payload, {
-      onProgress: (event) => sendMessage({ type: "progress", event }),
-    });
-    sendMessage({ type: "result", result });
-    return 0;
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    const code =
-      err &&
-      typeof err === "object" &&
-      "code" in err &&
-      typeof err.code === "string"
-        ? err.code
-        : undefined;
-    sendMessage({ type: "error", message, ...(code ? { code } : {}) });
-    return 1;
-  }
-}
-
-/**
- * Invokes {@link runWorkerMain} when `worker.ts` is executed as the main script and sets `process.exitCode` on failure.
- *
- * @param argv - Command-line arguments passed to the worker script.
- * @param mainFn - Optional {@link runWorkerMain} override seam for unit testing.
- * @param stdin - Optional standard input stream reader seam (defaults to `Bun.stdin`).
- * @returns Numeric exit code returned by `mainFn`.
- */
-export async function invokeWorkerEntrypoint(
-  argv: readonly string[] = process.argv.slice(2),
-  mainFn: typeof runWorkerMain = runWorkerMain,
-  stdin: { text: () => Promise<string> } | null = Bun.stdin,
-): Promise<number> {
-  const code = await mainFn(argv, {
-    readStdin: async () => (stdin ? (await stdin.text()).trim() : ""),
-  });
-  if (code !== 0) {
-    process.exitCode = code;
-  }
-  return code;
-}
-
-if (import.meta.main) void invokeWorkerEntrypoint();
+export const runWorkerIteration = executeIteration;

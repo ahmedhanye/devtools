@@ -9,10 +9,9 @@ import {
   type DevtoolsDb,
 } from "@devtools/db";
 import {
-  executeIterationInSubprocess,
+  executeIteration,
   getLighthouseRunById,
   InvalidAuditOptionsError,
-  LighthouseExecutionError,
   listLighthouseRuns,
   runLighthouseAudit,
   type LighthouseProgressEvent,
@@ -22,9 +21,7 @@ import {
 import {
   buildLighthouseConfig,
   extractReportStrings,
-  invokeWorkerEntrypoint,
   runWorkerIteration,
-  runWorkerMain,
 } from "../src/worker";
 
 function makeMockIterationResult(
@@ -371,76 +368,25 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
     expect(killedOnError).toBe(true);
   });
 
-  it("runWorkerMain writes progress and result JSON lines and handles errors cleanly", async () => {
-    const writtenLines: string[] = [];
+  it("extractReportStrings extracts reports and handles single-string fallback cleanly", () => {
     const mockIter = makeMockIterationResult(
       "https://example.com",
       800,
       1500,
       1200,
       95,
-      "main-ok",
+      "extract-ok",
     );
 
-    const payload: WorkerPayload = {
-      url: "https://example.com",
-      formFactor: "mobile",
-      throttlingMethod: "simulate",
-      categories: ["performance"],
-      runIndex: 0,
-      totalRuns: 1,
-    };
+    // Array output format
+    const arrayResult = extractReportStrings(mockIter.lhr, [
+      mockIter.reportJson,
+      mockIter.reportHtml,
+    ]);
+    expect(arrayResult.reportJson).toBe(mockIter.reportJson);
+    expect(arrayResult.reportHtml).toBe(mockIter.reportHtml);
 
-    const codeOk = await runWorkerMain([JSON.stringify(payload)], {
-      writeLine: (line) => writtenLines.push(line),
-      executeIteration: async (_p, deps) => {
-        deps?.onProgress?.({
-          stage: "navigating",
-          message: "Navigating",
-          runIndex: 0,
-          totalRuns: 1,
-        });
-        return {
-          reportJson: mockIter.reportJson,
-          reportHtml: mockIter.reportHtml,
-        };
-      },
-    });
-    expect(codeOk).toBe(0);
-    expect(writtenLines).toHaveLength(2);
-    expect(JSON.parse(writtenLines[0]!).type).toBe("progress");
-    expect(JSON.parse(writtenLines[1]!).type).toBe("result");
-
-    const errorLines: string[] = [];
-    const codeErr = await runWorkerMain(["{ invalid json"], {
-      writeLine: (line) => errorLines.push(line),
-    });
-    expect(codeErr).toBe(1);
-    expect(JSON.parse(errorLines[0]!).type).toBe("error");
-
-    const missingArgLines: string[] = [];
-    const codeMissing = await runWorkerMain([], {
-      writeLine: (line) => missingArgLines.push(line),
-    });
-    expect(codeMissing).toBe(1);
-    expect(JSON.parse(missingArgLines[0]!).message).toContain(
-      "Missing worker JSON payload argument",
-    );
-
-    // Verify runWorkerMain accepts payload via stdin seam
-    const stdinLines: string[] = [];
-    const codeStdin = await runWorkerMain([], {
-      readStdin: async () => JSON.stringify(payload),
-      writeLine: (line) => stdinLines.push(line),
-      executeIteration: async () => ({
-        reportJson: mockIter.reportJson,
-        reportHtml: mockIter.reportHtml,
-      }),
-    });
-    expect(codeStdin).toBe(0);
-    expect(JSON.parse(stdinLines[0]!).type).toBe("result");
-
-    // Verify extractReportStrings fallback when report is a single JSON string
+    // Single JSON string report fallback
     const fallbackReports = extractReportStrings(
       mockIter.lhr,
       mockIter.reportJson,
@@ -449,90 +395,99 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
     expect(fallbackReports.reportJson).toBe(mockIter.reportJson);
     expect(fallbackReports.reportHtml).toBe("<html>rendered-fallback</html>");
 
-    // Verify invokeWorkerEntrypoint sets exitCode on failure and resets cleanly
-    const prevExitCode = process.exitCode;
-    try {
-      const entryCode = await invokeWorkerEntrypoint(
-        [],
-        async (_argv, deps) => {
-          const stdinText = await deps?.readStdin?.();
-          expect(stdinText).toBe('{"mock":true}');
-          return 1;
-        },
-        { text: async () => '  {"mock":true}  ' },
-      );
-      expect(entryCode).toBe(1);
-      expect(process.exitCode).toBe(1);
-
-      // Also cover fallback branch when stdin is absent and default stdin seam
-      await invokeWorkerEntrypoint(
-        [],
-        async (_argv, deps) => {
-          const fallbackText = await deps?.readStdin?.();
-          expect(fallbackText).toBe("");
-          return 0;
-        },
-        null,
-      );
-      expect(await invokeWorkerEntrypoint(["{}"], async () => 0)).toBe(0);
-    } finally {
-      process.exitCode = prevExitCode ?? 0;
-    }
+    // Non-string fallback
+    const nonStringFallback = extractReportStrings(
+      mockIter.lhr,
+      undefined as unknown as string,
+      () => "<html>rendered-undefined</html>",
+    );
+    expect(nonStringFallback.reportJson).toBe(
+      JSON.stringify(mockIter.lhr, null, 2),
+    );
+    expect(nonStringFallback.reportHtml).toBe(
+      "<html>rendered-undefined</html>",
+    );
   });
 
-  it("executeIterationInSubprocess spawns an isolated Bun child process, streams progress lines, and returns the iteration result or throws LighthouseExecutionError", async () => {
-    const mockScriptPath = join(tempArtifactsDir, "mock-worker.ts");
+  it("executeIteration respects custom chromePath, disableSandbox, and emits all progress events", async () => {
+    const stages: string[] = [];
+    let capturedChromeFlags: string[] = [];
+
     const mockResult = makeMockIterationResult(
-      "https://example.com",
+      "https://example.com/custom",
       790,
       1420,
       1180,
       97,
-      "subprocess-ok",
+      "direct-exec",
     );
 
-    await Bun.write(
-      mockScriptPath,
-      `
-const raw = process.argv[2] || (await Bun.stdin.text()).trim();
-const parsed = JSON.parse(raw);
-if (parsed.url.includes("fail-worker")) {
-  console.log(JSON.stringify({ type: "error", message: "Simulated worker crash" }));
-  process.exit(1);
-}
-if (parsed.url.includes("crash-raw")) {
-  console.error("Fatal stderr crash");
-  process.exit(2);
-}
-if (parsed.url.includes("large-stderr")) {
-  process.stderr.write("E".repeat(128 * 1024));
-  process.stdout.write(JSON.stringify({
-    type: "result",
-    result: {
-      reportJson: ${JSON.stringify(mockResult.reportJson)},
-      reportHtml: ${JSON.stringify(mockResult.reportHtml)}
-    }
-  }));
-  process.exit(0);
-}
-console.log("non-json banner line");
-console.log("{ malformed json line");
-console.log(JSON.stringify({
-  type: "progress",
-  event: { stage: "locating_browser", message: "Locating browser", runIndex: parsed.runIndex, totalRuns: parsed.totalRuns }
-}));
-process.stdout.write(JSON.stringify({
-  type: "result",
-  result: {
-    reportJson: ${JSON.stringify(mockResult.reportJson)},
-    reportHtml: ${JSON.stringify(mockResult.reportHtml)}
-  }
-}));
-`,
+    const result = await executeIteration(
+      {
+        url: "https://example.com/custom",
+        formFactor: "desktop",
+        throttlingMethod: "provided",
+        categories: ["performance"],
+        chromePath: "/custom/bin/chrome",
+        disableSandbox: true,
+        runIndex: 0,
+        totalRuns: 2,
+        onProgress: (ev) => stages.push(ev.stage),
+      },
+      {
+        resolveBrowser: async (opts) => {
+          expect(opts?.chromePath).toBe("/custom/bin/chrome");
+          return {
+            executablePath: "/custom/bin/chrome",
+            version: "Chrome 136.0.0",
+            source: "explicit",
+          };
+        },
+        launchChrome: async (opts) => {
+          capturedChromeFlags = opts.chromeFlags;
+          return {
+            port: 54322,
+            kill: async () => {},
+          };
+        },
+        runLighthouse: async (_url, _flags, config) => {
+          expect(config.settings?.formFactor).toBe("desktop");
+          expect(config.settings?.throttlingMethod).toBe("provided");
+          return {
+            lhr: mockResult.lhr,
+            report: [mockResult.reportJson, mockResult.reportHtml],
+          };
+        },
+      },
     );
 
-    const receivedStages: string[] = [];
-    const subResult = await executeIterationInSubprocess(
+    expect(stages).toEqual([
+      "locating_browser",
+      "launching_browser",
+      "navigating",
+      "analyzing",
+      "generating_report",
+    ]);
+    expect(capturedChromeFlags).toContain("--no-sandbox");
+    expect(capturedChromeFlags).toContain("--headless=new");
+    expect(result.lhr.requestedUrl).toBe("https://example.com/custom");
+    expect(result.reportHtml).toBe(mockResult.reportHtml);
+  });
+
+  it("executeIteration cleans up SIGTERM and SIGINT listeners after completion or failure", async () => {
+    const sigtermCountBefore = process.listenerCount("SIGTERM");
+    const sigintCountBefore = process.listenerCount("SIGINT");
+
+    const mockResult = makeMockIterationResult(
+      "https://example.com",
+      800,
+      1500,
+      1200,
+      90,
+      "cleanup-test",
+    );
+
+    await executeIteration(
       {
         url: "https://example.com",
         formFactor: "mobile",
@@ -540,54 +495,26 @@ process.stdout.write(JSON.stringify({
         categories: ["performance"],
         runIndex: 0,
         totalRuns: 1,
-        onProgress: (ev) => receivedStages.push(ev.stage),
       },
-      mockScriptPath,
-    );
-
-    expect(receivedStages).toEqual(["locating_browser"]);
-    expect(subResult.reportHtml).toContain("Report subprocess-ok");
-
-    await expect(
-      executeIterationInSubprocess(
-        {
-          url: "https://example.com/fail-worker",
-          formFactor: "mobile",
-          throttlingMethod: "simulate",
-          categories: ["performance"],
-          runIndex: 0,
-          totalRuns: 1,
-        },
-        mockScriptPath,
-      ),
-    ).rejects.toThrow(LighthouseExecutionError);
-
-    await expect(
-      executeIterationInSubprocess(
-        {
-          url: "https://example.com/crash-raw",
-          formFactor: "mobile",
-          throttlingMethod: "simulate",
-          categories: ["performance"],
-          runIndex: 0,
-          totalRuns: 1,
-        },
-        mockScriptPath,
-      ),
-    ).rejects.toThrow("Fatal stderr crash");
-
-    const largeStderrResult = await executeIterationInSubprocess(
       {
-        url: "https://example.com/large-stderr",
-        formFactor: "mobile",
-        throttlingMethod: "simulate",
-        categories: ["performance"],
-        runIndex: 0,
-        totalRuns: 1,
+        resolveBrowser: async () => ({
+          executablePath: "/mock/chrome",
+          version: "Chrome 136",
+          source: "explicit",
+        }),
+        launchChrome: async () => ({
+          port: 44444,
+          kill: async () => {},
+        }),
+        runLighthouse: async () => ({
+          lhr: mockResult.lhr,
+          report: [mockResult.reportJson, mockResult.reportHtml],
+        }),
       },
-      mockScriptPath,
     );
-    expect(largeStderrResult.reportHtml).toContain("Report subprocess-ok");
+
+    expect(process.listenerCount("SIGTERM")).toBe(sigtermCountBefore);
+    expect(process.listenerCount("SIGINT")).toBe(sigintCountBefore);
   });
 
   it("runWorkerIteration handles SIGTERM cleanup listener", async () => {

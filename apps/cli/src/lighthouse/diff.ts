@@ -15,6 +15,7 @@ import type {
 /**
  * Structured diff comparing Insight audits and CLS culprit elements between runs.
  */
+// fallow-ignore-next-line unused-type
 export interface InsightDiffSummary {
   resolved: Array<{ id: string; title: string }>;
   regressed: Array<{ id: string; title: string }>;
@@ -23,11 +24,15 @@ export interface InsightDiffSummary {
 
 function isFailingInsight(i: {
   score: number | null;
+  metricSavings?: Record<string, number>;
   estimatedSavingsMs?: number | null;
 }): boolean {
-  return (
-    (i.score !== null && i.score < 0.9) || (i.estimatedSavingsMs ?? 0) > 50
+  const maxMetricSavings = Object.values(i.metricSavings ?? {}).reduce(
+    (max, val) => Math.max(max, val),
+    0,
   );
+  const savings = i.estimatedSavingsMs ?? maxMetricSavings;
+  return (i.score !== null && i.score < 0.9) || savings > 50;
 }
 
 /**
@@ -37,6 +42,7 @@ function isFailingInsight(i: {
  * @param s2 - Comparison run summary data.
  * @returns Status transitions identifying resolved and regressed audits.
  */
+// fallow-ignore-next-line unused-export
 export function computeInsightDiff(
   s1?: LighthouseRunSummaryData | null,
   s2?: LighthouseRunSummaryData | null,

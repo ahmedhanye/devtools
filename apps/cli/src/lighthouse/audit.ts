@@ -69,6 +69,19 @@ export async function runLighthouseAuditCommand(
         .filter(Boolean) as RunLighthouseAuditOptions["categories"])
     : undefined;
 
+  // Validate performance budget rules upfront before launching Chrome
+  let budgetRules: ReturnType<typeof parseBudgetRules> | undefined;
+  if (options.failUnder) {
+    try {
+      budgetRules = parseBudgetRules(options.failUnder);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      writeStderr(pc.red(`Error parsing budget rules: ${message}\n`));
+      exit(1);
+      return;
+    }
+  }
+
   const onProgress = (event: LighthouseProgressEvent) => {
     writeStderr(
       pc.dim(
@@ -79,6 +92,9 @@ export async function runLighthouseAuditCommand(
 
   let auditOutput: LighthouseAuditExecutionResult;
   try {
+    const disableSandbox =
+      options.disableSandbox ?? (options.sandbox === false ? true : undefined);
+
     auditOutput = await runAudit({
       url,
       formFactor,
@@ -86,7 +102,7 @@ export async function runLighthouseAuditCommand(
       runs: options.runs,
       categories,
       chromePath: options.chromePath,
-      disableSandbox: options.disableSandbox,
+      disableSandbox,
       artifactsDir: options.artifactsDir,
       env: options.env,
       db,
@@ -102,18 +118,10 @@ export async function runLighthouseAuditCommand(
 
   const { normalized: run, run: record } = auditOutput;
 
-  // Evaluate budget rules if requested
+  // Evaluate pre-validated budget rules
   let budgetResult: ReturnType<typeof evaluateBudgets> | undefined;
-  if (options.failUnder) {
-    try {
-      const rules = parseBudgetRules(options.failUnder);
-      budgetResult = evaluateBudgets(run.scores, run.metrics, rules);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      writeStderr(pc.red(`Error parsing budget rules: ${message}\n`));
-      exit(1);
-      return;
-    }
+  if (budgetRules && budgetRules.length > 0) {
+    budgetResult = evaluateBudgets(run.scores, run.metrics, budgetRules);
   }
 
   // Format and emit output to stdout

@@ -70,6 +70,7 @@ export interface LighthouseAuditCommandOptions {
   formFactor?: LighthouseFormFactor;
   throttlingMethod?: LighthouseThrottlingMethod;
   chromePath?: string;
+  sandbox?: boolean;
   disableSandbox?: boolean;
   artifactsDir?: string;
   categories?: string;

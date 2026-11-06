@@ -8,6 +8,7 @@ Architectural guidelines, boundary rules, and development practices for shared d
    - Packages must **never** import from applications (`apps/*`) or documentation (`site/`).
    - Packages follow a strict hierarchy: `@devtools/core` is a zero-dependency foundation; `@devtools/db` and `@devtools/browser` depend on `@devtools/core`; `@devtools/lighthouse` depends on `@devtools/core`, `@devtools/db`, and `@devtools/browser`. Sibling packages must not form circular references.
 2. **Framework independence**: Headless packages must remain independent of frontend UI frameworks (React, Next.js) and HTTP routing engines (Hono). Keep domain models and business rules pure and decoupled from delivery mechanisms.
+3. **Packages are headless domain libraries, not process orchestrators**: Packages must not spawn runtime child processes (such as `Bun.spawn` executing external scripts or worker processes) to manage internal execution flow. Monorepo packages provide programmatic libraries, leaving long-running background orchestration, process supervision, worker threads, and queue concurrency to application boundary layers (`apps/api`, `apps/cli`).
 
 ## Direct source exports
 
