@@ -17,7 +17,7 @@ export function stripAnsi(text: string): string {
 
 function formatMs(val: number | null | undefined): string {
   if (val === null || val === undefined) return "N/A";
-  return `${Math.round(val).toLocaleString()} ms`;
+  return `${Math.round(val).toLocaleString("en-US")} ms`;
 }
 
 function formatFloat(val: number | null | undefined, digits = 3): string {
