@@ -28,7 +28,7 @@ pre-commit:
 
     verify-agents-governance:
       glob: "{.agents/*.md,.agents/**/*.md}"
-      run: bun .agents/skills/writing-for-agents/scripts/verify-agents-governance.ts {staged_files}
+      run: bun scripts/verify-agents-governance.ts {staged_files}
 
 commit-msg:
   commands:

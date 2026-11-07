@@ -58,6 +58,7 @@ End every procedural step or workflow with a checkable, exhaustive **completion 
 - **File pointers over code copies.** Point to repository-relative file paths instead of pasting codebase snippets into instructions where they go stale.
 - **No-op and stale line removal.** Delete instructions that the model already obeys by default or that reference obsolete files and workflows.
 - **Repository-relative paths.** Reference tracked files with repository-relative paths. Never commit absolute filesystem paths or `file://` URIs in `.agents/` documents.
+- **Agent-agnostic instructions.** Author instructions to be general across any coding agent platform. Do not hardcode harness-specific tool names (such as `invoke_subagent`, `write_file`, `ArtifactMetadata`, or `Call the Skill tool`). Keep session artifacts native to the platform.
 
 ## Verification workflow
 
@@ -65,7 +66,7 @@ Run these steps whenever creating or modifying `.agents/AGENTS.md`, `.agents/rul
 
 1. **Run governance verification.** Execute the bundled validator to check YAML frontmatter, code fences, path portability, local Markdown links, and unslop punctuation rules.
    ```bash
-   bun .agents/skills/writing-for-agents/scripts/verify-agents-governance.ts
+   bun scripts/verify-agents-governance.ts
    ```
    Pass specific file paths during iterative edits, or run `bun run lint:agents` to validate all `.agents/` Markdown files.
 2. **Check formatting.** Verify Markdown and JSON formatting with Prettier.
@@ -73,4 +74,4 @@ Run these steps whenever creating or modifying `.agents/AGENTS.md`, `.agents/rul
    bunx prettier --check .agents/
    ```
 
-Completion criterion: All modified `.agents/` files pass unslop prose review, `bun .agents/skills/writing-for-agents/scripts/verify-agents-governance.ts` exits `0`, and `bunx prettier --check .agents/` exits `0`.
+Completion criterion: All modified `.agents/` files pass unslop prose review, `bun scripts/verify-agents-governance.ts` exits `0`, and `bunx prettier --check .agents/` exits `0`.

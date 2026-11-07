@@ -33,5 +33,5 @@ Place deterministic validation, lookup, or transformation logic in `.agents/skil
 
 ## Two-tier skill management
 
-- **Vendor skills in `skills-lock.json`.** Skills declared in root `skills-lock.json` are read-only upstream assets updated with `bunx skills`. [`scripts/verify-agents-governance.ts`](scripts/verify-agents-governance.ts) exempts vendor skills from directory-name mismatch, machine-path, local link, and unslop checks.
+- **Vendor skills in `skills-lock.json`.** Skills declared in root `skills-lock.json` are read-only upstream assets updated with `bunx skills`. [`scripts/verify-agents-governance.ts`](../../../scripts/verify-agents-governance.ts) exempts vendor skills from directory-name mismatch, machine-path, local link, and unslop checks.
 - **Customized skills in `.agents/skills-override.json`.** Before editing a vendor skill, eject it by removing its entry from `skills-lock.json` and registering its upstream `source`, `path`, and `commit` SHA in `.agents/skills-override.json`. Ejected skills must pass all governance checks and reconcile upstream changes with [`/update-custom-skills`](../update-custom-skills/SKILL.md).
