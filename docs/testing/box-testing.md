@@ -11,17 +11,17 @@ Black-box testing ([`e2e-tests.md`](e2e-tests.md), [`stories.md`](stories.md)) v
 - **Numeric flag and environment fuzzing.** Probe numeric CLI flags (`--port`, `--runs`) and environment variables (`PORT`) with partial numeric strings (`4000abc`), floats (`4000.5`), `NaN`, negative numbers, and empty strings to confirm integer parsers reject malformed input with human-readable `stderr` diagnostics rather than truncating prefixes or dumping raw schema JSON.
 - **Probe environment hygiene.** Preserve `PATH` so runtime binaries (`bun`, `node`) resolve normally, use injectable configuration seams (`packages/browser`) rather than passing dummy binaries such as `/bin/sh`, set `DEVTOOLS_DB_PATH=":memory:"` (or an isolated temporary directory path) so daemon subprocess probes never create or mutate `.devtools/devtools.db`, and sanitize `HOST` and `PORT` in spawned subprocess environments so ambient container variables never skew host or port assertions.
 
-### Machine checks vs human verification
+### Machine checks vs sensory verification
 
-Separate deterministic agent checks from items requiring human sensory judgment:
+Separate deterministic automated checks from items requiring human sensory judgment:
 
-| Domain                         | Deterministic machine checks (run by agent)                                                                                          | Human verification (placed at end of QA report or PR)                                               |
+| Domain                         | Deterministic automated checks                                                                                                       | Sensory verification (placed at end of PR description)                                              |
 | :----------------------------- | :----------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------- |
 | **CLI (`apps/cli`)**           | Exit codes, `stdout`/`stderr` separation, `--json` schema conformance, signal teardown, temp-dir side effects, `bun run build:smoke` | Ergonomics of interactive TTY prompts, readability of `--help` copy for new users                   |
 | **Frontend (`apps/frontend`)** | ARIA roles, DOM visibility, Storybook `play()` interactions, `react-doctor`, `steiger`, Next.js build                                | Visual hierarchy, typography spacing, responsive feel across zoom levels, real screen-reader pacing |
 | **Docs (`site`)**              | Link integrity, Fumadocs query symmetry, `/llms.txt` and search routes, MDX build                                                    | Narrative flow, diagram legibility, editorial clarity                                               |
 
-Run all deterministic checks in automated tests or agent probes; reserve `Human verification required` sections strictly for sensory, visual, or unmocked credential checks.
+Run all deterministic checks in automated test suites; reserve exploratory sensory verification sections strictly for visual, typography, or unmocked credential checks.
 
 ## Gray-box testing
 
