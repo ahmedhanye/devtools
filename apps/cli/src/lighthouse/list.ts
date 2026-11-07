@@ -1,5 +1,5 @@
 import type { DevtoolsDb } from "@devtools/db";
-import pc from "picocolors";
+import { getColors } from "../colors";
 import { formatJson } from "./formatters/json";
 import { formatTerminalList } from "./formatters/terminal";
 import type {
@@ -17,6 +17,7 @@ export async function runLighthouseListCommand(
   options: LighthouseListCommandOptions = {},
   deps?: LighthouseListCommandDeps,
 ): Promise<void> {
+  const pc = getColors();
   const exit = (code = 1) => {
     if (deps?.exit) {
       deps.exit(code);

@@ -16,17 +16,6 @@ For major milestones, slices, or before opening a final pull request, run the fu
 bun run verify
 ```
 
-## Git checkpoint and user confirmation
-
-Per repository guidelines, agents and contributors must obtain explicit user confirmation before executing `git push`, branch merges, or mutating stacks (`gh stack push`, `gh stack submit`, `gh stack sync`).
-
-When pausing for confirmation, inspect the branch state and present both staged and unstaged changes for review:
-
-```bash
-git status
-git diff --stat origin/main...HEAD
-```
-
 ## Remote push execution
 
 Execute pushes non-interactively:
@@ -36,7 +25,7 @@ Execute pushes non-interactively:
   git push origin <branch>
   ```
 - **Stacked PR branches (`gh-stack`):**
-  Synchronize rebased branches and PR metadata across the stack (use `--prune` to remove branches for merged PRs):
+  Synchronize rebased branches and PR metadata across the stack per [Stacked Pull Requests](stacked-prs.md) (use `--prune` to remove branches for merged PRs):
   ```bash
   gh stack sync
   ```
@@ -103,4 +92,8 @@ Compare the unresolved thread paths and lines against the commits pushed in the 
    gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "<thread_node_id>"}) { clientMutationId } }'
    ```
 3. **Ambiguous or high-risk finding:**
-   Leave the thread open, explain the trade-off in a reply comment, and request maintainer review.
+   Post a technical explanation detailing the trade-offs or decisions reached. After consensus or maintainer alignment is reached, post the resolution reply and resolve the thread via GraphQL so branch protection requirements are fulfilled:
+   ```bash
+   gh api repos/{owner}/{repo}/pulls/<pr_number>/comments/<comment_database_id>/replies -f body="Decision: <summary of decision or consensus>"
+   gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "<thread_node_id>"}) { clientMutationId } }'
+   ```

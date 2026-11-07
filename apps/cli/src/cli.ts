@@ -1,10 +1,12 @@
 import { APP_VERSION, type EnvMap } from "@devtools/core";
 import { Command, InvalidArgumentError } from "commander";
-import pc from "picocolors";
+import { getColors } from "./colors";
 import { registerBrowserCommands } from "./browser";
 import { registerLighthouseCommands } from "./lighthouse";
 import type { DaemonInstance } from "./daemon";
 import { findNextAvailablePort, isPortAvailable } from "./port";
+
+const pc = getColors();
 
 /**
  * CLI flag options for the `devtools web` command.

@@ -1,3 +1,4 @@
+#!/usr/bin/env bun
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { YAML } from "bun";
@@ -43,6 +44,8 @@ export interface ParsedFrontmatter {
   /** Diagnostic syntax error message when YAML parsing fails. */
   error?: string;
   /** Approximate 1-based line number of the YAML syntax error. */
+}
+export interface ParsedFrontmatterError extends ParsedFrontmatter {
   errorLine?: number;
 }
 
@@ -99,9 +102,9 @@ export function toRepoRelative(
  * Parses YAML frontmatter delimited by `---` at the start of a Markdown document.
  *
  * @param content - Raw Markdown file content.
- * @returns {@link ParsedFrontmatter} containing parsed metadata, body text, or syntax error details.
+ * @returns {@link ParsedFrontmatterError} containing parsed metadata, body text, or syntax error details.
  */
-export function parseFrontmatter(content: string): ParsedFrontmatter {
+export function parseFrontmatter(content: string): ParsedFrontmatterError {
   const trimmed = content.trimStart();
   if (!trimmed.startsWith("---")) {
     return { exists: false, data: null, body: content };
@@ -353,7 +356,7 @@ export function checkUnslop(content: string, filePath: string): Finding[] {
         line: i + 1,
         rule: "unslop/no-em-dash",
         message:
-          "Found prohibited em dash ('—'). Use spaced hyphens (' - ') or parentheses per .agents/skills/unslop.",
+          "Found prohibited em dash ('—'). Use periods or commas per .agents/skills/unslop.",
         severity: "error",
       });
     }
@@ -366,7 +369,7 @@ export function checkUnslop(content: string, filePath: string): Finding[] {
  * Validates that a frontmatter block exists and parsed without YAML syntax errors.
  */
 function validateFrontmatterPresence(
-  fm: ParsedFrontmatter,
+  fm: ParsedFrontmatterError,
   filePath: string,
   prefix: "rule" | "skill",
   label: string,

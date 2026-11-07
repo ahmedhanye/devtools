@@ -272,6 +272,15 @@ export async function collectCoverage(
     }
     console.log(`Running coverage for ${pkg}...`);
     runBunCoverage(pkgDir, ["--coverage-dir=coverage"], spawnCommand);
+    const expectedLcov = path.join(pkgDir, "coverage/lcov.info");
+    if (
+      !options.spawnCommand &&
+      (!fs.existsSync(expectedLcov) || fs.statSync(expectedLcov).size === 0)
+    ) {
+      throw new Error(
+        `Coverage collection failed: expected ${expectedLcov} was not written or is empty.`,
+      );
+    }
   }
 
   console.log("Running coverage for scripts/...");
@@ -280,6 +289,15 @@ export async function collectCoverage(
     ["--coverage-dir=coverage/scripts", "scripts/"],
     spawnCommand,
   );
+  const scriptsLcov = path.join(root, "coverage/scripts/lcov.info");
+  if (
+    !options.spawnCommand &&
+    (!fs.existsSync(scriptsLcov) || fs.statSync(scriptsLcov).size === 0)
+  ) {
+    throw new Error(
+      `Coverage collection failed: expected ${scriptsLcov} was not written or is empty.`,
+    );
+  }
 
   if (fs.existsSync(path.join(root, "apps/frontend"))) {
     console.log("Running coverage for apps/frontend (Vitest)...");
@@ -293,6 +311,15 @@ export async function collectCoverage(
         `Vitest coverage failed for apps/frontend with exit code ${frontendRes.status}`,
       );
     }
+    const frontendLcov = path.join(root, "apps/frontend/coverage/lcov.info");
+    if (
+      !options.spawnCommand &&
+      (!fs.existsSync(frontendLcov) || fs.statSync(frontendLcov).size === 0)
+    ) {
+      throw new Error(
+        `Coverage collection failed: expected ${frontendLcov} was not written or is empty.`,
+      );
+    }
   }
 
   const lcovEntries: LcovEntry[] = [];
@@ -300,6 +327,15 @@ export async function collectCoverage(
 
   const unifiedLcov = mergeLcovContents(lcovEntries, root);
   fs.writeFileSync(mergedLcovPath, unifiedLcov, "utf8");
+
+  if (
+    !options.spawnCommand &&
+    (!fs.existsSync(mergedLcovPath) || fs.statSync(mergedLcovPath).size === 0)
+  ) {
+    throw new Error(
+      `Coverage collection failed: merged report ${mergedLcovPath} was not created or is empty.`,
+    );
+  }
   console.log(
     `Successfully merged ${lcovEntries.length} coverage files into ${mergedLcovPath}`,
   );

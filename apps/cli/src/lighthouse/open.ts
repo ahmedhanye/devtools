@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import type { DevtoolsDb, LighthouseRunRow } from "@devtools/db";
-import pc from "picocolors";
+import { getColors } from "../colors";
 import { LighthouseOpenerError } from "./errors";
 import { resolveLatestRun, resolveRunId } from "./resolvers";
 import type {
@@ -106,6 +106,7 @@ export async function runLighthouseOpenCommand(
   const fileExists = deps?.fileExists ?? fs.existsSync;
   const isHeadless = deps?.isHeadless ?? defaultIsHeadless;
   const spawnOpener = deps?.spawnOpener ?? defaultSpawnOpener;
+  const pc = getColors({ env: options.env as NodeJS.ProcessEnv });
 
   let db: DevtoolsDb;
   try {

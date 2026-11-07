@@ -1,170 +1,68 @@
 ---
 name: pr
-description: "Use when writing a PR body."
-metadata:
-  credits:
-    skill: show-me
-    author: Dex Horthy
-    organisation: Humanlayer
-    url: "https://github.com/humanlayer/skills/blob/main/plugins/show-me/skills/show-me/SKILL.md"
+description: Create, update, or stack pull requests following repository templates, title conventions, and gh-stack workflows. Use when opening a PR, writing or editing a PR body, splitting large changes (>5,000 LOC or multi-layer) into stacked PRs, or running gh stack commands.
 ---
 
-Use this template for writing the PR body:
+# Pull requests
 
-```markdown
-## Summary
+Reference and execution workflow for authoring, submitting, and updating pull requests across the DevTools monorepo. Follow all pull request conventions, documentation, and rules in the codebase (such as `docs/contributing/pull-requests.md` and `docs/contributing/stacked-prs.md`).
 
-<diagram, diff-sketch, or tree>
+## 1. Single vs. Stacked PR Decision Gate
 
-## Evidence
+- **Single pull request (default):** Use when the changeset is a cohesive vertical slice under 5,000 lines of code and fewer than 80 modified files.
+- **Stacked pull request chain:** Follow all conventions, documentation, and rules related to stacked pull requests in the codebase (`docs/contributing/stacked-prs.md`). Use when changes exceed 5,000 lines of code or 80 files, or when a feature spans distinct architectural layers (foundation, shared packages, backend daemon, and frontend).
 
-- **Before:** <screenshot/output/failing test run>
-  **After:** <screenshot/output/passing test run>
+## 2. Pull Request Title Validation
 
-## Merge Danger
+Pull request titles become the squash commit subject on `main` evaluated by Release Please.
 
-**Door:** <one-way or two-way>
+- Format: `<type>[optional (<scope>)]: <imperative description>`
+- Types: `feat` (user-facing capabilities), `fix` (bug patches), `chore` (internal tooling, scripts, agent governance), `docs`, `refactor`, `perf`, `test`, `build`, `ci`.
+- Scope: Single-noun lowercase matching physical directory (`cli`, `frontend`, `site`, `browser`, `core`, `db`, `lighthouse`, `adr`, `testing`, `ci`, `scripts`, `deps`). Omit scope for root configurations and cross-cutting maintenance. Do not use `(repo)`.
+- Never include issue numbers (`(#123)`) in titles.
 
-<optional: description>
+Validate the title before submitting:
 
-**Blast Radius:** <one-word description>
-
-<optional: potential ramifications of merge>
+```bash
+echo "<title>" | bunx commitlint
 ```
 
-## Sections
+## 3. Pull Request Body Structure
 
-Skip all preambles and keep prose brief. Use the user's domain language from `GLOSSARY.md`.
+Follow [.github/PULL_REQUEST_TEMPLATE.md](../../../.github/PULL_REQUEST_TEMPLATE.md):
 
-### Summary
+- **Issue linking:** Include `Closes #<issue>` in single PRs or the top PR of a stack. Include `Part of #<issue>` in intermediate stack layers.
+- **Visual diagrams:** For the `## Summary` section, consult [`../show-me/SKILL.md`](../show-me/SKILL.md) to pick the smallest visual view (component tree, shallow file tree, Mermaid diagram, or diff sketch) that clarifies the change.
+- **Evidence:** Provide before/after terminal commands or test run outputs.
+- **Path hygiene:** Cite permanent repository-relative paths only. Never mention ephemeral `.scratch/` paths, raw session logs, or internal agent prompts.
 
-Pick the smallest view that makes the key point clear.
+## 4. Safe GitHub CLI & REST API Operations
 
-- Show logic or an algorithm as pseudocode:
+Avoid `gh pr edit` and bare `gh pr view` or `gh issue view`, which query deprecated `projectCards` GraphQL fields and exit `1`.
 
-```text
-on(save)
-  if content is unchanged
-    return cached result
-  write new content
-  return fresh result
-```
+- **Inspect pull request:**
+  ```bash
+  gh pr view <number> --json number,title,body,state,isDraft,baseRefName,headRefName,url
+  ```
+- **Update pull request metadata:**
+  Update titles and bodies via GitHub REST API:
+  ```bash
+  gh api --method PATCH repos/{owner}/{repo}/pulls/<number> -f title="<title>" -F body=@<body-file>
+  ```
+- **Stacked PR submission:**
+  Submit stacks ready for review with `--open`:
+  ```bash
+  gh stack submit --auto --open
+  ```
+  Then patch individual PR bodies and titles using the REST endpoint above.
 
-- Show runtime control flow as a call tree:
+## 5. Tracking Issue Checklist & Git Checkpoint
 
-```text
-submitForm
-  createSession
-    persistPrompt
-    launchAgent
-  navigateToSession
-```
+Before submitting or updating a pull request:
 
-- Show UI structure as a component tree, including state and module boundaries that matter:
-
-```text
-<SessionPage> (apps/example/src/routes/session.tsx)
-  useSessionEvents()
-  <SessionToolbar>
-    <RunSkillButton> (packages/ui)
-```
-
-- Show file responsibility or a broad refactor as a shallow file tree:
-
-```text
-src/
-├── commands/       # parses user actions
-├── sessions/       # owns session state
-└── transport/      # sends API requests
-```
-
-- Show component interaction, control flow, or data flow with Mermaid:
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant UI
-    participant Daemon
-    User->>UI: choose command
-    UI->>Daemon: send expanded prompt
-    Daemon-->>UI: stream result
-```
-
-- Use `diff` when the point is what changes and the surrounding shape already exists. Match the diff shape to the topic.
-
-For a component change:
-
-```diff
- <SessionPage>
-   useSessionEvents()
-   <SessionToolbar>
-+    <RunSkillButton />
-   <SessionTimeline>
-+    <SkillResultCard />
-```
-
-For a file-layout change:
-
-```diff
- src/
- ├── commands/
-+│   └── show-me.ts       # expands the slash command
- ├── sessions/
--└── transport.ts
-+└── transport/
-+    ├── client.ts
-+    └── stream.ts
-```
-
-For a call-tree or call-stack change:
-
-```diff
- submitForm
-   createSession
-     persistPrompt
-+    expandSkillMention
-     launchAgent
--  navigateToSession
-+  navigateToSession
-+    subscribeToEvents
-```
-
-For a state or control-flow change:
-
-```diff
- on(save)
--  write content
-+  if content is unchanged
-+    return cached result
-+  write new content
-+  invalidate cache
-```
-
-- Show the whole block when most of it is new, when omitted context would hide ownership or order, or when the user needs a copyable target shape:
-
-```ts
-function expandSkill(command: string): string {
-  const skillName = command.slice(1);
-  return `use the ${skillName} skill`;
-}
-```
-
-#### Guidance
-
-Place each visual next to the short text it supports. Keep only the calls, files, props, states, and boundaries needed to answer the user's current question or the options to resolve the current discussion point.
-
-You may use one of these, you may use several, it is unlikely you will use all of them. Use your judgement and don't overwhelm the user.
-
-### Evidence
-
-Concrete evidence that the change works. Show a before and after.
-
-Screenshots are S-tier - when the environment is set up for it and the change is visual.
-
-Execution-based evidence is A-tier. Test results, console output. Show the exact test that now fails and passes, using pseudocode.
-
-### Merge Danger
-
-Describe whether it's a one-way or two-way door. You can walk back through two-way doors, but not one-way doors. A PR that is cheap to roll back is lower risk. Changes that involve destructive actions or hard-to-reverse decisions are one-way doors.
-
-The blast radius is the potential impact or scope of the changes introduced by this PR. Consider all possibilities. Examples are layout shift, breakages for consumers, mobile responsiveness, etc.
+1. Query the linked issue:
+   ```bash
+   gh issue view <issue_number> --json number,title,body,state,labels
+   ```
+2. Update verified acceptance criteria from `- [ ]` to `- [x]` using `gh issue edit <issue_number> --body "$UPDATED_BODY"`.
+3. Obtain explicit user confirmation at the git checkpoint before executing `git push`, opening a pull request, or mutating stacks.
