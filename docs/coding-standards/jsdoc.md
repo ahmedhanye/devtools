@@ -13,7 +13,7 @@ Conventions for documenting TypeScript code, functions, types, and module interf
    const userId: string;
    ```
 2. **Document the _why_, not the _what_**: Comments earn their place by capturing unwritten conventions, architectural rationale, non-obvious trade-offs, and invariants that the type system cannot express.
-3. **Avoid arbitrary 100% docstring quotas**: Universal docstring quotas across every internal function, React component, or test closure lead to LLM comment slop and comment rot. Instead, enforce a strict **Tiered Documentation Boundary**.
+3. **Avoid arbitrary 100% docstring quotas**: Universal docstring quotas across every internal function, React component, or test closure lead to redundant boilerplate comments and comment rot. Instead, enforce a strict **Tiered Documentation Boundary**.
 
 ## Tiered documentation boundaries
 
