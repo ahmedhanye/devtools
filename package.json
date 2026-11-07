@@ -32,7 +32,7 @@
     "audit": "bun audit --audit-level=high --ignore GHSA-vfj7-8cjw-p6xm --ignore GHSA-mrhx-c7xc-m3w5",
     "pin:actions": ".agents/skills/github-actions/scripts/pin-action.sh",
     "lint:workflows": ".agents/skills/github-actions/scripts/lint.sh",
-    "lint:agents": "bun scripts/verify-agents-governance.ts",
+    "lint:agents": "bun .agents/skills/writing-for-agents/scripts/verify-agents-governance.ts",
     "lint:fsd": "bun --filter @devtools/frontend lint:fsd",
     "lint:design": "bun --filter @devtools/frontend lint:design",
     "fallow:dead-code": "fallow dead-code --type-aware",
