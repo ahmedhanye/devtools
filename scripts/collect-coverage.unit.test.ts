@@ -109,45 +109,64 @@ end_of_record
 
   describe("collectCoverage", () => {
     it("invokes bunx fumadocs-mdx in site directory before running tests for site", async () => {
-      const commands: Array<{ cmd: string; args: string[]; cwd: string }> = [];
-
-      await collectCoverage({
-        repoRoot: process.cwd(),
-        outputDir: path.join(process.cwd(), "coverage"),
-        spawnCommand: (cmd, args, opts) => {
-          commands.push({ cmd, args, cwd: opts.cwd });
-          return { status: 0 };
-        },
-      });
-
-      const mdxCallIndex = commands.findIndex(
-        (c) =>
-          c.cmd === "bunx" &&
-          c.args.includes("fumadocs-mdx") &&
-          c.cwd.endsWith("site"),
+      const tmpDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "collect-cov-site-"),
       );
-      const siteTestIndex = commands.findIndex(
-        (c) =>
-          c.cmd === "bun" && c.args.includes("test") && c.cwd.endsWith("site"),
-      );
+      try {
+        fs.mkdirSync(path.join(tmpDir, "site"), { recursive: true });
+        const commands: Array<{ cmd: string; args: string[]; cwd: string }> =
+          [];
 
-      expect(mdxCallIndex).toBeGreaterThanOrEqual(0);
-      expect(siteTestIndex).toBeGreaterThan(mdxCallIndex);
+        await collectCoverage({
+          repoRoot: tmpDir,
+          outputDir: path.join(tmpDir, "coverage"),
+          spawnCommand: (cmd, args, opts) => {
+            commands.push({ cmd, args, cwd: opts.cwd });
+            return { status: 0 };
+          },
+        });
+
+        const mdxCallIndex = commands.findIndex(
+          (c) =>
+            c.cmd === "bunx" &&
+            c.args.includes("fumadocs-mdx") &&
+            c.cwd.endsWith("site"),
+        );
+        const siteTestIndex = commands.findIndex(
+          (c) =>
+            c.cmd === "bun" &&
+            c.args.includes("test") &&
+            c.cwd.endsWith("site"),
+        );
+
+        expect(mdxCallIndex).toBeGreaterThanOrEqual(0);
+        expect(siteTestIndex).toBeGreaterThan(mdxCallIndex);
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
     });
 
     it("throws an error if fumadocs-mdx fails in site", async () => {
-      await expect(
-        collectCoverage({
-          repoRoot: process.cwd(),
-          outputDir: path.join(process.cwd(), "coverage"),
-          spawnCommand: (cmd, args, _opts) => {
-            if (cmd === "bunx" && args.includes("fumadocs-mdx")) {
-              return { status: 1 };
-            }
-            return { status: 0 };
-          },
-        }),
-      ).rejects.toThrow("fumadocs-mdx failed in");
+      const tmpDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "collect-cov-fail-"),
+      );
+      try {
+        fs.mkdirSync(path.join(tmpDir, "site"), { recursive: true });
+        await expect(
+          collectCoverage({
+            repoRoot: tmpDir,
+            outputDir: path.join(tmpDir, "coverage"),
+            spawnCommand: (cmd, args, _opts) => {
+              if (cmd === "bunx" && args.includes("fumadocs-mdx")) {
+                return { status: 1 };
+              }
+              return { status: 0 };
+            },
+          }),
+        ).rejects.toThrow("fumadocs-mdx failed in");
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
     });
 
     it("preserves merged output directory when cleanPriorReports is true and outputDir is cleaned", async () => {
