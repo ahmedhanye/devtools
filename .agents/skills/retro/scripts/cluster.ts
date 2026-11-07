@@ -36,6 +36,7 @@ export interface TranscriptEvent {
 export interface SessionMeta {
   id: string;
   subagent: boolean;
+  filePath?: string;
 }
 
 export type SessionData = [SessionMeta, TranscriptEvent[]];
@@ -70,11 +71,12 @@ export interface ClusterPlanEntry {
 }
 
 export const RETRO_MARKERS = ["/retro", ".agents/skills/retro"] as const;
-export const EXIT_RE = /exited with code (\d+)|exit code[: ]+(\d+)/i;
-export const PR_RE = /(?:pull\/|PR\s*#|pr\s+#?|#)(\d+)/g;
+export const EXIT_RE = /Command exited with code\s+(\d+)|exit code[: ]+(\d+)/i;
+export const PR_RE =
+  /(?:(?:pull\/|PR\s*#|pr\s+#?|issue\s*#?)(?:\s*)(\d+)|(?<![\w./-])#(\d+)\b)/gi;
 export const BRANCH_RE =
   /git\s+(?:checkout|switch)\s+(?:-[bBcC]\s+)?([\w][\w./-]*)|gh\s+pr\s+checkout\s+([\w][\w./-]*)|git\s+push\s+(?:-[a-zA-Z]+\s+)*origin\s+([\w][\w./-]*)|On branch ([\w][\w./-]*)/g;
-export const ISSUE_BRANCH_RE = /^(?:[\w.-]+\/)?(\d+)-/;
+export const ISSUE_BRANCH_RE = /^(\d+)-|^(?:[\w.-]+\/)(\d+)-/;
 
 export function parseTs(value: unknown): Date | null {
   if (value === null || value === undefined || value === "") {
@@ -150,11 +152,20 @@ export function adaptAntigravity(filePath: string): SessionData {
 
     let exitCode: number | null = null;
     if (role === "tool") {
-      const m = text.match(EXIT_RE);
-      if (m) {
-        const codeStr = m[1] ?? m[2];
-        if (codeStr !== undefined) {
-          exitCode = parseInt(codeStr, 10);
+      const isReadFile =
+        /^Created At:.*\nCompleted At:.*\n(?:Showing lines|Partial read)/s.test(
+          text,
+        );
+      const isSystemMessage = text.startsWith(
+        "The following is a <SYSTEM_MESSAGE>",
+      );
+      if (!isReadFile && !isSystemMessage) {
+        const m = text.match(EXIT_RE);
+        if (m) {
+          const codeStr = m[1] ?? m[2];
+          if (codeStr !== undefined) {
+            exitCode = parseInt(codeStr, 10);
+          }
         }
       }
     }
@@ -176,7 +187,7 @@ export function adaptAntigravity(filePath: string): SessionData {
     path.dirname(path.dirname(path.dirname(resolvedPath))),
   );
 
-  return [{ id, subagent: !hasUser }, events];
+  return [{ id, subagent: !hasUser, filePath: resolvedPath }, events];
 }
 
 export function adaptClaude(filePath: string): SessionData {
@@ -214,10 +225,14 @@ export function adaptClaude(filePath: string): SessionData {
         } else if (block.type === "tool_result") {
           const body = textOf(block.content);
           text += body;
-          const m = body.match(EXIT_RE);
-          if (block.is_error || m) {
-            const codeStr = m ? (m[1] ?? m[2]) : undefined;
-            exitCode = codeStr !== undefined ? parseInt(codeStr, 10) : 1;
+          const isReadFile =
+            body.includes("Showing lines") || body.includes("Partial read");
+          if (!isReadFile) {
+            const m = body.match(EXIT_RE);
+            if (block.is_error || m) {
+              const codeStr = m ? (m[1] ?? m[2]) : undefined;
+              exitCode = codeStr !== undefined ? parseInt(codeStr, 10) : 1;
+            }
           }
         }
       }
@@ -237,7 +252,7 @@ export function adaptClaude(filePath: string): SessionData {
   }
 
   const id = path.parse(filePath).name;
-  return [{ id, subagent: sub }, events];
+  return [{ id, subagent: sub, filePath: path.resolve(filePath) }, events];
 }
 
 export function adaptCodex(filePath: string): SessionData {
@@ -276,11 +291,15 @@ export function adaptCodex(filePath: string): SessionData {
       tools = String(p.arguments ?? "");
     } else if (ptype === "function_call_output") {
       text = textOf(p.output);
-      const m = text.match(EXIT_RE);
-      if (m) {
-        const codeStr = m[1] ?? m[2];
-        if (codeStr !== undefined) {
-          exitCode = parseInt(codeStr, 10);
+      const isReadFile =
+        text.includes("Showing lines") || text.includes("Partial read");
+      if (!isReadFile) {
+        const m = text.match(EXIT_RE);
+        if (m) {
+          const codeStr = m[1] ?? m[2];
+          if (codeStr !== undefined) {
+            exitCode = parseInt(codeStr, 10);
+          }
         }
       }
     } else {
@@ -298,7 +317,10 @@ export function adaptCodex(filePath: string): SessionData {
     });
   }
 
-  return [{ id: sid, subagent: false }, events];
+  return [
+    { id: sid, subagent: false, filePath: path.resolve(filePath) },
+    events,
+  ];
 }
 
 export const ADAPTERS: Record<
@@ -323,7 +345,10 @@ export const ADAPTERS: Record<
   },
 };
 
-export function loadPrs(filePath?: string | null): PullRequest[] {
+export function loadPrs(
+  filePath?: string | null,
+  cwd: string = process.cwd(),
+): PullRequest[] {
   if (filePath) {
     try {
       const content = fs.readFileSync(filePath, "utf-8");
@@ -347,7 +372,12 @@ export function loadPrs(filePath?: string | null): PullRequest[] {
         "--json",
         "number,title,headRefName,createdAt,mergedAt",
       ],
-      { encoding: "utf-8", timeout: 60_000, stdio: ["ignore", "pipe", "pipe"] },
+      {
+        cwd,
+        encoding: "utf-8",
+        timeout: 60_000,
+        stdio: ["ignore", "pipe", "pipe"],
+      },
     );
     return JSON.parse(out) as PullRequest[];
   } catch (e: unknown) {
@@ -359,12 +389,12 @@ export function loadPrs(filePath?: string | null): PullRequest[] {
   }
 }
 
-export function loadGitBranches(): string[] {
+export function loadGitBranches(cwd: string = process.cwd()): string[] {
   try {
     const out = execFileSync(
       "git",
       ["branch", "-a", "--format=%(refname:short)"],
-      { encoding: "utf-8", timeout: 10_000, stdio: ["ignore", "pipe", "pipe"] },
+      { cwd, encoding: "utf-8", timeout: 10_000, stdio: ["ignore", "pipe", "pipe"] },
     );
     return out
       .split("\n")
@@ -373,6 +403,112 @@ export function loadGitBranches(): string[] {
   } catch {
     return [];
   }
+}
+
+export interface RepoContext {
+  root: string;
+  name: string;
+  slug: string | null;
+  branches: Set<string>;
+  prs: PullRequest[];
+}
+
+export function loadRepoContext(
+  explicitRepo?: string | null,
+  prsJson?: string | null,
+  explicitPrs?: PullRequest[],
+): RepoContext {
+  let root = explicitRepo ? path.resolve(explicitRepo) : "";
+  if (!root) {
+    try {
+      root = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+        encoding: "utf-8",
+        timeout: 5000,
+        stdio: ["ignore", "pipe", "pipe"],
+      }).trim();
+    } catch {
+      root = process.cwd();
+    }
+  }
+
+  const name = path.basename(root);
+  let slug: string | null = null;
+  try {
+    const remote = execFileSync(
+      "git",
+      ["config", "--get", "remote.origin.url"],
+      {
+        cwd: root,
+        encoding: "utf-8",
+        timeout: 5000,
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    ).trim();
+    const match = remote.match(/[:/]([^/:]+\/[^/:]+?)(?:\.git)?$/);
+    if (match && match[1]) {
+      slug = match[1];
+    }
+  } catch {
+    slug = null;
+  }
+
+  const branches = new Set(loadGitBranches(root));
+  const prs = explicitPrs ?? loadPrs(prsJson, root);
+
+  return { root, name, slug, branches, prs };
+}
+
+export function sessionMatchesRepo(
+  meta: SessionMeta,
+  events: TranscriptEvent[],
+  repo: RepoContext,
+): boolean {
+  if (meta.filePath) {
+    const normalizedFile = path.resolve(meta.filePath);
+    if (normalizedFile.includes("/.claude/projects/")) {
+      const projectEncoded =
+        normalizedFile.split("/.claude/projects/")[1]?.split("/")[0] ?? "";
+      if (projectEncoded) {
+        const decoded = projectEncoded.replace(/^-/, "/").replace(/-/g, "/");
+        if (
+          decoded &&
+          !decoded.includes(repo.name) &&
+          !repo.root.includes(decoded)
+        ) {
+          return false;
+        }
+      }
+    }
+  }
+
+  let fullText = "";
+  for (const e of events) {
+    fullText += " " + e.text + " " + e.tools;
+  }
+
+  const foreignWorkspaceMatch = fullText.match(
+    /\/workspace\/([a-zA-Z0-9_.-]+)/,
+  );
+  if (foreignWorkspaceMatch && foreignWorkspaceMatch[1]) {
+    const wsName = foreignWorkspaceMatch[1];
+    if (wsName !== repo.name && !fullText.includes(repo.root)) {
+      return false;
+    }
+  }
+
+  if (fullText.includes(repo.root)) return true;
+  if (repo.slug && fullText.toLowerCase().includes(repo.slug.toLowerCase())) {
+    return true;
+  }
+  if (
+    fullText.includes(`/${repo.name}/`) ||
+    fullText.includes(`"${repo.name}"`) ||
+    fullText.includes(`'${repo.name}'`)
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 export function keysFor(
@@ -395,9 +531,10 @@ export function keysFor(
 
   for (const b of Array.from(branches).toSorted()) {
     const m = b.match(ISSUE_BRANCH_RE);
-    if (m && m[1]) {
-      if (!byIssue.has(m[1])) {
-        byIssue.set(m[1], b);
+    if (m) {
+      const iss = m[1] ?? m[2];
+      if (iss && !byIssue.has(iss)) {
+        byIssue.set(iss, b);
       }
     }
   }
@@ -408,6 +545,15 @@ export function keysFor(
   };
 
   for (const e of events) {
+    // Skip read_file outputs so documentation examples do not contaminate branch keys
+    if (
+      /^Created At:.*\nCompleted At:.*\n(?:Showing lines|Partial read)/s.test(
+        e.text,
+      )
+    ) {
+      continue;
+    }
+
     if (
       e.branch &&
       e.branch !== "main" &&
@@ -423,16 +569,33 @@ export function keysFor(
     const branchMatches = blob.matchAll(BRANCH_RE);
     for (const m of branchMatches) {
       const b = m[1] || m[2] || m[3] || m[4];
-      if (b && branches.has(b)) {
+      if (!b) continue;
+      if (branches.has(b)) {
         addKey(b);
+      } else {
+        const issMatch = b.match(ISSUE_BRANCH_RE);
+        const iss = issMatch ? (issMatch[1] ?? issMatch[2]) : null;
+        if (iss && byIssue.has(iss)) {
+          addKey(byIssue.get(iss)!);
+        }
       }
     }
 
     PR_RE.lastIndex = 0;
     const prMatches = blob.matchAll(PR_RE);
     for (const m of prMatches) {
-      const n = m[1];
+      const n = m[1] || m[2];
       if (!n) continue;
+      // Skip prose references like anti-pattern #8, rule #3, step #1, line #5
+      const matchIdx = m.index ?? 0;
+      const preceding = blob.slice(Math.max(0, matchIdx - 20), matchIdx);
+      if (
+        /anti-pattern\s*|rule\s*|step\s*|item\s*|line\s*|task\s*/i.test(
+          preceding,
+        )
+      ) {
+        continue;
+      }
       const targetPr = byPr.get(n);
       if (targetPr) {
         addKey(targetPr);
@@ -446,6 +609,53 @@ export function keysFor(
   }
 
   return keys;
+}
+
+export function cleanPrompt(text: string): string {
+  let cleaned = text.replace(/<\/?[A-Z_]+>/g, " ").trim();
+  const sideQuestionMatch = cleaned.match(/Here is the question:\s*([^\n]+)/i);
+  if (sideQuestionMatch && sideQuestionMatch[1]) {
+    cleaned = sideQuestionMatch[1].trim();
+  }
+  const firstLine =
+    cleaned
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .find((l) => l.length > 0) ?? "";
+  return firstLine.slice(0, 100);
+}
+
+export function chooseGroupTopic(
+  members: LiveSessionInfo[],
+  branch: string,
+  prs: PullRequest[],
+): string {
+  const matchingPr = prs.find((p) => p.headRefName === branch);
+  if (matchingPr?.title && matchingPr.title.trim().length > 0) {
+    return matchingPr.title.trim();
+  }
+
+  const genericPrompts = new Set([
+    "what is wrong",
+    "what is wrong here?",
+    "checkout to the branch for this",
+    "/comments-review",
+    "commit",
+    "hi",
+    "hey",
+    "/start-ticket",
+    "/qa",
+    "/human-qa",
+  ]);
+
+  for (const s of members) {
+    const p = s.prompt.trim();
+    if (p.length > 10 && !genericPrompts.has(p.toLowerCase())) {
+      return p;
+    }
+  }
+
+  return members[0]?.prompt || branch;
 }
 
 function getPrimary(keys: Map<string, number>): string | null {
@@ -493,7 +703,9 @@ export function cluster(
   since: Date,
   until: Date,
   prs: PullRequest[],
+  repo?: RepoContext,
 ): ClusterPlanEntry[] {
+  const repoCtx = repo ?? loadRepoContext(undefined, undefined, prs);
   const live: LiveSessionInfo[] = [];
 
   for (const [meta, events] of sessions) {
@@ -502,6 +714,10 @@ export function cluster(
     }
     const users = events.filter((e) => e.role === "user").map((e) => e.text);
     if (users.some((u) => RETRO_MARKERS.some((m) => u.includes(m)))) {
+      continue;
+    }
+
+    if (!sessionMatchesRepo(meta, events, repoCtx)) {
       continue;
     }
 
@@ -522,18 +738,10 @@ export function cluster(
 
     let prompt = "";
     if (users.length > 0 && users[0]) {
-      const cleaned = users[0]
-        .replace(/<\/?[A-Z_]+>/g, " ")
-        .trim();
-      const firstLine =
-        cleaned
-          .split(/\r?\n/)
-          .map((l) => l.trim())
-          .find((l) => l.length > 0) ?? "";
-      prompt = firstLine.slice(0, 100);
+      prompt = cleanPrompt(users[0]);
     }
 
-    const keys = keysFor(events, prs);
+    const keys = keysFor(events, repoCtx.prs, Array.from(repoCtx.branches));
     const primary = getPrimary(keys);
 
     live.push({
@@ -559,9 +767,17 @@ export function cluster(
   const grouped = new Map<string, LiveSessionInfo[]>();
   const standalone: LiveSessionInfo[] = [];
 
+  const ADJACENT_WINDOW_MS = 2 * 24 * 60 * 60 * 1000;
+  const minExpansionTime = since.getTime() - ADJACENT_WINDOW_MS;
+  const maxExpansionTime = until.getTime() + ADJACENT_WINDOW_MS;
+
   for (const s of live) {
+    const isAdjacent =
+      s.first.getTime() >= minExpansionTime &&
+      s.first.getTime() <= maxExpansionTime;
+
     if (s.primary) {
-      if (windowKeys.has(s.primary)) {
+      if (windowKeys.has(s.primary) && (s.in_window || isAdjacent)) {
         let group = grouped.get(s.primary);
         if (!group) {
           group = [];
@@ -590,7 +806,8 @@ export function cluster(
       (a, b) => a.first.getTime() - b.first.getTime(),
     );
     const branch = sortedMembers[0]!.primary!;
-    plan.push(entry(sortedMembers, branch, sortedMembers[0]!.prompt));
+    const topic = chooseGroupTopic(sortedMembers, branch, repoCtx.prs);
+    plan.push(entry(sortedMembers, branch, topic));
   }
 
   if (standalone.length > 0) {
@@ -675,6 +892,7 @@ export function main(argv: string[] = process.argv.slice(2)): number {
       since: { type: "string" },
       until: { type: "string" },
       "prs-json": { type: "string" },
+      repo: { type: "string" },
     },
     strict: true,
   });
@@ -709,9 +927,9 @@ export function main(argv: string[] = process.argv.slice(2)): number {
     return 1;
   }
 
+  const repo = loadRepoContext(values.repo, values["prs-json"]);
   const sessions = paths.map((p) => adapt(p));
-  const prs = loadPrs(values["prs-json"]);
-  const plan = cluster(sessions, since, until, prs);
+  const plan = cluster(sessions, since, until, repo.prs, repo);
 
   console.log(JSON.stringify(plan, null, 2));
   return 0;

@@ -10,6 +10,7 @@ Diagnose recurring problems across conversation transcripts, verify each against
 
 ## Execution rules
 
+- Restrict the retrospective strictly to conversations related to the active repository. Never include or analyze conversations, transcripts, or work units from other projects or repositories.
 - Keep tracked repository files untouched throughout the retrospective.
 - Delegate all transcript scanning and problem extraction to subagents that never modify repository files, using the default inherited model. Every subagent needs shell command execution. Use the `self` subagent type, or define a custom type with write tools enabled (shell access comes with them) and instruct it not to edit files. A custom type without write tools cannot run `scripts/cluster.ts`. The main agent spawns one subagent per group. Group subagents spawn batch subagents only when the harness permits nested spawning, and batch subagents never spawn. Subagents return findings in memory within their completion message. No agent reads a running subagent's transcript; it waits for the completion message.
 - Only the main agent writes files, saving the final report to `.scratch/retro/retrospective-<YYYYMMDD-HHMMSS>.md` with the native file-writing tool as a workspace file rather than a session artifact.
@@ -29,13 +30,13 @@ Classify every extracted problem into one of three areas:
 
 ### 1. Scope and cluster conversations
 
-Dispatch a read-only scoping subagent as the first action of the session, leaving all log directory listing and transcript scanning to the subagent. After invoking the scoping subagent, output a single-line status message with zero tool calls and wait for its completion message. The scoping subagent runs the bundled script, which works for any agent whose sessions are JSONL files:
+Dispatch a read-only scoping subagent as the first action of the session to list log directories and scan transcripts. After invoking the scoping subagent, output a single-line status message with zero tool calls and wait for its completion message. The scoping subagent runs the bundled script, which works for any agent whose sessions are JSONL files:
 
 ```bash
 bun .agents/skills/retro/scripts/cluster.ts --agent <antigravity|claude|codex> --since <YYYY-MM-DD> --until <YYYY-MM-DD>
 ```
 
-The script discards retro and skill-editing sessions, subagent runs, and sessions outside the window. It resolves PR numbers, issue references, and branch checkouts to canonical branches (through `gh pr list`, or `--prs-json` when `gh` is unavailable), expands each matched branch across adjacent days, and pools the remaining sessions into one standalone group. It prints the cluster plan as a JSON array:
+The script filters transcripts by the active repository root and remote slug, discarding sessions from other repositories or outside the repository workspace. It discards retro and skill-editing sessions, subagent runs, and sessions outside the window. It resolves PR numbers, issue references, and branch checkouts to canonical branches (through `gh pr list`, or `--prs-json` when `gh` is unavailable), expands each matched branch across adjacent days, and pools the remaining repository sessions into one standalone group. It prints the cluster plan as a JSON array:
 
 ```json
 [
@@ -52,10 +53,11 @@ The script discards retro and skill-editing sessions, subagent runs, and session
 
 The subagent then sanity-checks the plan and returns it in memory:
 
-1. Spot-check one group's transcripts to confirm the topic matches the work.
-2. Replace each `topic` and `summary` with a brief description of the lifecycle reviewed, user corrections, and command failures.
-3. For an agent without an adapter, or a log format the script misparses, add or fix an adapter in `scripts/cluster.ts` (each adapter normalizes one JSONL dialect) rather than scanning transcripts by hand.
-4. Merge or split groups only when the script's branch resolution is demonstrably wrong.
+1. Confirm that every group belongs to the active repository. Drop any conversation, branch, or standalone item originating from another project or repository.
+2. Spot-check one group's transcripts to confirm the topic matches the work.
+3. Replace each `topic` and `summary` with a brief description of the lifecycle reviewed, user corrections, and command failures.
+4. For an agent without an adapter, or a log format the script misparses, add or fix an adapter in `scripts/cluster.ts` (each adapter normalizes one JSONL dialect) rather than scanning transcripts by hand.
+5. Merge or split groups only when the script's branch resolution is demonstrably wrong.
 
 Completion criterion: The main agent dispatches the scoping subagent as its first action, yields the turn, and receives the cluster plan JSON array in memory.
 
