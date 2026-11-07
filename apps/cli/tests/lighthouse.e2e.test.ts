@@ -283,5 +283,21 @@ describe("Lighthouse CLI Subprocess Tests (E2E)", () => {
     ]);
     expect(failCode).toBe(1);
     expect(failErr).toContain("Error parsing budget rules");
+
+    // Binary audit execution initializes without ENOENT virtual filesystem locales crash
+    const { exitCode: auditCode, stderr: auditErr } = await runSubprocess([
+      compiledBinPath,
+      "lighthouse",
+      "https://example.com/",
+      "--runs",
+      "1",
+      "--chrome-path",
+      "/nonexistent/chrome",
+    ]);
+    expect(auditCode).toBe(1);
+    expect(auditErr).not.toContain("scandir '/$bunfs/root/locales/'");
+    expect(auditErr).toContain(
+      'Specified browser path is invalid or non-executable: "/nonexistent/chrome"',
+    );
   });
 });

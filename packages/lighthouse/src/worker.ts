@@ -5,6 +5,7 @@ import {
 } from "@devtools/browser";
 import { resolveChromeSandboxDisabled } from "./config";
 import { WorkerExecutionError } from "./errors";
+import { ensureLighthouseVirtualFs } from "./virtual-fs";
 import type {
   ExecuteIterationParams,
   LighthouseFormFactor,
@@ -188,11 +189,15 @@ export async function executeIteration(
     ((await import("chrome-launcher")).launch as unknown as NonNullable<
       WorkerIterationDependencies["launchChrome"]
     >);
-  const runLh =
-    deps.runLighthouse ??
-    ((await import("lighthouse")).default as unknown as NonNullable<
+  let runLh = deps.runLighthouse;
+  if (!runLh) {
+    ensureLighthouseVirtualFs();
+    const { registerBundledModules } = await import("./bundled-modules");
+    await registerBundledModules();
+    runLh = (await import("lighthouse")).default as unknown as NonNullable<
       WorkerIterationDependencies["runLighthouse"]
-    >);
+    >;
+  }
   const Launcher = (await import("chrome-launcher")).Launcher;
 
   const emitStage = (
