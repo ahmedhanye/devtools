@@ -887,6 +887,7 @@ export function main(argv: string[] = process.argv.slice(2)): number {
   const { values } = parseArgs({
     args: argv,
     options: {
+      help: { type: "boolean", short: "h" },
       agent: { type: "string" },
       logs: { type: "string" },
       since: { type: "string" },
@@ -896,6 +897,22 @@ export function main(argv: string[] = process.argv.slice(2)): number {
     },
     strict: true,
   });
+
+  if (values.help) {
+    console.log(`Usage: cluster.ts --agent <antigravity|claude|codex> --since <YYYY-MM-DD> [options]
+
+Cluster agent session transcripts by branch or pull request.
+
+Options:
+  -h, --help      Show this help message
+  --agent         Agent harness type (antigravity, claude, codex) [required]
+  --since         Start date (YYYY-MM-DD) [required]
+  --until         End date (YYYY-MM-DD) [optional, defaults to since]
+  --logs          Transcript log directory or glob pattern [optional]
+  --repo          Repository root directory [optional]
+  --prs-json      Path to pre-fetched pull requests JSON file [optional]`);
+    return 0;
+  }
 
   const agent = values.agent as AgentName | undefined;
   if (!agent || !(agent in ADAPTERS)) {
