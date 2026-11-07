@@ -50,6 +50,12 @@ Completion criterion: Candidate problems extracted, verified against repository 
 2. Structure the report with:
    - **Executive Action Matrix**: Prioritize mechanical checks into `P0` (critical / security / broken CI), `P1` (high friction / silent quality decay), and `P2` (ergonomics / hygiene), mapping each to an explicit verification command.
    - **Detailed Findings**: Group findings into **Agent problems**, **Codebase, tooling, and environment problems**, and **Developer workflow and prompting problems**. For each finding, document the verified problem, transcript evidence, frequency (single incident or recurring pattern), impact, and recommended mechanical check.
-3. Reply in chat with the report path, present the top `P0`/`P1` action table directly in the response, and invite user feedback. Recommend [`/grilling`](../grilling/SKILL.md) to stress-test proposed guardrails before implementation. Keep the chat response under 15 lines.
+3. Reply in chat with the report path, present the top `P0`/`P1` action table directly in the response, and invite user feedback. Ask the user to review the report and reply with feedback on the findings so we can start grilling. **Stop here and end your turn. Wait for the user to reply before starting step 4.** Keep the chat response under 15 lines.
 
-Completion criterion: Report written to `.scratch/retro/` and summary presented in chat with prioritized action table and `/grilling` recommendation.
+Completion criterion: Report written to `.scratch/retro/` and summary presented in chat with prioritized action table and feedback request.
+
+### 4. Grill on findings
+
+Read [`.agents/skills/grilling/SKILL.md`](../grilling/SKILL.md) to resolve user feedback, disputed findings, and guardrails with genuine design trade-offs.
+
+Completion criterion: Open questions on proposed guardrails resolved with the user.
