@@ -35,7 +35,7 @@ Completion criterion: The primary session dispatches the subagent, halts tool ex
 
 When running inside the dispatched subagent:
 
-1. **Verify the pull request.** Confirm the pull request number and verify it is open via `gh pr view <number>`. Stop if closed or merged.
+1. **Verify the pull request.** Confirm the pull request number and verify it is open via `gh pr view <number> --json number,title,state,headRefName,baseRefName`. Stop if closed or merged.
 2. **Fetch unresolved review threads.** Run the GraphQL query from `docs/contributing/pull-requests.md` to extract all unresolved review threads, comment IDs, authors, paths, line numbers, and comment bodies. If zero unresolved threads exist, report that all threads are resolved and stop.
 3. **Assemble repository truth.**
    - Pull request diff: inspect via `gh pr diff <number>`.
@@ -66,15 +66,16 @@ Completion criterion: The subagent completes all thread investigations, creates 
 Apply changes only after the user explicitly confirms the findings and approves execution:
 
 1. **Apply fixes for valid defects.** Implement the recommended code changes, run automated test suites (`bun test`), and commit changes following atomic commit conventions.
-2. **Resolve GitHub review threads.** For each resolved valid defect and refuted false positive:
-   - Post a technical reply comment via the GitHub REST API:
+2. **Push commits before thread resolution.** Push committed changes to the remote branch (`git push origin <branch>`). Thread resolution must happen after commits exist on GitHub so review diffs update and reviewer bots verify the new commits.
+3. **Resolve all GitHub review threads.** Address every unresolved thread:
+   - **Valid defects and refuted false positives**: Post a technical reply citing the commit fix or architectural refutation:
      ```bash
      gh api repos/{owner}/{repo}/pulls/<pr_number>/comments/<comment_id>/replies -f body="<reply_body>"
      ```
-   - Resolve the thread via the GitHub GraphQL API:
+     Resolve the thread via GraphQL:
      ```bash
      gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "<thread_id>"}) { clientMutationId } }'
      ```
-3. **Handle trade-offs and suggestions.** Leave ambiguous threads open or post maintainer notes as directed by user confirmation.
+   - **Dismissed suggestions and resolved trade-offs**: Post a technical note explaining why the suggestion was dismissed or which trade-off direction was chosen, and resolve the thread using the same mutation.
 
-Completion criterion: All approved code fixes are committed, tests pass, and corresponding GitHub review threads are resolved.
+Completion criterion: All approved code fixes are committed and pushed to the remote branch, and all GitHub review threads are resolved with explanatory replies.

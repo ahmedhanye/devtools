@@ -17,7 +17,7 @@ pre-commit:
 
     react-doctor:
       glob: "{apps/frontend,site}/**/*.{js,jsx,ts,tsx}"
-      run: bunx react-doctor --project apps/frontend,site --staged --blocking error --no-telemetry --no-supply-chain
+      run: bunx react-doctor --project apps/frontend,site -y --no-telemetry --no-supply-chain --blocking error {staged_files}
 
     test-staged-ui:
       glob: "apps/frontend/src/**/*.{ts,tsx}"
