@@ -2,7 +2,7 @@ import type {
   LighthouseCategoryScores,
   LighthouseCoreWebVitals,
 } from "@devtools/lighthouse";
-import pc from "picocolors";
+import { type ColorOptions, getColors } from "../colors";
 import { InvalidBudgetRuleError } from "./errors";
 import type {
   BudgetEvaluationResult,
@@ -315,11 +315,13 @@ export function evaluateBudgets(
  */
 export function formatBudgetEvaluationTerminal(
   result: BudgetEvaluationResult,
+  options: ColorOptions = {},
 ): string {
   if (result.evaluations.length === 0) {
     return "";
   }
 
+  const pc = getColors(options);
   const lines: string[] = [];
   lines.push(pc.bold("\nPerformance Budget Evaluation:"));
   lines.push("─".repeat(60));

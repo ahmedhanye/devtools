@@ -5,7 +5,7 @@ import type {
 } from "@devtools/browser";
 import type { EnvMap } from "@devtools/core";
 import { Command } from "commander";
-import pc from "picocolors";
+import { getColors } from "./colors";
 
 /**
  * CLI flag options for `devtools browser status`.
@@ -61,6 +61,8 @@ export async function runBrowserStatusCommand(
     cacheDir: options.path,
     env: options.env,
   });
+
+  const pc = getColors({ env: options.env as NodeJS.ProcessEnv });
 
   if (options.json) {
     console.log(JSON.stringify(status, null, 2));
@@ -126,6 +128,7 @@ export async function runBrowserInstallCommand(
   };
 
   const isTTY = deps?.isTTY ?? Boolean(process.stderr.isTTY);
+  const pc = getColors({ env: options.env as NodeJS.ProcessEnv, isTTY });
   const writeStderr =
     deps?.writeStderr ?? ((chunk: string) => process.stderr.write(chunk));
   const doInstall =

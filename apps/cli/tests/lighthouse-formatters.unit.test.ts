@@ -342,14 +342,27 @@ describe("Lighthouse Formatters (Unit)", () => {
   });
 
   describe("formatTerminalDiff", () => {
-    test("formats pairwise audit comparison with deltas", () => {
-      const output = stripAnsi(formatTerminalDiff(sampleRow1, sampleRow2));
+    test("formats pairwise audit comparison with deltas without colors", () => {
+      const output = formatTerminalDiff(sampleRow1, sampleRow2, undefined, {
+        colors: false,
+      });
       expect(output).toContain("Baseline:   3f74b419");
       expect(output).toContain("Comparison: 8c91a723");
       expect(output).toContain("Performance");
       expect(output).toContain("+15");
       expect(output).toContain("-1,800 ms");
       expect(output).toContain("-0.140");
+      expect(output).not.toContain("\x1b[");
+    });
+
+    test("formats pairwise audit comparison with ANSI codes when colors are enabled", () => {
+      const output = formatTerminalDiff(sampleRow1, sampleRow2, undefined, {
+        colors: true,
+      });
+      expect(output).toContain("\x1b[32m"); // green for improvements
+      const stripped = stripAnsi(output);
+      expect(stripped).toContain("+15");
+      expect(stripped).toContain("-1,800 ms");
     });
   });
 
