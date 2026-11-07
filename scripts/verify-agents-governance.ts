@@ -442,7 +442,7 @@ function validateRuleTriggerField(
       line: 2,
       rule: "rule/trigger-must-be-string",
       message:
-        'Rule \'trigger\' must be a single glob string, not a YAML sequence (array). Use brace expansion instead, for example: trigger: "{package.json,bun.lock}"',
+        "Rule 'trigger' must be a single glob string, not a YAML sequence (array). Use brace expansion instead, for example: trigger: \"{package.json,bun.lock}\"",
       severity: "error",
     };
   }
@@ -749,8 +749,11 @@ export function verifyAgentsGovernance(
   return { findings, scannedCount };
 }
 
+/** Backwards-compatible alias for {@link verifyAgentsGovernance}. */
+export const verifyAgentRules = verifyAgentsGovernance;
+
 /**
- * CLI execution entrypoint for `bun .agents/skills/writing-for-agents/scripts/verify-agents-governance.ts`.
+ * CLI execution entrypoint for `bun scripts/verify-agents-governance.ts`.
  */
 function run(): void {
   const startTime = performance.now();

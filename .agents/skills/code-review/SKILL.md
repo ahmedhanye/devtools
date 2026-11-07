@@ -57,7 +57,7 @@ Each smell reads *what it is* → *how to fix*; match it against the diff:
 
 ### 4. Spawn both sub-agents in parallel
 
-Issue both sub-agent calls together, in the foreground, and aggregate the reports they return.
+Dispatch both sub-agents in parallel and yield execution immediately. Await reactive notification of completion from both sub-agents before aggregating reports; do not poll status or execute sleep loops.
 
 **Standards sub-agent prompt** should include:
 
@@ -83,7 +83,7 @@ End with a one-line summary: total findings per axis, and the worst issue _withi
 
 A change can pass one axis and fail the other:
 
-- Code that follows every standard but implements the wrong thing → **Standards pass, Spec fail.**
-- Code that does exactly what the issue asked but breaks the project's conventions → **Spec pass, Standards fail.**
+- Code that follows every standard but implements the wrong thing - **Standards pass, Spec fail.**
+- Code that does exactly what the issue asked but breaks the project's conventions - **Spec pass, Standards fail.**
 
 Reporting them separately stops one axis from masking the other.

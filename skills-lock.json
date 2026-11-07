@@ -31,12 +31,6 @@
       "skillPath": "feature-sliced-design/SKILL.md",
       "computedHash": "ffed722f612ca9f9de3f35345c2beb40fb0d56a39391d85f27d6523cf52a07d3"
     },
-    "gh-stack": {
-      "source": "github/gh-stack",
-      "sourceType": "github",
-      "skillPath": "skills/gh-stack/SKILL.md",
-      "computedHash": "e54bf50370987f13ca2803b3be829f36350b68a79dc36ffd3b27350bc6d2fde1"
-    },
     "grill-me": {
       "source": "mattpocock/skills",
       "sourceType": "github",
@@ -54,12 +48,6 @@
       "sourceType": "github",
       "skillPath": "skills/engineering/implement/SKILL.md",
       "computedHash": "b6371a0a6723bad551f3adc721e3729a6a97acfc3670dc2bdea198bbe78408c0"
-    },
-    "pr": {
-      "source": "mattpocock/skills",
-      "sourceType": "github",
-      "skillPath": "skills/engineering/pr/SKILL.md",
-      "computedHash": "22a15d4d469344b38e03eb0e95772478393975836289393b1bad3c0febcdc679"
     },
     "prototype": {
       "source": "mattpocock/skills",
