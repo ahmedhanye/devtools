@@ -21,18 +21,19 @@ Place each instruction on the lowest tier of the `.agents/` hierarchy that still
 1. **Tier 1, always-loaded root and routing metadata.** `.agents/AGENTS.md` loads on every turn alongside model-invoked `SKILL.md` frontmatter, where `name` and `description` cost roughly 60 to 100 tokens per skill. Restrict `.agents/AGENTS.md` to universal execution boundaries and high-signal context pointers that apply to every task.
 2. **Tier 2, conditionally loaded rules and skill bodies.**
    - **Scoped rules in `.agents/rules/*.md`.** Move domain, package, or file-specific rules out of `.agents/AGENTS.md` and into `.agents/rules/*.md` gated by YAML frontmatter. Each rule requires a single glob string `trigger` such as `"{package.json,bun.lock}"` and a `description` of at least 10 characters. Never use a YAML array for `trigger`.
-   - **Skill bodies in `.agents/skills/<name>/SKILL.md`.** Loaded on demand when triggered. Keep `SKILL.md` under 500 lines, holding ordered **steps** and core **reference** needed by every run of the skill.
-3. **Tier 3, disclosed references and executable scripts.** Push branch-specific reference into sibling Markdown files such as [`SKILL-MECHANICS.md`](SKILL-MECHANICS.md) or `references/*.md` behind a pointer. Move deterministic validation, parsing, or lookup logic into executable scripts under `scripts/` so the agent runs the CLI without loading script source code into the context window.
+   - **Skill bodies in `.agents/skills/<name>/SKILL.md`.** Loaded on demand when triggered, holding ordered **steps** and core **reference** needed by every run of the skill.
+3. **Tier 3, disclosed references and executable scripts.** Push branch-specific reference into sibling Markdown files such as `references/*.md` behind a pointer. Move deterministic validation, parsing, or lookup logic into executable scripts under `scripts/` so the agent runs the CLI without loading script source code into the context window.
 
 **Co-location.** Group a concept's definition, rules, and edge cases under one heading so reading that section loads the complete contract. Scattering one rule across multiple headings fragments attention, while repeating the same rule across files creates drift.
 
 ## Context pointers
 
-A **context pointer** is an always-loaded line that names an out-of-context file and states when to read it, such as a skill `description`, a rule `description`, or a skill reference in `.agents/AGENTS.md`. The pointer's wording determines whether the agent reaches the target file. When an agent misses a document, sharpen the pointer wording before inlining the target material.
+A **context pointer** is an always-loaded line that names an out-of-context file and states when to read it, such as a model-invoked skill `description`, a rule `description`, or a pointer to a repository document (`TESTING.md`, `ARCHITECTURE.md`). The pointer's wording determines whether the agent reaches the target file. When an agent misses a document, sharpen the pointer wording before inlining the target material.
 
 - **Front-load trigger terms.** Format descriptions as `<What it does>. Use when <distinct trigger branches>.` so the primary action and domain nouns appear in the first clause.
 - **Keep one trigger per branch.** A branch is a distinct scenario the target document handles. Collapse synonyms that describe the same scenario into one trigger phrase.
 - **Omit body details.** State what the target file covers and when to load it, leaving implementation steps to the target file.
+- **No duplicate pointers for auto-loaded files.** `.agents/AGENTS.md`, active rule headers, and model-invoked skill `description` fields load into context automatically on every turn. Never add pointers to model-invoked skills, rules, or `.agents/AGENTS.md` inside `.agents/AGENTS.md` or `.agents/rules/*.md`.
 
 ## Steps and completion criteria
 
@@ -50,7 +51,9 @@ End every procedural step or workflow with a checkable, exhaustive **completion 
 
 ## Pruning
 
-- **Single source of truth.** State each rule once at the boundary where it applies. Reference [`/unslop`](../unslop/SKILL.md) for prose hygiene rather than copying style lists into other skills or rules.
+- **Brevity is the soul of wit.** Target 30 to 80 lines for focused skills, treating 500 lines as a hard ceiling for complex multi-step workflows. Cut any sentence that does not change agent behavior.
+- **Single-concern scope.** Restrict each skill or rule to its own domain. Never include git, pull request, ticketing, or unrelated workflow instructions inside a domain skill.
+- **Single source of truth.** State each rule once at the boundary where it applies. Reference any skill, rule, or document at most once per file without repeating the link across sections or copying its rules into the body.
 - **No environment caching.** `package.json` scripts, directory layouts, config files, and CLI `--help` output are live sources of truth. Document only unwritten conventions, architectural trade-offs, and non-obvious constraints that the agent cannot inspect directly.
 - **File pointers over code copies.** Point to repository-relative file paths instead of pasting codebase snippets into instructions where they go stale.
 - **No-op and stale line removal.** Delete instructions that the model already obeys by default or that reference obsolete files and workflows.
@@ -60,15 +63,14 @@ End every procedural step or workflow with a checkable, exhaustive **completion 
 
 Run these steps whenever creating or modifying `.agents/AGENTS.md`, `.agents/rules/*.md`, `.agents/skills/**/*.md`, or `skills-lock.json`.
 
-1. **Apply unslop.** Edit modified prose against [`.agents/skills/unslop/SKILL.md`](../unslop/SKILL.md) to remove AI vocabulary, em dashes, mid-sentence connector colons, inline-header colons, metaphors, and passive voice.
-2. **Run governance verification.** Execute the bundled validator to check YAML frontmatter, code fences, path portability, local Markdown links, and em-dash rules.
+1. **Run governance verification.** Execute the bundled validator to check YAML frontmatter, code fences, path portability, local Markdown links, and unslop punctuation rules.
    ```bash
    bun .agents/skills/writing-for-agents/scripts/verify-agents-governance.ts
    ```
    Pass specific file paths during iterative edits, or run `bun run lint:agents` to validate all `.agents/` Markdown files.
-3. **Check formatting.** Verify Markdown and JSON formatting with Prettier.
+2. **Check formatting.** Verify Markdown and JSON formatting with Prettier.
    ```bash
    bunx prettier --check .agents/
    ```
 
-Completion criterion: All modified `.agents/` files follow [`/unslop`](../unslop/SKILL.md), `bun .agents/skills/writing-for-agents/scripts/verify-agents-governance.ts` exits `0`, and `bunx prettier --check` exits `0`.
+Completion criterion: All modified `.agents/` files pass unslop prose review, `bun .agents/skills/writing-for-agents/scripts/verify-agents-governance.ts` exits `0`, and `bunx prettier --check .agents/` exits `0`.

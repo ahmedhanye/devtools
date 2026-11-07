@@ -14,7 +14,7 @@ Every `.agents/skills/<name>/SKILL.md` must start with a YAML frontmatter block 
 
 Choose between model invocation and user invocation based on who triggers the skill.
 
-- **Model-invoked skills.** Omit `disable-model-invocation`. Both the agent and the user can invoke the skill, and other skills can reference it. Because the `description` remains loaded in context on every turn, write it using the context pointer rules in [`SKILL.md`](SKILL.md). A model-invoked reference skill can also hold shared rules that multiple skills consult.
+- **Model-invoked skills.** Omit `disable-model-invocation`. Both the agent and the user can invoke the skill, and other skills can reference it. Because the `description` loads into context automatically on every turn, write it using the context pointer rules in `SKILL.md` and never add duplicate pointers to the skill inside `.agents/AGENTS.md` or `.agents/rules/*.md`. A model-invoked reference skill can also hold shared rules that multiple skills consult.
 - **User-invoked skills.** Set `disable-model-invocation: true`. Only the user typing `/<name>` can invoke the skill, spending zero context tokens per turn. Write a concise one-sentence `description` for the human without `Use when...` trigger branches.
 - **Shared reference for user-invoked skills.** Two user-invoked skills cannot invoke each other automatically. Place shared reference in a standalone Markdown file or a model-invoked skill that both skills link to.
 
@@ -34,4 +34,4 @@ Place deterministic validation, lookup, or transformation logic in `.agents/skil
 ## Two-tier skill management
 
 - **Vendor skills in `skills-lock.json`.** Skills declared in root `skills-lock.json` are read-only upstream assets updated with `bunx skills`. [`scripts/verify-agents-governance.ts`](scripts/verify-agents-governance.ts) exempts vendor skills from directory-name mismatch, machine-path, local link, and unslop checks.
-- **Customized skills in `.agents/skills-override.json`.** Before editing a vendor skill, eject it by removing its entry from `skills-lock.json` and registering its upstream `source`, `path`, and `commit` SHA in `.agents/skills-override.json`. Ejected skills must pass all checks in [`scripts/verify-agents-governance.ts`](scripts/verify-agents-governance.ts) and reconcile upstream changes with [`/update-custom-skills`](../update-custom-skills/SKILL.md).
+- **Customized skills in `.agents/skills-override.json`.** Before editing a vendor skill, eject it by removing its entry from `skills-lock.json` and registering its upstream `source`, `path`, and `commit` SHA in `.agents/skills-override.json`. Ejected skills must pass all governance checks and reconcile upstream changes with [`/update-custom-skills`](../update-custom-skills/SKILL.md).
