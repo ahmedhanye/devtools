@@ -11,13 +11,18 @@ Closes #<issue>
 
 ## Evidence
 
-<!-- Observable verification proving the change works:
-     - Visual changes: screenshots (before / after)
-     - Logic / CLI: terminal test output, console output, exit codes
-     - Non-code / infra: command output verifying behavior -->
+### Acceptance Criteria Verification
 
-- **Before:**
-- **After:**
+<!-- Copy acceptance criteria from the linked issue and cite observable proof for each:
+     - [x] <criterion 1>: <command output / test result / screenshot>
+     - [x] <criterion 2>: <command output / test result / screenshot> -->
+
+### Test Suite & Coverage Results
+
+<!-- Observable verification proving the change works:
+     - Terminal test output: bun test or focused package tests
+     - Diff coverage verification: bun run verify:diff-coverage
+     - CLI timing, NO_COLOR, or non-TTY outputs where applicable -->
 
 ## Merge Danger
 
