@@ -1,6 +1,5 @@
 name: Capability Spec
 description: Propose or track a high-level capability specification or milestone epic
-title: "[Spec]: "
 labels: ["type:spec"]
 body:
   - type: markdown
@@ -17,8 +16,11 @@ body:
         - "@devtools/cli"
         - "@devtools/api"
         - "@devtools/frontend"
+        - "@devtools/browser"
+        - "@devtools/lighthouse"
         - "@devtools/core"
         - "@devtools/db"
+        - "@devtools/site"
         - "toolchain / infra"
         - "cross-cutting / all"
     validations:
