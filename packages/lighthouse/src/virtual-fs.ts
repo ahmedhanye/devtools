@@ -1,3 +1,4 @@
+import "./declarations.d.ts";
 import fs from "node:fs";
 import flowJs from "lighthouse/dist/report/flow.js" with { type: "text" };
 import standaloneJs from "lighthouse/dist/report/standalone.js" with { type: "text" };
