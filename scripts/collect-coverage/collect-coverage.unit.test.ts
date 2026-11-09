@@ -108,6 +108,55 @@ end_of_record
   });
 
   describe("collectCoverage", () => {
+    function createMockCoverageSpawner(options?: {
+      failForPath?: string;
+      emptyForPath?: string;
+      commandStatus?: number;
+    }) {
+      return (
+        cmd: string,
+        args: string[],
+        opts: { cwd: string; stdio?: string },
+      ) => {
+        if (cmd === "bunx" && args.includes("fumadocs-mdx")) {
+          return { status: options?.commandStatus ?? 0 };
+        }
+        if (cmd === "bun" && args.includes("--coverage")) {
+          let targetDir: string;
+          if (args.includes("@devtools/frontend")) {
+            targetDir = path.join(opts.cwd, "apps/frontend/coverage");
+          } else {
+            const covDirArg = args.find((a) => a.startsWith("--coverage-dir="));
+            const covDir = covDirArg ? covDirArg.split("=")[1] : "coverage";
+            targetDir = path.resolve(opts.cwd, covDir);
+          }
+          const targetFile = path.join(targetDir, "lcov.info");
+
+          if (
+            options?.failForPath &&
+            targetFile.includes(options.failForPath)
+          ) {
+            return { status: 0 };
+          }
+
+          fs.mkdirSync(targetDir, { recursive: true });
+          if (
+            options?.emptyForPath &&
+            targetFile.includes(options.emptyForPath)
+          ) {
+            fs.writeFileSync(targetFile, "");
+          } else {
+            fs.writeFileSync(
+              targetFile,
+              `SF:${opts.cwd}/sample.ts\nDA:1,1\nend_of_record\n`,
+            );
+          }
+          return { status: 0 };
+        }
+        return { status: 0 };
+      };
+    }
+
     it("invokes bunx fumadocs-mdx in site directory before running tests for site", async () => {
       const tmpDir = fs.mkdtempSync(
         path.join(os.tmpdir(), "collect-cov-site-"),
@@ -117,12 +166,14 @@ end_of_record
         const commands: Array<{ cmd: string; args: string[]; cwd: string }> =
           [];
 
+        const defaultSpawner = createMockCoverageSpawner();
+
         await collectCoverage({
           repoRoot: tmpDir,
           outputDir: path.join(tmpDir, "coverage"),
           spawnCommand: (cmd, args, opts) => {
             commands.push({ cmd, args, cwd: opts.cwd });
-            return { status: 0 };
+            return defaultSpawner(cmd, args, opts);
           },
         });
 
@@ -173,13 +224,107 @@ end_of_record
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "cov-clean-test-"));
       const outputDir = path.join(tmpDir, "coverage/scripts");
       try {
+        fs.mkdirSync(path.join(tmpDir, "packages/core"), { recursive: true });
         const result = await collectCoverage({
           repoRoot: tmpDir,
           outputDir,
           cleanPriorReports: true,
-          spawnCommand: () => ({ status: 0 }),
+          spawnCommand: createMockCoverageSpawner(),
         });
         expect(fs.existsSync(result.outputPath)).toBe(true);
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it("throws an error when a workspace lcov.info is missing", async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "cov-missing-pkg-"));
+      try {
+        fs.mkdirSync(path.join(tmpDir, "site"), { recursive: true });
+        await expect(
+          collectCoverage({
+            repoRoot: tmpDir,
+            outputDir: path.join(tmpDir, "coverage"),
+            spawnCommand: createMockCoverageSpawner({
+              failForPath: "site/coverage/lcov.info",
+            }),
+          }),
+        ).rejects.toThrow("Coverage collection failed: expected");
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it("throws an error when a workspace lcov.info is empty (0 bytes)", async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "cov-empty-pkg-"));
+      try {
+        fs.mkdirSync(path.join(tmpDir, "site"), { recursive: true });
+        await expect(
+          collectCoverage({
+            repoRoot: tmpDir,
+            outputDir: path.join(tmpDir, "coverage"),
+            spawnCommand: createMockCoverageSpawner({
+              emptyForPath: "site/coverage/lcov.info",
+            }),
+          }),
+        ).rejects.toThrow("was not written or is empty");
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it("throws an error when scripts coverage report is missing or empty", async () => {
+      const tmpDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "cov-scripts-miss-"),
+      );
+      try {
+        await expect(
+          collectCoverage({
+            repoRoot: tmpDir,
+            outputDir: path.join(tmpDir, "coverage"),
+            spawnCommand: createMockCoverageSpawner({
+              failForPath: "coverage/scripts/lcov.info",
+            }),
+          }),
+        ).rejects.toThrow("Coverage collection failed: expected");
+
+        await expect(
+          collectCoverage({
+            repoRoot: tmpDir,
+            outputDir: path.join(tmpDir, "coverage"),
+            spawnCommand: createMockCoverageSpawner({
+              emptyForPath: "coverage/scripts/lcov.info",
+            }),
+          }),
+        ).rejects.toThrow("was not written or is empty");
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it("throws an error when apps/frontend coverage report is missing or empty", async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "cov-front-miss-"));
+      try {
+        fs.mkdirSync(path.join(tmpDir, "apps/frontend"), { recursive: true });
+        await expect(
+          collectCoverage({
+            repoRoot: tmpDir,
+            outputDir: path.join(tmpDir, "coverage"),
+            spawnCommand: createMockCoverageSpawner({
+              failForPath: "apps/frontend/coverage/lcov.info",
+            }),
+          }),
+        ).rejects.toThrow("Coverage collection failed: expected");
+
+        await expect(
+          collectCoverage({
+            repoRoot: tmpDir,
+            outputDir: path.join(tmpDir, "coverage"),
+            spawnCommand: createMockCoverageSpawner({
+              emptyForPath: "apps/frontend/coverage/lcov.info",
+            }),
+          }),
+        ).rejects.toThrow("was not written or is empty");
       } finally {
         fs.rmSync(tmpDir, { recursive: true, force: true });
       }
