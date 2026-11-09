@@ -82,6 +82,16 @@ describe("virtual-fs", () => {
       ).toThrow();
       expect(() => fs.readdirSync("/nonexistent/core/audits")).toThrow();
 
+      // Lighthouse path that does not match any virtual directory falls through to throw ENOENT
+      expect(() =>
+        fs.readdirSync("/$bunfs/root/unmatched-virtual-directory"),
+      ).toThrow();
+
+      // Lighthouse path that does not match any virtual asset falls through to throw ENOENT
+      expect(() =>
+        fs.readFileSync("/$bunfs/root/unmatched-virtual-asset.txt"),
+      ).toThrow();
+
       restoreLighthouseVirtualFs();
     });
 
@@ -97,6 +107,15 @@ describe("virtual-fs", () => {
       const strResult = fs.readFileSync("/$bunfs/package.json", "utf-8");
       expect(typeof strResult).toBe("string");
       expect(JSON.parse(strResult).name).toBe("lighthouse");
+
+      // readFileSync with utf8 (no hyphen) returns string
+      const utf8Result = fs.readFileSync("/$bunfs/package.json", "utf8");
+      expect(typeof utf8Result).toBe("string");
+      expect(JSON.parse(utf8Result).name).toBe("lighthouse");
+
+      // readFileSync with buffer encoding returns Buffer
+      const bufResult = fs.readFileSync("/$bunfs/package.json", "buffer");
+      expect(Buffer.isBuffer(bufResult)).toBe(true);
 
       // readFileSync with object options returns string
       const objResult = fs.readFileSync("/$bunfs/package.json", {
@@ -145,6 +164,13 @@ describe("virtual-fs", () => {
       expect(bufferEntries.map((b) => b.toString("utf-8"))).toContain(
         "en-US.json",
       );
+
+      // readdirSync with string "buffer" encoding returns Buffer[]
+      const bufferStringEntries = fs.readdirSync(
+        "/$bunfs/root/locales",
+        "buffer",
+      );
+      expect(Buffer.isBuffer(bufferStringEntries[0])).toBe(true);
 
       restoreLighthouseVirtualFs();
     });
