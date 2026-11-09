@@ -17,20 +17,23 @@ pre-commit:
 
     react-doctor:
       glob: "{apps/frontend,site}/**/*.{js,jsx,ts,tsx}"
-      run: bunx react-doctor --project apps/frontend,site --staged --blocking error --no-telemetry --no-supply-chain
+      run: bunx react-doctor --project apps/frontend,site -y --no-telemetry --no-supply-chain --blocking error {staged_files}
 
     test-staged-ui:
       glob: "apps/frontend/src/**/*.{ts,tsx}"
       run: bun --filter @devtools/frontend test
 
     verify-secrets:
-      run: bun scripts/verify-staged-secrets.ts {staged_files}
+      run: bun scripts/verify-staged-secrets/verify-staged-secrets.ts {staged_files}
 
     verify-agents-governance:
       glob: "{.agents/*.md,.agents/**/*.md}"
-      run: bun scripts/verify-agents-governance.ts {staged_files}
+      run: bun scripts/verify-agents-governance/verify-agents-governance.ts {staged_files}
 
 commit-msg:
   commands:
     conventional-commits:
-      run: bunx commitlint --edit {1}
+      run: bunx --bun commitlint --edit {1}
+
+    verify-atomic-commit:
+      run: bun scripts/verify-atomic-commit/verify-atomic-commit.ts {1}

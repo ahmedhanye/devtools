@@ -172,7 +172,7 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           BASE_REF: ${{ github.base_ref }}
-        run: bun scripts/verify-diff-coverage.ts --base "origin/${BASE_REF}" --output coverage/diff-coverage-summary.md
+        run: bun scripts/verify-diff-coverage/verify-diff-coverage.ts --base "origin/${BASE_REF}" --output coverage/diff-coverage-summary.md
 
       - name: Post or update sticky PR coverage comment
         if: github.event_name == 'pull_request' && !cancelled() && github.event.pull_request.head.repo.full_name == github.repository

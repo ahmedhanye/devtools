@@ -379,7 +379,7 @@ unquoted colon: in: here
   describe("loadVendorSkillNames", () => {
     it("loads vendor skill names from skills-lock.json", () => {
       const vendorNames = loadVendorSkillNames();
-      expect(vendorNames.has("code-review")).toBe(true);
+      expect(vendorNames.has("codebase-design")).toBe(true);
       expect(vendorNames.has("fallow")).toBe(true);
       expect(vendorNames.has("react-doctor")).toBe(true);
       expect(vendorNames.has("qa")).toBe(false);

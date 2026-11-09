@@ -39,10 +39,17 @@ reviews:
     title:
       mode: "error"
       requirements: >-
-        Title must strictly adhere to Conventional Commits:
-        `<type>(<scope>): <imperative description>`.
-        Allowed types: feat, fix, chore, docs, style, refactor, perf, test, build, ci, revert.
-        Scope must be lowercase (e.g., api, frontend, db, core, cli).
+        Title must strictly adhere to Conventional Commits and the repository Type × Scope Matrix:
+        `<type>[optional (<scope>)]: <imperative description>`.
+        Allowed types: feat, fix, chore, docs, style, refactor, perf, test, build, revert. (Note: "ci" is not a type; CI changes use "chore(ci)").
+        Scope is required for feat and fix; scope is optional for root maintenance (chore, build, docs).
+        When present, scope must be a single-noun lowercase matching repository taxonomy:
+        api, cli, frontend, site, browser, core, db, lighthouse, adr, architecture, standards, contributing, glossary, testing, review, agents, ci, scripts, deps.
+        Internal systems type mapping:
+        - Scope "(agents)" strictly requires type "docs": always use "docs(agents): <description>".
+        - Scope "(ci)" strictly requires type "chore": always use "chore(ci): <description>".
+        - Scope "(scripts)" permits chore, refactor, perf, test (never feat or fix).
+        Do not use (repo) as a scope. When touching root configurations or cross-cutting files, omit the scope.
         Do not include issue references (e.g., `(#123)`) in the title.
     description:
       mode: "warning"
