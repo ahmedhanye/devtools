@@ -14,6 +14,11 @@
     "path": "skills/productivity/handoff/SKILL.md",
     "commit": "0f5e033ebc47b142f5ffa56a582ede6d9d9bada3"
   },
+  "implement": {
+    "source": "mattpocock/skills",
+    "path": "skills/engineering/implement/SKILL.md",
+    "commit": "b6371a0a6723bad551f3adc721e3729a6a97acfc3670dc2bdea198bbe78408c0"
+  },
   "improve-codebase-architecture": {
     "source": "mattpocock/skills",
     "path": "skills/engineering/improve-codebase-architecture/SKILL.md",
@@ -38,5 +43,10 @@
     "source": "mattpocock/skills",
     "path": "skills/engineering/to-tickets/SKILL.md",
     "commit": "9e2abf8611a345efbf779aacb171cff015bcdeb6"
+  },
+  "writing-for-agents": {
+    "source": "mattpocock/skills",
+    "path": "skills/productivity/writing-for-agents/SKILL.md",
+    "commit": "321658273cb1d20b76026717d027d505790106d4"
   }
 }
