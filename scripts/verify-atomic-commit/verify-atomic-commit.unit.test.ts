@@ -1,0 +1,591 @@
+import { describe, expect, it } from "bun:test";
+import {
+  classifyFile,
+  isTestFile,
+  parseCommitMessage,
+  resolveCommitMsgPath,
+  validateAtomicCommit,
+} from "./verify-atomic-commit";
+
+describe("verify-atomic-commit", () => {
+  describe("parseCommitMessage", () => {
+    it("parses conventional commit with scope", () => {
+      const parsed = parseCommitMessage("feat(cli): add port utility");
+      expect(parsed).toEqual({
+        type: "feat",
+        scope: "cli",
+        subject: "add port utility",
+        rawHeader: "feat(cli): add port utility",
+      });
+    });
+
+    it("parses conventional commit without scope", () => {
+      const parsed = parseCommitMessage("docs: update getting started guide");
+      expect(parsed).toEqual({
+        type: "docs",
+        scope: null,
+        subject: "update getting started guide",
+        rawHeader: "docs: update getting started guide",
+      });
+    });
+
+    it("handles breaking change exclamation mark", () => {
+      const parsed = parseCommitMessage(
+        "feat(api)!: change error payload format",
+      );
+      expect(parsed).toEqual({
+        type: "feat",
+        scope: "api",
+        subject: "change error payload format",
+        rawHeader: "feat(api)!: change error payload format",
+      });
+    });
+
+    it("strips git commit comments and leading blank lines", () => {
+      const raw = `
+# Please enter the commit message for your changes.
+# Lines starting with '#' will be ignored.
+
+fix(frontend): resolve modal overlay clipping
+
+# Detailed explanation follows
+`;
+      const parsed = parseCommitMessage(raw);
+      expect(parsed).not.toBeNull();
+      expect(parsed?.type).toBe("fix");
+      expect(parsed?.scope).toBe("frontend");
+      expect(parsed?.subject).toBe("resolve modal overlay clipping");
+    });
+
+    it("returns null for non-conventional commit messages", () => {
+      expect(parseCommitMessage("wip")).toBeNull();
+      expect(parseCommitMessage("")).toBeNull();
+      expect(parseCommitMessage("# only comments")).toBeNull();
+    });
+  });
+
+  describe("classifyFile", () => {
+    it("classifies runtime package and app files", () => {
+      expect(classifyFile("apps/api/src/server.ts")).toEqual({
+        file: "apps/api/src/server.ts",
+        domain: "runtime",
+        scope: "api",
+      });
+      expect(classifyFile("apps/cli/src/port.ts")).toEqual({
+        file: "apps/cli/src/port.ts",
+        domain: "runtime",
+        scope: "cli",
+      });
+      expect(classifyFile("apps/frontend/src/app.tsx")).toEqual({
+        file: "apps/frontend/src/app.tsx",
+        domain: "runtime",
+        scope: "frontend",
+      });
+      expect(classifyFile("packages/core/src/errors.ts")).toEqual({
+        file: "packages/core/src/errors.ts",
+        domain: "runtime",
+        scope: "core",
+      });
+    });
+
+    it("classifies documentation files including general docs/ paths", () => {
+      expect(classifyFile("docs/adr/0001-db.md")).toEqual({
+        file: "docs/adr/0001-db.md",
+        domain: "docs",
+        scope: "adr",
+      });
+      expect(classifyFile("docs/contributing/commits.md")).toEqual({
+        file: "docs/contributing/commits.md",
+        domain: "docs",
+        scope: "contributing",
+      });
+      expect(classifyFile("docs/index.md")).toEqual({
+        file: "docs/index.md",
+        domain: "docs",
+        scope: null,
+      });
+      expect(classifyFile("README.md")).toEqual({
+        file: "README.md",
+        domain: "docs",
+        scope: null,
+      });
+      expect(classifyFile("ARCHITECTURE.md")).toEqual({
+        file: "ARCHITECTURE.md",
+        domain: "docs",
+        scope: "architecture",
+      });
+      expect(classifyFile("REVIEW.md")).toEqual({
+        file: "REVIEW.md",
+        domain: "docs",
+        scope: "review",
+      });
+      expect(classifyFile("CHANGELOG.md")).toEqual({
+        file: "CHANGELOG.md",
+        domain: "docs",
+        scope: null,
+      });
+    });
+
+    it("classifies internal systems and dependencies", () => {
+      expect(classifyFile(".agents/rules/documentation.md")).toEqual({
+        file: ".agents/rules/documentation.md",
+        domain: "agents",
+        scope: "agents",
+      });
+      expect(classifyFile(".github/workflows/ci.yml")).toEqual({
+        file: ".github/workflows/ci.yml",
+        domain: "tooling",
+        scope: "ci",
+      });
+      expect(classifyFile("scripts/test-preload/test-preload.ts")).toEqual({
+        file: "scripts/test-preload/test-preload.ts",
+        domain: "tooling",
+        scope: "scripts",
+      });
+      expect(classifyFile("bun.lock")).toEqual({
+        file: "bun.lock",
+        domain: "deps",
+        scope: "deps",
+      });
+    });
+
+    it("classifies workspace package.json as deps when scoped to deps or lockfile present", () => {
+      expect(
+        classifyFile("apps/frontend/package.json", { commitScope: "deps" }),
+      ).toEqual({
+        file: "apps/frontend/package.json",
+        domain: "deps",
+        scope: "deps",
+      });
+
+      expect(
+        classifyFile("apps/frontend/package.json", { hasLockfile: true }),
+      ).toEqual({
+        file: "apps/frontend/package.json",
+        domain: "deps",
+        scope: "deps",
+      });
+    });
+
+    it("classifies workspace package.json under package scope when lockfile is absent", () => {
+      expect(
+        classifyFile("apps/cli/package.json", { commitScope: "cli" }),
+      ).toEqual({
+        file: "apps/cli/package.json",
+        domain: "runtime",
+        scope: "cli",
+      });
+    });
+
+    it("classifies root configuration files and unknown assets", () => {
+      expect(classifyFile(".gitignore")).toEqual({
+        file: ".gitignore",
+        domain: "root-config",
+        scope: null,
+      });
+      expect(classifyFile("bunfig.toml")).toEqual({
+        file: "bunfig.toml",
+        domain: "root-config",
+        scope: null,
+      });
+      expect(classifyFile("unknown-tool.bin")).toEqual({
+        file: "unknown-tool.bin",
+        domain: "unknown",
+        scope: null,
+      });
+    });
+  });
+
+  describe("validateAtomicCommit", () => {
+    it("passes when single-domain isolation is satisfied", () => {
+      const header = {
+        type: "feat",
+        scope: "core",
+        subject: "add error codes",
+        rawHeader: "feat(core): add error codes",
+      };
+
+      const result = validateAtomicCommit(header, [
+        "packages/core/src/errors.ts",
+        "packages/core/src/config.ts",
+      ]);
+
+      expect(result.valid).toBe(true);
+      expect(result.violations).toHaveLength(0);
+    });
+
+    it("allows workspace dependency updates alongside bun.lock under chore(deps)", () => {
+      const header = {
+        type: "chore",
+        scope: "deps",
+        subject: "bump frontend dependencies",
+        rawHeader: "chore(deps): bump frontend dependencies",
+      };
+
+      const result = validateAtomicCommit(header, [
+        "apps/frontend/package.json",
+        "bun.lock",
+      ]);
+
+      expect(result.valid).toBe(true);
+      expect(result.violations).toHaveLength(0);
+    });
+
+    it("allows workspace manifest modification under package scope without lockfile", () => {
+      const header = {
+        type: "feat",
+        scope: "cli",
+        subject: "add devtools binary script",
+        rawHeader: "feat(cli): add devtools binary script",
+      };
+
+      const result = validateAtomicCommit(header, [
+        "apps/cli/package.json",
+        "apps/cli/src/index.ts",
+      ]);
+
+      expect(result.valid).toBe(true);
+      expect(result.violations).toHaveLength(0);
+    });
+
+    it("fails when staged files cross into another scope", () => {
+      const header = {
+        type: "feat",
+        scope: "core",
+        subject: "add error codes",
+        rawHeader: "feat(core): add error codes",
+      };
+
+      const result = validateAtomicCommit(header, [
+        "packages/core/src/errors.ts",
+        "apps/cli/src/port.ts",
+      ]);
+
+      expect(result.valid).toBe(false);
+      expect(
+        result.violations.some(
+          (v) => v.rule === "atomic/single-domain-isolation",
+        ),
+      ).toBe(true);
+    });
+
+    it("fails with separation-of-concerns when runtime code and documentation are mixed", () => {
+      const header = {
+        type: "feat",
+        scope: "cli",
+        subject: "add browser flag",
+        rawHeader: "feat(cli): add browser flag",
+      };
+
+      const result = validateAtomicCommit(header, [
+        "apps/cli/src/browser.ts",
+        "docs/contributing/commits.md",
+      ]);
+
+      expect(result.valid).toBe(false);
+      expect(
+        result.violations.some(
+          (v) => v.rule === "atomic/separation-of-concerns",
+        ),
+      ).toBe(true);
+    });
+
+    it("fails with separation-of-concerns when runtime code and agent governance are mixed", () => {
+      const header = {
+        type: "feat",
+        scope: "api",
+        subject: "add health endpoint",
+        rawHeader: "feat(api): add health endpoint",
+      };
+
+      const result = validateAtomicCommit(header, [
+        "apps/api/src/routes/health.ts",
+        ".agents/rules/documentation.md",
+      ]);
+
+      expect(result.valid).toBe(false);
+      expect(
+        result.violations.some(
+          (v) => v.rule === "atomic/separation-of-concerns",
+        ),
+      ).toBe(true);
+    });
+
+    it("fails when bun.lock is included in feature commit", () => {
+      const header = {
+        type: "feat",
+        scope: "frontend",
+        subject: "add login button",
+        rawHeader: "feat(frontend): add login button",
+      };
+
+      const result = validateAtomicCommit(header, [
+        "apps/frontend/src/pages/dashboard/ui/page.tsx",
+        "bun.lock",
+      ]);
+
+      expect(result.valid).toBe(false);
+      expect(
+        result.violations.some(
+          (v) => v.rule === "atomic/no-lockfile-in-feature",
+        ),
+      ).toBe(true);
+    });
+
+    it("requires explicit scope for runtime code when feat/fix omits scope", () => {
+      const header = {
+        type: "feat",
+        scope: null,
+        subject: "unscoped cli addition",
+        rawHeader: "feat: unscoped cli addition",
+      };
+
+      const result = validateAtomicCommit(header, ["apps/cli/src/browser.ts"]);
+
+      expect(result.valid).toBe(false);
+      expect(
+        result.violations.some(
+          (v) => v.rule === "atomic/runtime-scope-required",
+        ),
+      ).toBe(true);
+    });
+
+    it("flags unrecognized files in the commit", () => {
+      const header = {
+        type: "chore",
+        scope: null,
+        subject: "add rogue file",
+        rawHeader: "chore: add rogue file",
+      };
+
+      const result = validateAtomicCommit(header, ["rogue-file.xyz"]);
+      expect(result.valid).toBe(false);
+      expect(
+        result.violations.some((v) => v.rule === "atomic/unrecognized-domain"),
+      ).toBe(true);
+    });
+
+    it("allows unscoped docs commit touching only documentation", () => {
+      const header = {
+        type: "docs",
+        scope: null,
+        subject: "update root readme",
+        rawHeader: "docs: update root readme",
+      };
+
+      const result = validateAtomicCommit(header, [
+        "README.md",
+        "docs/testing/unit-tests.md",
+      ]);
+
+      expect(result.valid).toBe(true);
+      expect(result.violations).toHaveLength(0);
+    });
+
+    it("handles empty staged files gracefully", () => {
+      const header = {
+        type: "chore",
+        scope: null,
+        subject: "empty commit",
+        rawHeader: "chore: empty commit",
+      };
+
+      const result = validateAtomicCommit(header, []);
+      expect(result.valid).toBe(true);
+    });
+
+    it("enforces type-scope matrix: rejects chore(agents) and requires docs(agents)", () => {
+      const choreHeader = {
+        type: "chore",
+        scope: "agents",
+        subject: "update rules",
+        rawHeader: "chore(agents): update rules",
+      };
+
+      const choreResult = validateAtomicCommit(choreHeader, [
+        ".agents/AGENTS.md",
+      ]);
+      expect(choreResult.valid).toBe(false);
+      expect(
+        choreResult.violations.some(
+          (v) => v.rule === "atomic/type-scope-matrix",
+        ),
+      ).toBe(true);
+
+      const docsHeader = {
+        type: "docs",
+        scope: "agents",
+        subject: "update rules",
+        rawHeader: "docs(agents): update rules",
+      };
+
+      const docsResult = validateAtomicCommit(docsHeader, [
+        ".agents/AGENTS.md",
+      ]);
+      expect(docsResult.valid).toBe(true);
+    });
+
+    it("enforces type-scope matrix: rejects standalone ci type and requires chore(ci)", () => {
+      const featCiHeader = {
+        type: "feat",
+        scope: "ci",
+        subject: "add action",
+        rawHeader: "feat(ci): add action",
+      };
+
+      const featCiResult = validateAtomicCommit(featCiHeader, [
+        ".github/workflows/test.yml",
+      ]);
+      expect(featCiResult.valid).toBe(false);
+      expect(
+        featCiResult.violations.some(
+          (v) => v.rule === "atomic/type-scope-matrix",
+        ),
+      ).toBe(true);
+
+      const choreCiHeader = {
+        type: "chore",
+        scope: "ci",
+        subject: "add action",
+        rawHeader: "chore(ci): add action",
+      };
+
+      const choreCiResult = validateAtomicCommit(choreCiHeader, [
+        ".github/workflows/test.yml",
+      ]);
+      expect(choreCiResult.valid).toBe(true);
+    });
+
+    it("requires explicit scope when modifying internal scoped systems (.agents, .github, scripts)", () => {
+      const unscopedHeader = {
+        type: "docs",
+        scope: null,
+        subject: "update agent instructions",
+        rawHeader: "docs: update agent instructions",
+      };
+
+      const result = validateAtomicCommit(unscopedHeader, [
+        ".agents/AGENTS.md",
+      ]);
+      expect(result.valid).toBe(false);
+      expect(
+        result.violations.some(
+          (v) => v.rule === "atomic/scope-required-for-domain",
+        ),
+      ).toBe(true);
+    });
+
+    it("enforces test isolation: allows test files under test commit type", () => {
+      const header = {
+        type: "test",
+        scope: "core",
+        subject: "add unit tests for error codes",
+        rawHeader: "test(core): add unit tests for error codes",
+      };
+
+      const result = validateAtomicCommit(header, [
+        "packages/core/tests/errors.unit.test.ts",
+      ]);
+      expect(result.valid).toBe(true);
+      expect(result.violations).toHaveLength(0);
+    });
+
+    it("enforces test isolation: rejects test files in feat or fix commits", () => {
+      const fixHeader = {
+        type: "fix",
+        scope: "cli",
+        subject: "validate runs positive integer",
+        rawHeader: "fix(cli): validate runs positive integer",
+      };
+
+      const result = validateAtomicCommit(fixHeader, [
+        "apps/cli/src/lighthouse/index.ts",
+        "apps/cli/tests/colors.unit.test.ts",
+      ]);
+      expect(result.valid).toBe(false);
+      expect(
+        result.violations.some((v) => v.rule === "atomic/test-isolation"),
+      ).toBe(true);
+      const violation = result.violations.find(
+        (v) => v.rule === "atomic/test-isolation",
+      );
+      expect(violation?.violatingFiles).toContain(
+        "apps/cli/tests/colors.unit.test.ts",
+      );
+    });
+
+    it("enforces test isolation: rejects non-test source files in test commits", () => {
+      const testHeader = {
+        type: "test",
+        scope: "cli",
+        subject: "add cli tests",
+        rawHeader: "test(cli): add cli tests",
+      };
+
+      const result = validateAtomicCommit(testHeader, [
+        "apps/cli/tests/cli.unit.test.ts",
+        "apps/cli/src/lighthouse/index.ts",
+      ]);
+      expect(result.valid).toBe(false);
+      expect(
+        result.violations.some((v) => v.rule === "atomic/test-isolation"),
+      ).toBe(true);
+      const violation = result.violations.find(
+        (v) => v.rule === "atomic/test-isolation",
+      );
+      expect(violation?.violatingFiles).toContain(
+        "apps/cli/src/lighthouse/index.ts",
+      );
+    });
+
+    it("allows revert commits to include both source and test files", () => {
+      const revertHeader = {
+        type: "revert",
+        scope: "core",
+        subject: "revert error code additions",
+        rawHeader: "revert(core): revert error code additions",
+      };
+
+      const result = validateAtomicCommit(revertHeader, [
+        "packages/core/src/errors.ts",
+        "packages/core/tests/errors.unit.test.ts",
+      ]);
+      expect(result.valid).toBe(true);
+      expect(result.violations).toHaveLength(0);
+    });
+  });
+
+  describe("isTestFile", () => {
+    it("identifies test files across packages and apps", () => {
+      expect(isTestFile("packages/core/tests/errors.unit.test.ts")).toBe(true);
+      expect(isTestFile("apps/cli/tests/colors.unit.test.ts")).toBe(true);
+      expect(isTestFile("apps/cli/tests/support/network.ts")).toBe(true);
+      expect(
+        isTestFile("apps/frontend/src/shared/lib/cn/cn.unit.test.ts"),
+      ).toBe(true);
+      expect(isTestFile("scripts/test-preload/test-preload.unit.test.ts")).toBe(
+        true,
+      );
+    });
+
+    it("excludes documentation, config files, and regular source files", () => {
+      expect(isTestFile("apps/cli/src/lighthouse/index.ts")).toBe(false);
+      expect(isTestFile("packages/core/src/errors.ts")).toBe(false);
+      expect(isTestFile("docs/testing/box-testing.md")).toBe(false);
+      expect(isTestFile(".agents/skills/tdd/tests.md")).toBe(false);
+      expect(isTestFile("apps/frontend/vitest.config.ts")).toBe(false);
+      expect(isTestFile("scripts/test-preload/test-preload.ts")).toBe(false);
+    });
+  });
+
+  describe("resolveCommitMsgPath", () => {
+    it("returns explicit path when provided", () => {
+      expect(resolveCommitMsgPath("/tmp/CUSTOM_MSG")).toBe("/tmp/CUSTOM_MSG");
+    });
+
+    it("dynamically queries git-dir when no path is provided", () => {
+      const path = resolveCommitMsgPath();
+      expect(path).toContain("COMMIT_EDITMSG");
+    });
+  });
+});
