@@ -113,8 +113,17 @@ describe("virtual-fs", () => {
       expect(typeof utf8Result).toBe("string");
       expect(JSON.parse(utf8Result).name).toBe("lighthouse");
 
-      // readFileSync with buffer encoding returns Buffer
-      const bufResult = fs.readFileSync("/$bunfs/package.json", "buffer");
+      // readFileSync with null encoding in options returns Buffer
+      const nullBufResult = fs.readFileSync("/$bunfs/package.json", {
+        encoding: null,
+      });
+      expect(Buffer.isBuffer(nullBufResult)).toBe(true);
+
+      // readFileSync with string buffer encoding returns Buffer
+      const bufResult = fs.readFileSync(
+        "/$bunfs/package.json",
+        "buffer" as unknown as BufferEncoding,
+      );
       expect(Buffer.isBuffer(bufResult)).toBe(true);
 
       // readFileSync with object options returns string
