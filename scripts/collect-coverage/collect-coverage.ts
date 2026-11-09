@@ -273,10 +273,7 @@ export async function collectCoverage(
     console.log(`Running coverage for ${pkg}...`);
     runBunCoverage(pkgDir, ["--coverage-dir=coverage"], spawnCommand);
     const expectedLcov = path.join(pkgDir, "coverage/lcov.info");
-    if (
-      !options.spawnCommand &&
-      (!fs.existsSync(expectedLcov) || fs.statSync(expectedLcov).size === 0)
-    ) {
+    if (!fs.existsSync(expectedLcov) || fs.statSync(expectedLcov).size === 0) {
       throw new Error(
         `Coverage collection failed: expected ${expectedLcov} was not written or is empty.`,
       );
@@ -290,10 +287,7 @@ export async function collectCoverage(
     spawnCommand,
   );
   const scriptsLcov = path.join(root, "coverage/scripts/lcov.info");
-  if (
-    !options.spawnCommand &&
-    (!fs.existsSync(scriptsLcov) || fs.statSync(scriptsLcov).size === 0)
-  ) {
+  if (!fs.existsSync(scriptsLcov) || fs.statSync(scriptsLcov).size === 0) {
     throw new Error(
       `Coverage collection failed: expected ${scriptsLcov} was not written or is empty.`,
     );
@@ -312,10 +306,7 @@ export async function collectCoverage(
       );
     }
     const frontendLcov = path.join(root, "apps/frontend/coverage/lcov.info");
-    if (
-      !options.spawnCommand &&
-      (!fs.existsSync(frontendLcov) || fs.statSync(frontendLcov).size === 0)
-    ) {
+    if (!fs.existsSync(frontendLcov) || fs.statSync(frontendLcov).size === 0) {
       throw new Error(
         `Coverage collection failed: expected ${frontendLcov} was not written or is empty.`,
       );
@@ -329,8 +320,8 @@ export async function collectCoverage(
   fs.writeFileSync(mergedLcovPath, unifiedLcov, "utf8");
 
   if (
-    !options.spawnCommand &&
-    (!fs.existsSync(mergedLcovPath) || fs.statSync(mergedLcovPath).size === 0)
+    !fs.existsSync(mergedLcovPath) ||
+    fs.statSync(mergedLcovPath).size === 0
   ) {
     throw new Error(
       `Coverage collection failed: merged report ${mergedLcovPath} was not created or is empty.`,
