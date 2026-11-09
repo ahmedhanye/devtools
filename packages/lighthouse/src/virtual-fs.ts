@@ -1,4 +1,5 @@
 import "./declarations.d.ts";
+import { Buffer } from "node:buffer";
 import fs from "node:fs";
 import flowJs from "lighthouse/dist/report/flow.js" with { type: "text" };
 import standaloneJs from "lighthouse/dist/report/standalone.js" with { type: "text" };
@@ -77,11 +78,25 @@ let isVirtualFsInstalled = false;
 let originalReaddirSync: typeof fs.readdirSync | null = null;
 let originalReadFileSync: typeof fs.readFileSync | null = null;
 
+function isLighthousePath(norm: string): boolean {
+  return (
+    norm.startsWith("lighthouse/") ||
+    norm.includes("/$bunfs/") ||
+    norm.includes("/node_modules/lighthouse/") ||
+    norm.includes("/lighthouse/") ||
+    norm.includes("shared/localization") ||
+    norm.includes("flow-report")
+  );
+}
+
 function isLocalesPath(targetPath: unknown): boolean {
   if (typeof targetPath !== "string") {
     return false;
   }
   const norm = targetPath.replaceAll("\\", "/");
+  if (!isLighthousePath(norm)) {
+    return false;
+  }
   return norm.endsWith("/locales/") || norm.endsWith("/locales");
 }
 
@@ -90,6 +105,9 @@ function getVirtualReaddir(targetPath: unknown): string[] | null {
     return null;
   }
   const norm = targetPath.replaceAll("\\", "/").replace(/\/$/, "");
+  if (!isLighthousePath(norm)) {
+    return null;
+  }
   for (const [key, files] of Object.entries(VIRTUAL_DIRS)) {
     if (norm.endsWith(key)) {
       return [...files];
@@ -103,6 +121,9 @@ function getVirtualAssetContent(targetPath: unknown): string | null {
     return null;
   }
   const norm = targetPath.replaceAll("\\", "/");
+  if (!isLighthousePath(norm)) {
+    return null;
+  }
   if (norm.endsWith("/standalone-flow-template.html")) {
     return String(flowReportTemplate);
   }
@@ -112,7 +133,11 @@ function getVirtualAssetContent(targetPath: unknown): string | null {
   if (norm.includes("flow-report") && norm.endsWith("/styles.css")) {
     return flowStylesCss;
   }
-  if (norm.endsWith("/styles.css")) {
+  if (
+    norm.endsWith("/report/assets/styles.css") ||
+    norm.endsWith("/assets/styles.css") ||
+    norm.endsWith("/styles.css")
+  ) {
     return reportStylesCss;
   }
   if (norm.endsWith("/dist/report/flow.js") || norm.endsWith("/flow.js")) {
@@ -128,6 +153,65 @@ function getVirtualAssetContent(targetPath: unknown): string | null {
     return LIGHTHOUSE_PKG_FALLBACK;
   }
   return null;
+}
+
+function formatReadFileResult(
+  content: string,
+  options?: unknown,
+): string | Buffer {
+  const encoding =
+    typeof options === "string"
+      ? options
+      : (options as { encoding?: BufferEncoding | null } | undefined)?.encoding;
+
+  if (!encoding || encoding === "buffer") {
+    return Buffer.from(content, "utf-8");
+  }
+  if (encoding === "utf-8" || encoding === "utf8") {
+    return content;
+  }
+  return Buffer.from(content, "utf-8").toString(encoding as BufferEncoding);
+}
+
+function createMockDirent(name: string, dirPath = ""): fs.Dirent {
+  const isDir = !name.includes(".");
+  return {
+    name,
+    parentPath: dirPath,
+    path: dirPath,
+    isFile: () => !isDir,
+    isDirectory: () => isDir,
+    isBlockDevice: () => false,
+    isCharacterDevice: () => false,
+    isFIFO: () => false,
+    isSocket: () => false,
+    isSymbolicLink: () => false,
+  } as unknown as fs.Dirent;
+}
+
+function formatReaddirResult(
+  entries: string[],
+  options?: unknown,
+  dirPath = "",
+): any {
+  if (
+    options &&
+    typeof options === "object" &&
+    (options as { withFileTypes?: boolean }).withFileTypes
+  ) {
+    return entries.map((name) => createMockDirent(name, dirPath));
+  }
+
+  const encoding =
+    typeof options === "string"
+      ? options
+      : (options as { encoding?: string | null } | undefined)?.encoding;
+
+  if (encoding === "buffer") {
+    return entries.map((entry) => Buffer.from(entry, "utf-8"));
+  }
+
+  return entries;
 }
 
 export function ensureLighthouseVirtualFs(): void {
@@ -146,12 +230,17 @@ export function ensureLighthouseVirtualFs(): void {
       return (originalReaddirSync as any)(targetPath, options);
     } catch (error: unknown) {
       if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+        const pathStr = typeof targetPath === "string" ? targetPath : "";
         if (isLocalesPath(targetPath)) {
-          return [...CANONICAL_LOCALES_FILES];
+          return formatReaddirResult(
+            [...CANONICAL_LOCALES_FILES],
+            options,
+            pathStr,
+          );
         }
         const vDir = getVirtualReaddir(targetPath);
         if (vDir !== null) {
-          return vDir;
+          return formatReaddirResult(vDir, options, pathStr);
         }
       }
       throw error;
@@ -168,7 +257,7 @@ export function ensureLighthouseVirtualFs(): void {
       if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
         const virtualContent = getVirtualAssetContent(targetPath);
         if (virtualContent !== null) {
-          return virtualContent;
+          return formatReadFileResult(virtualContent, options);
         }
       }
       throw error;
