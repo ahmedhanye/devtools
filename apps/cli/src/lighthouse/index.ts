@@ -61,9 +61,21 @@ export function registerLighthouseCommands(
       "Assert performance budgets (e.g. perf:90,lcp:2500)",
       collectRules,
     )
-    .option("-r, --runs <number>", "Number of audit runs to perform", (val) =>
-      Number.parseInt(val, 10),
-    )
+    .option("-r, --runs <number>", "Number of audit runs to perform", (val) => {
+      const trimmed = val.trim();
+      if (!/^\d+$/.test(trimmed)) {
+        throw new InvalidArgumentError(
+          `Invalid runs "${val}": must be a positive integer`,
+        );
+      }
+      const parsed = Number.parseInt(trimmed, 10);
+      if (parsed < 1) {
+        throw new InvalidArgumentError(
+          `Invalid runs "${val}": must be a positive integer`,
+        );
+      }
+      return parsed;
+    })
     .option(
       "--form-factor <mobile|desktop>",
       "Device emulation form factor (default: mobile)",

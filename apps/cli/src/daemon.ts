@@ -13,7 +13,7 @@ import {
   runMigrations,
 } from "@devtools/db";
 import type { Server } from "bun";
-import pc from "picocolors";
+import { getColors } from "./colors";
 
 /**
  * Configuration options for starting the unified loopback daemon via {@link startDaemon}.
@@ -256,6 +256,7 @@ export function startDaemon(options: StartDaemonOptions = {}): DaemonInstance {
     );
   }
 
+  const pc = getColors({ env: options.env as NodeJS.ProcessEnv });
   console.error(pc.dim(`Persistence initialized: SQLite (${dbPath})`));
 
   const api = createApp({ basePath: "/api" });

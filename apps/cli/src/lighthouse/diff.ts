@@ -3,7 +3,7 @@ import type {
   LighthouseRunRow,
   LighthouseRunSummaryData,
 } from "@devtools/db";
-import pc from "picocolors";
+import { getColors } from "../colors";
 import { formatJson } from "./formatters/json";
 import { formatTerminalDiff } from "./formatters/terminal";
 import { resolveRunId } from "./resolvers";
@@ -101,6 +101,12 @@ export async function runLighthouseDiffCommand(
   options: LighthouseDiffCommandOptions = {},
   deps?: LighthouseDiffCommandDeps,
 ): Promise<void> {
+  const isStderrTTY =
+    deps?.isStderrTTY ?? deps?.isTTY ?? Boolean(process.stderr.isTTY);
+  const pc = getColors({
+    env: options.env as NodeJS.ProcessEnv,
+    isTTY: isStderrTTY,
+  });
   const exit = (code = 1) => {
     if (deps?.exit) {
       deps.exit(code);

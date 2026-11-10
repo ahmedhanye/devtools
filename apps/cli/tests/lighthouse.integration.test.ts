@@ -152,6 +152,69 @@ describe("CLI Lighthouse Command Integration", () => {
     expect(capturedOpts?.failUnder).toEqual(["perf:90", "lcp:2500"]);
   });
 
+  test("lighthouse rejects non-integer runs option via Commander parser", async () => {
+    const program = new Command();
+    program.name("devtools");
+    registerLighthouseCommands(program, {
+      runAudit: async () => {},
+    });
+    const { getOutput } = setupCommandForTesting(program);
+
+    let errorThrown = false;
+    try {
+      await program.parseAsync(
+        ["lighthouse", "https://example.com", "--runs", "4000abc"],
+        { from: "user" },
+      );
+    } catch {
+      errorThrown = true;
+    }
+
+    expect(errorThrown).toBe(true);
+    expect(getOutput()).toContain(
+      'Invalid runs "4000abc": must be a positive integer',
+    );
+  });
+
+  test("lighthouse rejects non-positive runs option via Commander parser", async () => {
+    const program = new Command();
+    program.name("devtools");
+    registerLighthouseCommands(program, {
+      runAudit: async () => {},
+    });
+    const { getOutput } = setupCommandForTesting(program);
+
+    let errorThrownZero = false;
+    try {
+      await program.parseAsync(
+        ["lighthouse", "https://example.com", "--runs", "0"],
+        { from: "user" },
+      );
+    } catch {
+      errorThrownZero = true;
+    }
+
+    expect(errorThrownZero).toBe(true);
+    expect(getOutput()).toContain(
+      'Invalid runs "0": must be a positive integer',
+    );
+
+    let errorThrownNeg = false;
+    try {
+      await program.parseAsync(
+        ["lighthouse", "https://example.com", "--runs", "-1"],
+        { from: "user" },
+      );
+    } catch {
+      errorThrownNeg = true;
+    }
+
+    expect(errorThrownNeg).toBe(true);
+    expect(getOutput()).toContain(
+      'Invalid runs "-1": must be a positive integer',
+    );
+  });
+
   test("dispatches lighthouse list subcommand through action handler", async () => {
     let listCalled = false;
     let capturedOpts: LighthouseListCommandOptions | undefined;

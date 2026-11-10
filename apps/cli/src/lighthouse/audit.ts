@@ -4,7 +4,7 @@ import type {
   LighthouseProgressEvent,
   RunLighthouseAuditOptions,
 } from "@devtools/lighthouse";
-import pc from "picocolors";
+import { getColors } from "../colors";
 import {
   evaluateBudgets,
   formatBudgetEvaluationMarkdown,
@@ -33,6 +33,12 @@ export async function runLighthouseAuditCommand(
   options: LighthouseAuditCommandOptions = {},
   deps?: LighthouseAuditCommandDeps,
 ): Promise<void> {
+  const isStderrTTY =
+    deps?.isStderrTTY ?? deps?.isTTY ?? Boolean(process.stderr.isTTY);
+  const pc = getColors({
+    env: options.env as NodeJS.ProcessEnv,
+    isTTY: isStderrTTY,
+  });
   const exit = (code = 1) => {
     if (deps?.exit) {
       deps.exit(code);

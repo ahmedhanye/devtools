@@ -96,6 +96,8 @@ export interface LighthouseAuditCommandDeps {
   log?: (chunk: string) => void;
   writeStderr?: (chunk: string) => void;
   exit?: (code?: number) => void;
+  isStderrTTY?: boolean;
+  isTTY?: boolean;
   executor?: LighthouseIterationExecutor;
 }
 
@@ -119,6 +121,8 @@ export interface LighthouseListCommandDeps {
   log?: (chunk: string) => void;
   error?: (chunk: string) => void;
   exit?: (code?: number) => void;
+  isStderrTTY?: boolean;
+  isTTY?: boolean;
 }
 
 /**
@@ -137,6 +141,8 @@ export interface LighthouseDiffCommandDeps {
   log?: (chunk: string) => void;
   error?: (chunk: string) => void;
   exit?: (code?: number) => void;
+  isStderrTTY?: boolean;
+  isTTY?: boolean;
 }
 
 /**
