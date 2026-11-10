@@ -3,12 +3,21 @@ import {
   RuntimeConfigSchema,
   parsePortFromEnv,
 } from "@devtools/core";
+import {
+  closeDb,
+  type DevtoolsDb,
+  getDb,
+  resolveDatabasePath,
+  runMigrations,
+} from "@devtools/db";
 import type { Server } from "bun";
 import type { Hono } from "hono";
-import { createApp } from "./index";
+import { createApp } from "./app";
+import type { LighthouseAuditRunner } from "./lighthouse/worker-runner";
+import type { ApiBindings } from "./middleware/security";
 
 /**
- * Options for configuring and booting the standalone `@devtools/api` HTTP server.
+ * Options for configuring and booting the unified `@devtools/api` HTTP server.
  */
 export interface StartServerOptions {
   /** TCP port number (`0` for ephemeral OS-assigned port, `1–65535` for explicit port). */
@@ -23,7 +32,23 @@ export interface StartServerOptions {
    * Optional pre-configured Hono application instance.
    * Defaults to creating an isolated instance via {@link createApp}.
    */
-  app?: Hono;
+  app?: Hono | Hono<{ Bindings: ApiBindings }> | ReturnType<typeof createApp>;
+  /** Optional pre-opened SQLite client overriding singleton `getDb` initialization. */
+  db?: DevtoolsDb;
+  /** Optional explicit Lighthouse artifacts root directory override. */
+  artifactsDir?: string;
+  /** Optional audit runner seam passed through to {@link createApp}. */
+  auditRunner?: LighthouseAuditRunner;
+  /**
+   * Optional non-`/api` fallback request handler (used by the CLI loopback daemon to serve
+   * pre-rendered frontend static assets on the same port).
+   */
+  fallbackFetch?: (
+    req: Request,
+    server: Server<unknown>,
+  ) => Response | Promise<Response>;
+  /** Optional callback invoked with the resolved SQLite path after startup migrations succeed. */
+  onDbInitialized?: (dbPath: string) => void;
 }
 
 /**
@@ -66,23 +91,72 @@ export function resolveServerConfig(options: StartServerOptions = {}): {
 }
 
 /**
- * Boots the standalone Bun HTTP server hosting the `@devtools/api` Hono application.
+ * Boots the unified Bun HTTP server hosting the `@devtools/api` Hono application,
+ * initializing SQLite persistence migrations and forwarding `{ server }` bindings for
+ * socket peer verification and SSE timeout control.
  *
- * @param options - Optional port, host, and environment seam overrides.
+ * @param options - Optional port, host, database, fallback static handler, and test seams.
  * @returns Active {@link ServerInstance} handle.
+ * @throws {@link Error} When database migrations fail or port binding fails.
  */
 export function startServer(options: StartServerOptions = {}): ServerInstance {
   const config = resolveServerConfig(options);
-  const activeApp = options.app ?? createApp();
 
-  const server = Bun.serve({
-    fetch: activeApp.fetch,
-    port: config.port,
-    hostname: config.host,
-  });
+  let activeDb = options.db;
+  let ownsDb = false;
+  if (!activeDb) {
+    const dbPath = resolveDatabasePath({ env: options.env });
+    try {
+      activeDb = getDb({ path: dbPath, env: options.env });
+      ownsDb = true;
+      runMigrations(activeDb);
+    } catch (error) {
+      closeDb();
+      throw new Error(
+        `Fatal: failed to initialize persistence database: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
+    }
+    options.onDbInitialized?.(dbPath);
+  }
+
+  const activeApp =
+    options.app ??
+    createApp({
+      basePath: "/api",
+      db: activeDb,
+      env: options.env,
+      artifactsDir: options.artifactsDir,
+      auditRunner: options.auditRunner,
+    });
+
+  let server: Server<unknown>;
+  try {
+    server = Bun.serve({
+      port: config.port,
+      hostname: config.host,
+      fetch(req, bunServer) {
+        if (options.fallbackFetch) {
+          const url = new URL(req.url);
+          if (url.pathname !== "/api" && !url.pathname.startsWith("/api/")) {
+            return options.fallbackFetch(req, bunServer);
+          }
+        }
+        return activeApp.fetch(req, { server: bunServer });
+      },
+    });
+  } catch (error) {
+    if (ownsDb) {
+      closeDb();
+    }
+    throw error;
+  }
 
   const stop = () => {
     server.stop(true);
+    if (ownsDb) {
+      closeDb();
+    }
   };
 
   return {
