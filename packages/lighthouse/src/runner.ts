@@ -1,20 +1,26 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { getDb, type LighthouseRunRow } from "@devtools/db";
+import type { EnvMap } from "@devtools/core";
+import { getDb, type DevtoolsDb, type LighthouseRunRow } from "@devtools/db";
 import { resolveArtifactsDir } from "./config";
 import { InvalidAuditOptionsError } from "./errors";
 import { computeRepresentativeRun } from "./median";
 import { normalizeLhr } from "./normalizer";
 import { insertLighthouseRun } from "./repository";
 import {
-  DEFAULT_LIGHTHOUSE_CATEGORIES,
-  LighthouseFormFactorSchema,
-  LighthouseThrottlingMethodSchema,
-  type ExecuteIterationParams,
-  type NormalizedLighthouseRun,
-  type RunLighthouseAuditOptions,
-  type SingleIterationResult,
+  normalizeLighthouseAuditRequest,
+  TriggerLighthouseAuditRequestSchema,
+  type LighthouseCategoryId,
+  type LighthouseFormFactor,
+  type LighthouseThrottlingMethod,
+} from "./schemas";
+import type {
+  ExecuteIterationParams,
+  LighthouseProgressEvent,
+  NormalizedLighthouseRun,
+  RunLighthouseAuditOptions,
+  SingleIterationResult,
 } from "./types";
 import type { WorkerIterationDependencies } from "./worker";
 
@@ -35,7 +41,44 @@ export async function executeIteration(
 }
 
 /**
- * Complete result returned by {@link runLighthouseAudit}.
+ * Options for executing a SQLite-free multi-run Lighthouse batch via {@link executeLighthouseBatch}.
+ */
+export type ExecuteLighthouseBatchOptions = Omit<
+  RunLighthouseAuditOptions,
+  "db" | "artifactsDir"
+>;
+
+/**
+ * Serializable intermediate output produced by {@link executeLighthouseBatch} before persistence.
+ */
+export interface LighthouseBatchExecutionResult {
+  validatedUrl: string;
+  formFactor: LighthouseFormFactor;
+  throttlingMethod: LighthouseThrottlingMethod;
+  totalRuns: number;
+  normalized: NormalizedLighthouseRun;
+  reportJson: string;
+  reportHtml: string;
+  representativeRunIndex: number;
+  durationMs: number;
+}
+
+/**
+ * Persistence options for {@link persistLighthouseAudit}.
+ */
+export interface PersistLighthouseAuditOptions {
+  /** Optional target `@devtools/db` database instance. Defaults to singleton `getDb()`. */
+  db?: DevtoolsDb;
+  /** Optional explicit artifacts base directory override. */
+  artifactsDir?: string;
+  /** Optional isolated environment map seam overriding `process.env`. */
+  env?: EnvMap;
+  /** Optional progress callback receiving the `"complete"` stage notification. */
+  onProgress?: (event: LighthouseProgressEvent) => void;
+}
+
+/**
+ * Complete result returned by {@link runLighthouseAudit} and {@link persistLighthouseAudit}.
  */
 export interface LighthouseAuditExecutionResult {
   /** Canonical persisted row in `lighthouse_runs`. */
@@ -47,78 +90,59 @@ export interface LighthouseAuditExecutionResult {
 }
 
 /**
- * Validates and normalizes `RunLighthouseAuditOptions`, throwing {@link InvalidAuditOptionsError}
- * when the URL scheme or run count is invalid.
+ * Validates and normalizes audit execution options via {@link TriggerLighthouseAuditRequestSchema},
+ * throwing {@link InvalidAuditOptionsError} on schema violation.
  */
-function validateAuditOptions(options: RunLighthouseAuditOptions): {
+function validateAuditOptions(options: ExecuteLighthouseBatchOptions): {
   url: string;
-  formFactor: "mobile" | "desktop";
-  throttlingMethod: "simulate" | "devtools" | "provided";
+  formFactor: LighthouseFormFactor;
+  throttlingMethod: LighthouseThrottlingMethod;
   runs: number;
-  categories: readonly string[];
+  categories: LighthouseCategoryId[];
 } {
-  let parsedUrl: URL;
-  try {
-    parsedUrl = new URL(options.url);
-  } catch {
-    throw new InvalidAuditOptionsError(
-      `Invalid target URL "${options.url}": must be a valid http:// or https:// URL`,
-    );
-  }
-
-  if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
-    throw new InvalidAuditOptionsError(
-      `Unsupported URL protocol "${parsedUrl.protocol}": only http: and https: are supported`,
-    );
-  }
-
-  const runs = options.runs ?? 1;
-  if (!Number.isInteger(runs) || runs < 1) {
-    throw new InvalidAuditOptionsError(
-      `Invalid runs count "${runs}": must be a positive integer (>= 1)`,
-    );
-  }
-
-  const formFactor = LighthouseFormFactorSchema.parse(
-    options.formFactor ?? "mobile",
-  );
-  const throttlingMethod = LighthouseThrottlingMethodSchema.parse(
-    options.throttlingMethod ?? "simulate",
-  );
-  const categories =
+  const rawCategories =
     options.categories && options.categories.length > 0
       ? options.categories
-      : DEFAULT_LIGHTHOUSE_CATEGORIES;
+      : undefined;
 
-  return {
-    url: parsedUrl.toString(),
-    formFactor,
-    throttlingMethod,
-    runs,
-    categories,
-  };
+  const parsed = TriggerLighthouseAuditRequestSchema.safeParse({
+    url: options.url,
+    ...(options.formFactor !== undefined
+      ? { formFactor: options.formFactor }
+      : {}),
+    ...(options.throttlingMethod !== undefined
+      ? { throttlingMethod: options.throttlingMethod }
+      : {}),
+    ...(options.runs !== undefined ? { runs: options.runs } : {}),
+    ...(rawCategories !== undefined ? { categories: rawCategories } : {}),
+  });
+
+  if (!parsed.success) {
+    const firstIssue = parsed.error.issues[0];
+    throw new InvalidAuditOptionsError(
+      firstIssue?.message ?? "Invalid Lighthouse audit options",
+      { cause: parsed.error },
+    );
+  }
+
+  return normalizeLighthouseAuditRequest(parsed.data);
 }
 
 /**
- * Executes a full Lighthouse v13 audit across `--runs <N>` iterations.
+ * Executes a multi-run Lighthouse batch (`--runs <N>`), selects the Representative Run,
+ * and normalizes the LHR without touching SQLite or filesystem artifact storage.
  *
- * @remarks
- * Orchestrates multi-run iterations, selects the single Representative Run via minimum squared
- * Euclidean distance to median FCP and Interactive, writes cold `report.json` and `report.html` artifacts
- * to `<artifactsDir>/<runId>/`, and persists one canonical row in `lighthouse_runs`.
- *
- * @param options - Audit target URL, form factor, throttling method, run count, and seams.
- * @returns Persisted {@link LighthouseRunRow}, normalized data, and representative run index.
- * @throws {@link InvalidAuditOptionsError} When `options.url` or `options.runs` is invalid.
+ * @param options - Audit target URL, emulation parameters, and optional executor seam.
+ * @returns Serializable batch execution payload ready for parent-thread persistence.
+ * @throws {@link InvalidAuditOptionsError} When `options` fails shared schema validation.
  * @throws {@link WorkerExecutionError} When browser launch or Lighthouse execution fails.
  */
-export async function runLighthouseAudit(
-  options: RunLighthouseAuditOptions,
-): Promise<LighthouseAuditExecutionResult> {
+export async function executeLighthouseBatch(
+  options: ExecuteLighthouseBatchOptions,
+): Promise<LighthouseBatchExecutionResult> {
   const startTime = performance.now();
   const validated = validateAuditOptions(options);
   const executor = options.executor ?? executeIteration;
-  const targetDb = options.db ?? getDb({ env: options.env });
 
   const iterations: SingleIterationResult[] = [];
   for (let i = 0; i < validated.runs; i++) {
@@ -140,7 +164,34 @@ export async function runLighthouseAudit(
   const { representative, runIndex, medianMetadata } =
     computeRepresentativeRun(iterations);
   const normalized = normalizeLhr(representative.lhr, medianMetadata);
+  const durationMs = Math.max(1, Math.round(performance.now() - startTime));
 
+  return {
+    validatedUrl: validated.url,
+    formFactor: validated.formFactor,
+    throttlingMethod: validated.throttlingMethod,
+    totalRuns: validated.runs,
+    normalized,
+    reportJson: representative.reportJson,
+    reportHtml: representative.reportHtml,
+    representativeRunIndex: runIndex,
+    durationMs,
+  };
+}
+
+/**
+ * Writes cold `report.json` and `report.html` artifacts to disk and inserts one canonical
+ * `lighthouse_runs` row into SQLite on the caller thread.
+ *
+ * @param batch - Output from {@link executeLighthouseBatch}.
+ * @param options - Optional database, artifacts directory, environment, and progress seams.
+ * @returns Persisted {@link LighthouseRunRow}, normalized data, and representative run index.
+ */
+export function persistLighthouseAudit(
+  batch: LighthouseBatchExecutionResult,
+  options: PersistLighthouseAuditOptions = {},
+): LighthouseAuditExecutionResult {
+  const targetDb = options.db ?? getDb({ env: options.env });
   const runId = randomUUID();
   const baseArtifactsDir = resolveArtifactsDir({
     customDir: options.artifactsDir,
@@ -151,17 +202,16 @@ export async function runLighthouseAudit(
 
   const jsonReportPath = join(runArtifactDir, "report.json");
   const htmlReportPath = join(runArtifactDir, "report.html");
-  writeFileSync(jsonReportPath, representative.reportJson, "utf-8");
-  writeFileSync(htmlReportPath, representative.reportHtml, "utf-8");
+  writeFileSync(jsonReportPath, batch.reportJson, "utf-8");
+  writeFileSync(htmlReportPath, batch.reportHtml, "utf-8");
 
-  const durationMs = Math.max(1, Math.round(performance.now() - startTime));
-
+  const { normalized } = batch;
   const run = insertLighthouseRun(targetDb, {
     id: runId,
-    url: validated.url,
-    finalUrl: normalized.finalUrl || validated.url,
-    formFactor: validated.formFactor,
-    throttlingMethod: validated.throttlingMethod,
+    url: batch.validatedUrl,
+    finalUrl: normalized.finalUrl || batch.validatedUrl,
+    formFactor: batch.formFactor,
+    throttlingMethod: batch.throttlingMethod,
     performanceScore: normalized.scores.performanceScore,
     accessibilityScore: normalized.scores.accessibilityScore,
     bestPracticesScore: normalized.scores.bestPracticesScore,
@@ -175,19 +225,34 @@ export async function runLighthouseAudit(
     summaryJson: normalized.summary,
     jsonReportPath,
     htmlReportPath,
-    durationMs,
+    durationMs: batch.durationMs,
   });
 
   options.onProgress?.({
     stage: "complete",
     message: `Lighthouse audit complete (${runId})`,
-    runIndex,
-    totalRuns: validated.runs,
+    runIndex: batch.representativeRunIndex,
+    totalRuns: batch.totalRuns,
   });
 
   return {
     run,
     normalized,
-    representativeRunIndex: runIndex,
+    representativeRunIndex: batch.representativeRunIndex,
   };
+}
+
+/**
+ * Executes a full Lighthouse v13 audit across `--runs <N>` iterations and persists artifacts and SQLite state.
+ *
+ * @param options - Audit target URL, form factor, throttling method, run count, and seams.
+ * @returns Persisted {@link LighthouseRunRow}, normalized data, and representative run index.
+ * @throws {@link InvalidAuditOptionsError} When `options` fails validation.
+ * @throws {@link WorkerExecutionError} When browser launch or Lighthouse execution fails.
+ */
+export async function runLighthouseAudit(
+  options: RunLighthouseAuditOptions,
+): Promise<LighthouseAuditExecutionResult> {
+  const batch = await executeLighthouseBatch(options);
+  return persistLighthouseAudit(batch, options);
 }

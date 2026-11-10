@@ -1,3 +1,5 @@
+import { realpathSync, statSync } from "node:fs";
+import { resolve, sep } from "node:path";
 import {
   and,
   desc,
@@ -9,15 +11,34 @@ import {
   type LighthouseRunRow,
   type NewLighthouseRunRow,
 } from "@devtools/db";
+import { parseRunSummary } from "./diff";
 import { AmbiguousRunIdError, LighthouseRunNotFoundError } from "./errors";
-import type { LighthouseFormFactor } from "./types";
+import type {
+  LighthouseFormFactor,
+  LighthouseRunDetail,
+  LighthouseRunListItem,
+  LighthouseRunSummary,
+} from "./schemas";
+
+const EMPTY_SUMMARY: LighthouseRunSummary = {
+  lcpElement: null,
+  lcpPhases: null,
+  clsCulprits: [],
+  insights: [],
+  failedAudits: [],
+  runWarnings: [],
+  runtimeError: null,
+  medianMetadata: null,
+};
 
 /**
- * Filter and pagination options for {@link listLighthouseRuns}.
+ * Filter and pagination options for {@link listLighthouseRuns} and {@link listLighthouseRunsWithTotal}.
  */
 export interface ListLighthouseRunsOptions {
   /** Optional exact URL filter. */
   url?: string;
+  /** Optional case-insensitive URL substring filter. */
+  search?: string;
   /** Optional form factor filter (`"mobile"` or `"desktop"`). */
   formFactor?: LighthouseFormFactor;
   /** Maximum number of rows to return. Defaults to `50`. */
@@ -71,9 +92,35 @@ export function getLighthouseRunById(
   return row ?? null;
 }
 
+function escapeLikePattern(value: string): string {
+  return value
+    .replaceAll("/", "//")
+    .replaceAll("%", "/%")
+    .replaceAll("_", "/_");
+}
+
+function buildListRunsCondition(
+  options: Pick<ListLighthouseRunsOptions, "url" | "search" | "formFactor">,
+) {
+  const conditions = [];
+  if (options.url) {
+    conditions.push(eq(lighthouseRuns.url, options.url));
+  }
+  if (options.search) {
+    const escaped = escapeLikePattern(options.search.toLowerCase());
+    conditions.push(
+      sql`LOWER(${lighthouseRuns.url}) LIKE ${`%${escaped}%`} ESCAPE '/'`,
+    );
+  }
+  if (options.formFactor) {
+    conditions.push(eq(lighthouseRuns.formFactor, options.formFactor));
+  }
+  return conditions.length > 0 ? and(...conditions) : undefined;
+}
+
 /**
  * Lists Lighthouse run records ordered by `createdAt` descending with optional URL,
- * form factor, limit, and offset filters.
+ * substring search, form factor, limit, and offset filters.
  *
  * @param db - Target {@link DevtoolsDb} instance.
  * @param options - Optional filter and pagination criteria.
@@ -83,25 +130,56 @@ export function listLighthouseRuns(
   db: DevtoolsDb,
   options: ListLighthouseRunsOptions = {},
 ): LighthouseRunRow[] {
-  const conditions = [];
-  if (options.url) {
-    conditions.push(eq(lighthouseRuns.url, options.url));
-  }
-  if (options.formFactor) {
-    conditions.push(eq(lighthouseRuns.formFactor, options.formFactor));
-  }
-
   const limit = options.limit ?? 50;
   const offset = options.offset ?? 0;
 
   return db
     .select()
     .from(lighthouseRuns)
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .where(buildListRunsCondition(options))
     .orderBy(desc(lighthouseRuns.createdAt))
     .limit(limit)
     .offset(offset)
     .all();
+}
+
+/**
+ * Counts historical Lighthouse run records matching the given filter criteria.
+ *
+ * @param db - Target {@link DevtoolsDb} instance.
+ * @param options - Optional URL, substring search, and form factor filters.
+ * @returns Total matching row count.
+ */
+export function countLighthouseRuns(
+  db: DevtoolsDb,
+  options: Pick<
+    ListLighthouseRunsOptions,
+    "url" | "search" | "formFactor"
+  > = {},
+): number {
+  const result = db
+    .select({ count: sql<number>`count(*)` })
+    .from(lighthouseRuns)
+    .where(buildListRunsCondition(options))
+    .get();
+  return Number(result?.count ?? 0);
+}
+
+/**
+ * Lists paginated Lighthouse run records alongside the total matching row count.
+ *
+ * @param db - Target {@link DevtoolsDb} instance.
+ * @param options - Filter and pagination criteria.
+ * @returns Paginated `runs` slice and unpaginated `total` count.
+ */
+export function listLighthouseRunsWithTotal(
+  db: DevtoolsDb,
+  options: ListLighthouseRunsOptions = {},
+): { runs: LighthouseRunRow[]; total: number } {
+  return {
+    runs: listLighthouseRuns(db, options),
+    total: countLighthouseRuns(db, options),
+  };
 }
 
 /**
@@ -167,11 +245,7 @@ export function resolveLighthouseRun(
     );
   }
 
-  // Escape SQL wildcards (% and _) using / as escape character
-  const escaped = query
-    .replaceAll("/", "//")
-    .replaceAll("%", "/%")
-    .replaceAll("_", "/_");
+  const escaped = escapeLikePattern(query);
 
   const matches = db
     .select()
@@ -215,4 +289,89 @@ export function getLatestLighthouseRun(db: DevtoolsDb): LighthouseRunRow {
   }
 
   return row;
+}
+
+/**
+ * Resolves and verifies that an HTML report path exists as a regular file strictly
+ * inside `artifactsDir` after canonical symlink resolution.
+ *
+ * @param htmlReportPath - Stored `html_report_path` value from SQLite.
+ * @param artifactsDir - Canonical artifacts root directory.
+ * @returns Canonical filesystem path if confined and readable as a file, or `null` otherwise.
+ */
+export function resolveSafeHtmlReportPath(
+  htmlReportPath: string,
+  artifactsDir: string,
+): string | null {
+  if (!htmlReportPath) {
+    return null;
+  }
+  let canonicalBase: string;
+  try {
+    canonicalBase = realpathSync(resolve(artifactsDir));
+  } catch {
+    return null;
+  }
+  try {
+    const canonicalTarget = realpathSync(resolve(htmlReportPath));
+    if (!canonicalTarget.startsWith(canonicalBase + sep)) {
+      return null;
+    }
+    return statSync(canonicalTarget).isFile() ? canonicalTarget : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Projects a database {@link LighthouseRunRow} into a sanitized {@link LighthouseRunListItem}
+ * omitting heavy `summaryJson` and internal filesystem disk paths.
+ *
+ * @param row - Persisted SQLite row.
+ * @param artifactsDir - Artifacts root directory used to check `hasHtmlReport`.
+ * @returns Sanitized API list item DTO.
+ */
+export function serializeLighthouseRunListItem(
+  row: LighthouseRunRow,
+  artifactsDir: string,
+): LighthouseRunListItem {
+  return {
+    id: row.id,
+    url: row.url,
+    finalUrl: row.finalUrl,
+    formFactor: row.formFactor,
+    throttlingMethod: row.throttlingMethod,
+    performanceScore: row.performanceScore,
+    accessibilityScore: row.accessibilityScore,
+    bestPracticesScore: row.bestPracticesScore,
+    seoScore: row.seoScore,
+    lcpMs: row.lcpMs,
+    cls: row.cls,
+    tbtMs: row.tbtMs,
+    fcpMs: row.fcpMs,
+    siMs: row.siMs,
+    ttfbMs: row.ttfbMs,
+    durationMs: row.durationMs,
+    createdAt: new Date(row.createdAt).toISOString(),
+    hasHtmlReport:
+      resolveSafeHtmlReportPath(row.htmlReportPath, artifactsDir) !== null,
+  };
+}
+
+/**
+ * Projects a database {@link LighthouseRunRow} into a {@link LighthouseRunDetail} DTO
+ * including parsed `summary` while omitting internal filesystem paths.
+ *
+ * @param row - Persisted SQLite row.
+ * @param artifactsDir - Artifacts root directory used to check `hasHtmlReport`.
+ * @returns Sanitized API detail DTO.
+ */
+export function serializeLighthouseRunDetail(
+  row: LighthouseRunRow,
+  artifactsDir: string,
+): LighthouseRunDetail {
+  return {
+    ...serializeLighthouseRunListItem(row, artifactsDir),
+    summary: parseRunSummary(row.summaryJson) ?? EMPTY_SUMMARY,
+  };
 }
