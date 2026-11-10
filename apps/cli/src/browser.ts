@@ -115,6 +115,8 @@ export async function runBrowserInstallCommand(
   deps?: {
     installBrowser?: typeof InstallBrowserFn;
     isTTY?: boolean;
+    isStderrTTY?: boolean;
+    isStdoutTTY?: boolean;
     writeStderr?: (chunk: string) => void;
     exit?: (code?: number) => void;
   },
@@ -127,39 +129,51 @@ export async function runBrowserInstallCommand(
     process.exit(code);
   };
 
-  const isTTY = deps?.isTTY ?? Boolean(process.stderr.isTTY);
-  const pc = getColors({ env: options.env as NodeJS.ProcessEnv, isTTY });
+  const isStderrTTY =
+    deps?.isStderrTTY ?? deps?.isTTY ?? Boolean(process.stderr.isTTY);
+  const isStdoutTTY =
+    deps?.isStdoutTTY ?? deps?.isTTY ?? Boolean(process.stdout.isTTY);
+  const pcStderr = getColors({
+    env: options.env as NodeJS.ProcessEnv,
+    isTTY: isStderrTTY,
+  });
+  const pcStdout = getColors({
+    env: options.env as NodeJS.ProcessEnv,
+    isTTY: isStdoutTTY,
+  });
   const writeStderr =
     deps?.writeStderr ?? ((chunk: string) => process.stderr.write(chunk));
   const doInstall =
     deps?.installBrowser ?? (await import("@devtools/browser")).installBrowser;
 
   console.error(
-    pc.cyan("Installing Chrome for Testing (chrome-headless-shell@stable)..."),
+    pcStderr.cyan(
+      "Installing Chrome for Testing (chrome-headless-shell@stable)...",
+    ),
   );
 
   try {
     const installed = await doInstall({
       cacheDir: options.path,
       env: options.env,
-      onProgress: createDownloadProgressReporter(isTTY, writeStderr),
+      onProgress: createDownloadProgressReporter(isStderrTTY, writeStderr),
     });
 
-    if (isTTY) {
+    if (isStderrTTY) {
       writeStderr("\n");
     }
 
     console.log(
-      pc.green(
+      pcStdout.green(
         `Successfully installed ${installed.browser}@${installed.buildId} at:\n  ${installed.executablePath}`,
       ),
     );
   } catch (err: unknown) {
-    if (isTTY) {
+    if (isStderrTTY) {
       writeStderr("\n");
     }
     const message = err instanceof Error ? err.message : String(err);
-    console.error(pc.red(`Failed to install browser: ${message}`));
+    console.error(pcStderr.red(`Failed to install browser: ${message}`));
     exit(1);
   }
 }
@@ -168,14 +182,24 @@ export async function runBrowserInstallCommand(
  * Registers the `devtools browser` subcommand hierarchy (`status` and `install`) on a Commander program.
  *
  * @param program - Root Commander `Command` instance.
+ * @param deps - Optional dependency injection seam for testing command actions.
  * @returns Configured `browser` subcommand instance.
  */
-export function registerBrowserCommands(program: Command): Command {
+export function registerBrowserCommands(
+  program: Command,
+  deps?: {
+    runBrowserStatusCommand?: typeof runBrowserStatusCommand;
+    runBrowserInstallCommand?: typeof runBrowserInstallCommand;
+  },
+): Command {
   const browser = program
     .command("browser")
     .description(
       "Manage and inspect local browser provisioning for audit tools",
     );
+
+  const doStatus = deps?.runBrowserStatusCommand ?? runBrowserStatusCommand;
+  const doInstall = deps?.runBrowserInstallCommand ?? runBrowserInstallCommand;
 
   browser
     .command("status")
@@ -187,7 +211,7 @@ export function registerBrowserCommands(program: Command): Command {
     )
     .option("--path <dir>", "Custom directory to probe managed cache in")
     .action(async (options: BrowserStatusOptions) => {
-      await runBrowserStatusCommand(options);
+      await doStatus(options);
     });
 
   browser
@@ -200,7 +224,7 @@ export function registerBrowserCommands(program: Command): Command {
       "Custom directory to download and unpack browser into",
     )
     .action(async (options: BrowserInstallOptions) => {
-      await runBrowserInstallCommand(options);
+      await doInstall(options);
     });
 
   return browser;
