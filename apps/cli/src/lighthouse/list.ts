@@ -1,4 +1,5 @@
 import type { DevtoolsDb } from "@devtools/db";
+import { LighthouseFormFactorSchema } from "@devtools/lighthouse/schemas";
 import { getColors } from "../colors";
 import { formatJson } from "./formatters/json";
 import { formatTerminalList } from "./formatters/terminal";
@@ -49,8 +50,7 @@ export async function runLighthouseListCommand(
 
   if (
     options.formFactor !== undefined &&
-    options.formFactor !== "mobile" &&
-    options.formFactor !== "desktop"
+    !LighthouseFormFactorSchema.safeParse(options.formFactor).success
   ) {
     error(
       pc.red(

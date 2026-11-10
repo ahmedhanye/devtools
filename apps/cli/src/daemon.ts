@@ -1,17 +1,11 @@
 import { existsSync, statSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
-import { createApp } from "@devtools/api";
+import { startServer } from "@devtools/api";
 import {
   type EnvMap,
   RuntimeConfigSchema,
   parsePortFromEnv,
 } from "@devtools/core";
-import {
-  closeDb,
-  getDb,
-  resolveDatabasePath,
-  runMigrations,
-} from "@devtools/db";
 import type { Server } from "bun";
 import { getColors } from "./colors";
 
@@ -87,9 +81,13 @@ function formatDaemonValidationError(
   envPort: string | undefined,
 ): Error {
   const portIssue = error.issues.find((issue) => issue.path.includes("port"));
-  if (portIssue && portOverride === undefined && envPort !== undefined) {
+  if (portIssue) {
+    const label =
+      portOverride !== undefined
+        ? `port number "${portOverride}"`
+        : `environment variable PORT="${String(envPort)}"`;
     return new Error(
-      `Invalid environment variable PORT="${envPort}": must be an integer between 0 and 65535`,
+      `Invalid ${label}: must be an integer between 0 and 65535`,
       { cause: error },
     );
   }
@@ -244,45 +242,25 @@ export function startDaemon(options: StartDaemonOptions = {}): DaemonInstance {
     );
   }
 
-  const dbPath = resolveDatabasePath({ env: options.env });
-  const daemonDb = getDb({ path: dbPath, env: options.env });
-
-  try {
-    runMigrations(daemonDb);
-  } catch (error) {
-    throw new Error(
-      `Fatal: failed to initialize persistence database: ${error instanceof Error ? error.message : String(error)}`,
-      { cause: error },
-    );
-  }
-
   const pc = getColors({ env: options.env as NodeJS.ProcessEnv });
-  console.error(pc.dim(`Persistence initialized: SQLite (${dbPath})`));
-
-  const api = createApp({ basePath: "/api" });
-
-  const server = Bun.serve({
+  const instance = startServer({
     port: config.port,
-    hostname: config.host,
-    fetch(req) {
+    host: config.host,
+    env: options.env,
+    onDbInitialized: (dbPath) => {
+      console.error(pc.dim(`Persistence initialized: SQLite (${dbPath})`));
+    },
+    fallbackFetch: (req) => {
       const url = new URL(req.url);
-      if (url.pathname === "/api" || url.pathname.startsWith("/api/")) {
-        return api.fetch(req);
-      }
       return serveStaticAsset(staticDir, url.pathname, req.method);
     },
   });
 
-  const stop = () => {
-    server.stop(true);
-    closeDb();
-  };
-
   return {
-    server,
-    port: server.port ?? config.port,
-    hostname: server.hostname ?? config.host,
+    server: instance.server,
+    port: instance.port,
+    hostname: instance.server.hostname ?? config.host,
     staticDir,
-    stop,
+    stop: instance.stop,
   };
 }
