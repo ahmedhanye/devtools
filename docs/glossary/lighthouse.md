@@ -4,6 +4,10 @@ Domain terms for isolated Lighthouse execution, multi-run median selection, trac
 
 ## Language
 
+**Audit Job**:
+The transient daemon-managed execution lifecycle from trigger through completion or failure, before or independent of a persisted **Audit Run** / **Representative Run**.
+_Avoid_: Live run, active scan, background task
+
 **Audit Run**:
 A single isolated navigation pass executing Lighthouse against a target URL under a specific form factor (`mobile` or `desktop`) and throttling profile (`simulate`, `devtools`, or `provided`).
 _Avoid_: Scan, test run, page check, benchmark
@@ -34,5 +38,6 @@ _Avoid_: LLM dump, text output, compact report
 
 ## Flagged ambiguities
 
+- **Audit Job vs. Audit Run**: An Audit Job is the transient, single-flight execution managed by the daemon API (`POST /api/lighthouse/audits`, tracked by `jobId` via SSE and `/api/lighthouse/audits/active`), which creates no database row or report file if execution fails; an **Audit Run** / **Representative Run** is a completed navigation pass persisted in `lighthouse_runs` with a `runId`.
 - **Representative Run vs. Per-Metric Median**: Computing independent medians across metrics produces a synthetic result that contradicts the saved Report Artifact and trace attributions; DevTools always selects one real Representative Run from the batch.
 - **Audit Summary vs. Report Artifact**: An Audit Summary is the compact structured JSON stored inline in `lighthouse_runs.summary_json` for fast API and CLI queries, whereas a Report Artifact is the multi-megabyte raw `.json` and `.html` file pair stored on disk.
