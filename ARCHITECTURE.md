@@ -71,7 +71,6 @@ Detailed architecture guides live under `docs/architecture/`:
 
 - [HTTP API architecture](docs/architecture/api.md): `apps/api` architecture, Hono route factory, in-process mounting, loopback CORS protection, and socketless testing.
 - [Frontend application architecture](docs/architecture/frontend.md): `apps/frontend` architecture, Feature-Sliced Design v2.1 layers, App Router adapters, hydration safety, and static asset delivery.
-- [Documentation site architecture](docs/architecture/site.md): `site/` platform architecture, Fumadocs MDX content pipeline, search index route, and LLM text endpoints.
 
 ### Package architectures
 

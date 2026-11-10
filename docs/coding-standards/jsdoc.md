@@ -13,18 +13,18 @@ Conventions for documenting TypeScript code, functions, types, and module interf
    const userId: string;
    ```
 2. **Document the _why_, not the _what_**: Comments earn their place by capturing unwritten conventions, architectural rationale, non-obvious trade-offs, and invariants that the type system cannot express.
-3. **Avoid arbitrary 100% docstring quotas**: Universal docstring quotas across every internal function, React component, or test closure lead to LLM comment slop and comment rot. Instead, enforce a strict **Tiered Documentation Boundary**.
+3. **Avoid arbitrary 100% docstring quotas**: Universal docstring quotas across every internal function, React component, or test closure lead to redundant boilerplate comments and comment rot. Instead, enforce a strict **Tiered Documentation Boundary**.
 
 ## Tiered documentation boundaries
 
 Documentation requirements are strictly scoped by architectural layer and export visibility:
 
-| Tier                                                      | Scope                                                                               | Coverage Policy                                  | Requirements                                                                                                                       |
-| :-------------------------------------------------------- | :---------------------------------------------------------------------------------- | :----------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------- |
-| **Tier 1: Public Package Contracts**                      | `packages/*/src/**` (exported functions, classes, interfaces, schemas)              | **Mandatory**                                    | First-line active-voice summary, `@param` (no `{type}`), `@returns`, `@throws` on errors, `@remarks` for architectural context.    |
-| **Tier 2: Programmatic Application Seams & Scripts**      | `apps/cli/src/**`, `apps/api/src/**`, `scripts/*.ts` (exported functions & schemas) | **Mandatory on exports**                         | Active-voice summary, `@param` and `@returns` for non-trivial interfaces, `@throws` where applicable.                              |
-| **Tier 3: Frontend FSD Public Slices & Shared Utilities** | `apps/frontend/src/shared/lib/**`, exported slice APIs (`index.ts`)                 | **Mandatory on hooks/utilities; Optional on UI** | Document lifecycle guarantees, hydration safety, and hook parameters. Presentational React components do not require TSDoc blocks. |
-| **Tier 4: Internal Helpers, Pages, and Tests**            | Unexported functions, `apps/frontend/src/{app,pages}/**`, `site/**`, `**/*.test.ts` | **Opt-in only for non-obvious logic**            | Self-documenting code is preferred. However, **any** JSDoc comment written anywhere must satisfy 100% tag and syntax validation.   |
+| Tier                                                      | Scope                                                                                  | Coverage Policy                                  | Requirements                                                                                                                       |
+| :-------------------------------------------------------- | :------------------------------------------------------------------------------------- | :----------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------- |
+| **Tier 1: Public Package Contracts**                      | `packages/*/src/**` (exported functions, classes, interfaces, schemas)                 | **Mandatory**                                    | First-line active-voice summary, `@param` (no `{type}`), `@returns`, `@throws` on errors, `@remarks` for architectural context.    |
+| **Tier 2: Programmatic Application Seams & Scripts**      | `apps/cli/src/**`, `apps/api/src/**`, `scripts/**/*.ts` (exported functions & schemas) | **Mandatory on exports**                         | Active-voice summary, `@param` and `@returns` for non-trivial interfaces, `@throws` where applicable.                              |
+| **Tier 3: Frontend FSD Public Slices & Shared Utilities** | `apps/frontend/src/shared/lib/**`, exported slice APIs (`index.ts`)                    | **Mandatory on hooks/utilities; Optional on UI** | Document lifecycle guarantees, hydration safety, and hook parameters. Presentational React components do not require TSDoc blocks. |
+| **Tier 4: Internal Helpers, Pages, and Tests**            | Unexported functions, `apps/frontend/src/{app,pages}/**`, `site/**`, `**/*.test.ts`    | **Opt-in only for non-obvious logic**            | Self-documenting code is preferred. However, **any** JSDoc comment written anywhere must satisfy 100% tag and syntax validation.   |
 
 ## TSDoc structure and formatting
 

@@ -48,7 +48,6 @@ Read `.scratch/qa/<timestamp>-<slug>/{black,gray,white}-box-testing.md` in paral
 
 - Verification coverage and test pass/fail totals across the Black-box, Gray-box, and White-box passes.
 - Deduplicated core defects, missing tests, and standards violations discovered across the three axes.
-- Estimated developer effort for fixes.
 - Links to `.scratch/qa/<timestamp>-<slug>/{black,gray,white}-box-testing.md`.
 - Any `Human verification required` checks from the reports (omit this bullet completely when all checks were verified by machine).
 

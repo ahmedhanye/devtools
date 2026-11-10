@@ -124,6 +124,6 @@ Parent Specs remain `In Progress` until all child tickets reach `Done` and the m
 
 - **Clean title conventions**: Issue titles must not include bracketed prefixes (such as `[Spec]:`, `[Slice]:`, `[Bug]:`). Issue type and scope are tracked exclusively through GitHub labels (`type:spec`, `type:feat`, `type:bug`).
 - Tickets serve as immutable behavioral contracts once created. Requirements, failure modes, and acceptance criteria text must not be altered after work begins.
-- Updating checklist status: When task lists exist in ticket or parent Spec descriptions, contributors and agents should check off completed items (`- [ ]` to `- [x]`) using `gh issue edit <number> --body "$UPDATED_BODY"` as vertical slices and criteria are verified. Do not reword or delete the criteria text itself.
+- Updating checklist status: When task lists exist in ticket or parent Spec descriptions, contributors should check off completed items (`- [ ]` to `- [x]`) using `gh issue edit <number> --body "$UPDATED_BODY"` as vertical slices and criteria are verified. Do not reword or delete the criteria text itself.
 - Post technical discoveries, blocker updates, and operational decisions as issue comments rather than editing original ticket requirements.
 - Closing tickets is handled automatically when the linked pull request merges into `main`. Do not close tickets manually prior to merge.

@@ -9,7 +9,6 @@ Domain vocabulary for DevTools packages and applications mapped across bounded c
 - [Performance Auditing](./docs/glossary/lighthouse.md): isolated Lighthouse audit runs, multi-run representative selection, trace insights, warm audit summaries, and cold report artifacts.
 - [Persistence](./docs/glossary/persistence.md): embedded SQLite engine, Drizzle ORM primitives, WAL mode, path resolution algorithms, and schema migrations.
 - [Frontend & UI](./docs/glossary/frontend.md): Feature-Sliced Design v2.1 layers, pages-first extraction rule, App Router boundary adapters, tear-free hydration, semantic theme tokens, and portable stories.
-- [Documentation Platform](./docs/glossary/site.md): Diátaxis quadrants, Fumadocs content pipeline, LLM context endpoints, and search index routes.
 
 ## Relationships
 

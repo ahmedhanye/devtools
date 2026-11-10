@@ -66,7 +66,7 @@ Completion criterion: Breakdown approved by the user without pending revisions.
 Determine the target destination from the user's prompt:
 
 - **Local files (default).** Unless the user explicitly requests publishing to GitHub or a remote tracker, save tickets locally under `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01` in dependency order (blockers first). Use the template below with `# <NN>: <Ticket title>` prepended and a `### Blocked by` section listing blocking ticket numbers or `None (can start immediately)`. Write one ticket per file, never a single combined file.
-- **GitHub.** When the user explicitly requests publishing to GitHub or the issue tracker, create one issue per ticket in dependency order (blockers first) with title prefix `[Slice]: <title>` and label `type:feat`. Use the ticket template below for the issue body. If the ticket belongs to a parent Spec, attach it as a native sub-issue. Declare any blocking dependencies to gate start order.
+- **GitHub.** When the user explicitly requests publishing to GitHub or the issue tracker, create one issue per ticket in dependency order (blockers first) with a clean descriptive title (no bracketed or type prefixes) and label `type:feat`. Use the ticket template below for the issue body. If the ticket belongs to a parent Spec, attach it as a native sub-issue. Declare any blocking dependencies to gate start order.
 
 Leave parent Specs open in the issue tracker until all child tickets reach Done.
 
@@ -76,25 +76,20 @@ Completion criterion: All approved tickets published locally or created as linke
 
 ### Primary affected area
 
-Select the primary workspace app or package from `apps/*` or `packages/*`, or `toolchain / infra`.
+Select the primary workspace app or package from `apps/*`, `packages/*`, `site`, or `toolchain / infra`.
 
-### Slice objective and user value
+### Problem statement
 
-The end-to-end behavior this ticket makes work from the user perspective.
+Describe the concrete user pain point, missing capability, or technical defect this slice addresses.
 
-### Vertical slice scope
+### Expected behavioral contract
 
-Describe how these layers collaborate to deliver the end-to-end behavior above as a single vertical path.
-
-- **Schema and database.** Migrations, schemas, or contract types. State none if untouched.
-- **Logic and services.** Domain logic, route handlers, or error handling.
-- **User interface and presentation.** Components, layout, or state hooks. State none if untouched.
-- **Tests.** Unit tests, integration tests, or contract assertions.
+Describe the observable behavioral contracts, public seams, and user-facing capabilities that will hold when this slice is complete. Avoid prescribing internal file paths or implementation recipes.
 
 ### Automated acceptance criteria
 
 - [ ] Automated verification suite passes
-- [ ] Behavioral tests pass for new functionality
+- [ ] Observable behavioral contracts hold across public seams
 
 </ticket-template>
 

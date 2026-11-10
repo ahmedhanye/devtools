@@ -10,7 +10,7 @@ Prepare the workspace and branch for an issue. Follow `CONTRIBUTING.md`.
 
 ## Actions
 
-1. Validate issue number, title, and link. Halt immediately if any detail is missing.
+1. Validate issue number, title, and link (`gh issue view <number> --json number,title,body,state`). Halt immediately if any detail is missing.
 2. Inspect working tree (`git status --porcelain`). Halt immediately if dirty.
 3. Checkout and update `main` (`git checkout main && git pull origin main`).
 4. Create and checkout native linked branch (`gh issue develop <number> --checkout`).

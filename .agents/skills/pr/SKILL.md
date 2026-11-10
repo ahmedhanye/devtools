@@ -1,170 +1,62 @@
 ---
 name: pr
-description: "Use when writing a PR body."
-metadata:
-  credits:
-    skill: show-me
-    author: Dex Horthy
-    organisation: Humanlayer
-    url: "https://github.com/humanlayer/skills/blob/main/plugins/show-me/skills/show-me/SKILL.md"
+description: Create, update, or stack pull requests following repository templates, title conventions, and gh-stack workflows. Use when opening a PR, writing or editing a PR body, splitting large changes (>5,000 LOC or multi-layer) into stacked PRs, or running gh stack commands.
 ---
 
-Use this template for writing the PR body:
+# Pull requests
 
-```markdown
-## Summary
+Reference and execution workflow for authoring, submitting, and updating pull requests across the DevTools monorepo. Follow all conventions in [docs/contributing/pull-requests.md](../../../docs/contributing/pull-requests.md) and [docs/contributing/stacked-prs.md](../../../docs/contributing/stacked-prs.md).
 
-<diagram, diff-sketch, or tree>
+## 1. Triage: Deterministic Decision
 
-## Evidence
+Inspect the changeset against `origin/main` before drafting PR metadata:
 
-- **Before:** <screenshot/output/failing test run>
-  **After:** <screenshot/output/passing test run>
-
-## Merge Danger
-
-**Door:** <one-way or two-way>
-
-<optional: description>
-
-**Blast Radius:** <one-word description>
-
-<optional: potential ramifications of merge>
+```bash
+git diff --shortstat origin/main...HEAD
+git log origin/main..HEAD --oneline
 ```
 
-## Sections
+Evaluate against stacking thresholds: >5,000 lines of code, >80 modified files, or changes spanning multiple architectural tiers or domains ("many directions").
 
-Skip all preambles and keep prose brief. Use the user's domain language from `GLOSSARY.md`.
+- **Decision rule:** Present only the single correct option. Never offer the user a choice between a single PR and a stacked PR.
+  - If any stacking threshold is met: formulate only the **Stacked PR plan**.
+  - If within limits in a single domain: formulate only the **Single PR plan**.
 
-### Summary
+## 2. Formulating the Pull Request Plan
 
-Pick the smallest view that makes the key point clear.
+Prepare title and body metadata following repository standards:
 
-- Show logic or an algorithm as pseudocode:
+- **Titles:** Follow `<type>[optional (<scope>)]: <imperative description>` per [docs/contributing/commits.md](../../../docs/contributing/commits.md) and validate with `echo "<title>" | bunx commitlint`. Use single nouns for scopes; omit scopes for cross-cutting changes. Never place issue numbers in titles.
+- **Bodies:** Follow [.github/PULL_REQUEST_TEMPLATE.md](../../../.github/PULL_REQUEST_TEMPLATE.md) (Summary with visual structure, Evidence with acceptance criteria mapped from `gh issue view <issue> --json number,title,body`, and Merge Danger).
+- **Single PR plan:** Provide the validated title, `Closes #<issue>`, visual summary, and evidence.
+- **Stacked PR plan:** Decompose work into dependency-ordered tiers per [docs/contributing/stacked-prs.md](../../../docs/contributing/stacked-prs.md) (Layer 1 tooling/governance/schemas -> Layer 2 packages -> Layer 3 CLI/apps -> Layer 4 docs/frontend). Ensure green CI across all layers:
+  1. **Strict dependency ordering:** Lower layers must never depend on code from higher layers.
+  2. **Self-contained slices:** Keep runtime changes co-located with their unit tests and type definitions so typecheck, tests, and diff-coverage pass at every layer.
+  3. **Layer metadata:** Specify branch (`<issue>-<topic>/<layer-number>-<layer-name>`), scope/commits, validated title, and issue linking (`Part of #<issue>` for intermediate layers; `Closes #<issue>` for the final layer only).
 
-```text
-on(save)
-  if content is unchanged
-    return cached result
-  write new content
-  return fresh result
-```
+## 3. Checkpoint: User Confirmation
 
-- Show runtime control flow as a call tree:
+**Pause and present only the chosen PR plan to the user for confirmation.** Never create stack branches, push commits, or submit PRs without explicit approval. Present:
 
-```text
-submitForm
-  createSession
-    persistPrompt
-    launchAgent
-  navigateToSession
-```
+1. `git status` with staged (`git diff --cached --stat`) and unstaged (`git diff --stat`) summaries.
+2. The single formulated plan (the single PR plan or the stacked chain breakdown). Do not present alternative options.
 
-- Show UI structure as a component tree, including state and module boundaries that matter:
+Await user confirmation before proceeding to execution.
 
-```text
-<SessionPage> (apps/example/src/routes/session.tsx)
-  useSessionEvents()
-  <SessionToolbar>
-    <RunSkillButton> (packages/ui)
-```
+## 4. Execution & Submission
 
-- Show file responsibility or a broad refactor as a shallow file tree:
+Once the user approves the plan:
 
-```text
-src/
-├── commands/       # parses user actions
-├── sessions/       # owns session state
-└── transport/      # sends API requests
-```
-
-- Show component interaction, control flow, or data flow with Mermaid:
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant UI
-    participant Daemon
-    User->>UI: choose command
-    UI->>Daemon: send expanded prompt
-    Daemon-->>UI: stream result
-```
-
-- Use `diff` when the point is what changes and the surrounding shape already exists. Match the diff shape to the topic.
-
-For a component change:
-
-```diff
- <SessionPage>
-   useSessionEvents()
-   <SessionToolbar>
-+    <RunSkillButton />
-   <SessionTimeline>
-+    <SkillResultCard />
-```
-
-For a file-layout change:
-
-```diff
- src/
- ├── commands/
-+│   └── show-me.ts       # expands the slash command
- ├── sessions/
--└── transport.ts
-+└── transport/
-+    ├── client.ts
-+    └── stream.ts
-```
-
-For a call-tree or call-stack change:
-
-```diff
- submitForm
-   createSession
-     persistPrompt
-+    expandSkillMention
-     launchAgent
--  navigateToSession
-+  navigateToSession
-+    subscribeToEvents
-```
-
-For a state or control-flow change:
-
-```diff
- on(save)
--  write content
-+  if content is unchanged
-+    return cached result
-+  write new content
-+  invalidate cache
-```
-
-- Show the whole block when most of it is new, when omitted context would hide ownership or order, or when the user needs a copyable target shape:
-
-```ts
-function expandSkill(command: string): string {
-  const skillName = command.slice(1);
-  return `use the ${skillName} skill`;
-}
-```
-
-#### Guidance
-
-Place each visual next to the short text it supports. Keep only the calls, files, props, states, and boundaries needed to answer the user's current question or the options to resolve the current discussion point.
-
-You may use one of these, you may use several, it is unlikely you will use all of them. Use your judgement and don't overwhelm the user.
-
-### Evidence
-
-Concrete evidence that the change works. Show a before and after.
-
-Screenshots are S-tier - when the environment is set up for it and the change is visual.
-
-Execution-based evidence is A-tier. Test results, console output. Show the exact test that now fails and passes, using pseudocode.
-
-### Merge Danger
-
-Describe whether it's a one-way or two-way door. You can walk back through two-way doors, but not one-way doors. A PR that is cheap to roll back is lower risk. Changes that involve destructive actions or hard-to-reverse decisions are one-way doors.
-
-The blast radius is the potential impact or scope of the changes introduced by this PR. Consider all possibilities. Examples are layout shift, breakages for consumers, mobile responsiveness, etc.
+1. **Update tracking issue:** Query the linked issue and mark completed acceptance criteria from `- [ ]` to `- [x]` via `gh issue edit <issue> --body "$UPDATED_BODY"`.
+2. **Execute branch submission:**
+   - **Single PR:** Push branch and open via `gh pr create --assignee "@me" --fill`.
+   - **Stacked PR:**
+     - Create each layer branch from its base, applying or cherry-picking assigned commits.
+     - Verify every layer passes all CI checks against its base (`bun run check && bun run typecheck && bun test && bun run verify:diff-coverage --base <parent-branch> && bun run build:smoke`). Never submit if any layer fails.
+     - Initialize tracking: `gh stack init <branch-1> <branch-2> ...` (or `gh stack add <branch>`).
+     - Submit non-interactively: `gh stack submit --auto --open`.
+3. **Patch PR metadata:** Update PR titles and bodies non-interactively via GitHub REST API:
+   ```bash
+   gh api --method PATCH repos/{owner}/{repo}/pulls/<number> -f title="<title>" -F body=@<body-file>
+   ```
+4. **Safe CLI operations:** Avoid `gh pr edit` and bare `gh pr view` (they query deprecated GraphQL fields). Inspect with `gh pr view <number> --json number,title,body,state,isDraft,baseRefName,headRefName,url`. Always use non-interactive flags for `gh-stack` (`--json`, `--auto`, `--yes`) and never run bare interactive TUI commands.

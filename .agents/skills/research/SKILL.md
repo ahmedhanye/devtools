@@ -26,11 +26,11 @@ When running in the primary session:
    - `TypeName`: `self`
    - `Role`: `Technical Researcher`
    - `Prompt`: Include the scoped questions, relevant repository paths, instruction to search the web for external documentation, and target report path `.scratch/research/<topic>.md` following [TEMPLATE.md](TEMPLATE.md).
-3. Stop tool execution immediately. The system resumes execution when the subagent finishes.
+3. **Zero-tool turn end.** After dispatching the subagent, do not call any status, list, polling, or monitoring tools. Output a brief confirmation to the user and immediately end the turn with zero tool calls. Await the platform's reactive resumption notification before proceeding.
 4. When resumed, read `.scratch/research/<topic>.md`.
 5. Present a direct answer to the user in under 300 words, cite key trade-offs, and link to `.scratch/research/<topic>.md`.
 
-Completion criterion: The foreground session dispatches the subagent, halts tool calls, and presents a final summary linked to `.scratch/research/<topic>.md` upon resumption.
+Completion criterion: The foreground session dispatches the subagent, halts tool calls with a zero-tool turn end, and presents a final summary linked to `.scratch/research/<topic>.md` upon resumption.
 
 ### 2. Subagent researcher
 

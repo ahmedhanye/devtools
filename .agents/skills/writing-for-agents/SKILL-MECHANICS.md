@@ -1,22 +1,37 @@
 # Skill mechanics
 
-The skill-specific branch of [`writing-for-agents`](SKILL.md): what changes when the document is a skill (frontmatter, the invocation choice, and router skills). Everything else about writing it is the universal reference in `SKILL.md`.
+Skill-specific rules for [`writing-for-agents`](SKILL.md), covering `SKILL.md` frontmatter, invocation modes, skill splitting, bundled scripts, and two-tier lockfile management.
 
-## Invocation
+## Frontmatter requirements
 
-Two choices, trading the two loads:
+Every `.agents/skills/<name>/SKILL.md` must start with a YAML frontmatter block delimited by `---`.
 
-- A **model-invoked** skill keeps a `description`, so the agent can fire it autonomously, and other skills can reach it. You can still type its name: model-invocation always _includes_ user reach; a description only ever adds agent discovery, never removes the human's. The description is the skill's top-level context pointer, forced to stay loaded at all times: permanent context load in exchange for discoverability. A model-invoked skill whose content is all reference is also one home for shared reference: another skill can invoke it, so reference needed by several skills lives in one place. Mechanics: omit `disable-model-invocation`, and write a model-facing description carrying the trigger branches (the pointer-writing rules in `SKILL.md` apply in full).
-- A **user-invoked** skill strips the description from the agent's reach: only the human typing its name can invoke it, and no other skill can. Zero context load, but it spends cognitive load: you are the index that must remember it exists. Mechanics: set `disable-model-invocation: true`; the `description` becomes human-facing: a one-line summary, trigger lists stripped.
+- **`name`.** Required string that must match the `<name>` directory name for all repository and custom skills.
+- **`description`.** Required string of at least 10 characters. Keep model-invoked descriptions within roughly 60 to 100 tokens using the `<What it does>. Use when <distinct trigger branches>.` pattern. Quote any description that contains a colon so YAML parsing succeeds.
+- **`disable-model-invocation`.** Optional boolean that controls whether the agent loads the description into context.
 
-Pick model-invocation only when the agent must reach the skill on its own, or another skill must. If it only ever fires by hand, make it user-invoked and pay no context load.
+## Invocation modes
 
-Shared reference that two user-invoked skills both need can live in neither: with no descriptions, neither can fire the other. Push it to a plain file outside the skill system: external reference any skill can point at.
+Choose between model invocation and user invocation based on who triggers the skill.
 
-## Splitting by invocation
+- **Model-invoked skills.** Omit `disable-model-invocation`. Both the agent and the user can invoke the skill, and other skills can reference it. Because the `description` loads into context automatically on every turn, write it using the context pointer rules in `SKILL.md` and never add duplicate pointers to the skill inside `.agents/AGENTS.md` or `.agents/rules/*.md`. A model-invoked reference skill can also hold shared rules that multiple skills consult.
+- **User-invoked skills.** Set `disable-model-invocation: true`. Only the user typing `/<name>` can invoke the skill, spending zero context tokens per turn. Write a concise one-sentence `description` for the human without `Use when...` trigger branches.
+- **Shared reference for user-invoked skills.** Two user-invoked skills cannot invoke each other automatically. Place shared reference in a standalone Markdown file or a model-invoked skill that both skills link to.
 
-The invocation cut of splitting (the sequence cut lives in `SKILL.md`): split off a model-invoked skill when you have a distinct leading word that should trigger it on its own (a trigger word you actually use in your prompts), or another skill must reach it. You pay context load for the new always-loaded description, so that independent reach has to be worth it.
+## Splitting by invocation and router skills
 
-## Router skills
+- **Split by invocation.** Extract a separate model-invoked skill only when a distinct trigger phrase in user prompts or another skill needs to load that material independently. Every new model-invoked skill adds permanent context load through its `description`.
+- **Router skills.** When many user-invoked skills accumulate, create one user-invoked router skill that lists the related skills and when to run each so the human only remembers one entry point.
 
-When user-invoked skills multiply past what you can remember, that piled-up cognitive load is cured by a **router skill**: one user-invoked skill that names the others and when to reach for each, so the human has one skill to remember instead of many. It can only hint, never fire them: user-invoked skills have no description, so nothing but the human can reach them.
+## Bundled scripts in `scripts/`
+
+Place deterministic validation, lookup, or transformation logic in `.agents/skills/<name>/scripts/` so the agent executes the script via CLI without loading implementation code into the context window.
+
+- **Executable permissions.** Include a shebang such as `#!/usr/bin/env bun` or `#!/usr/bin/env bash` and mark the file executable with `chmod +x`.
+- **Non-interactive CLI.** Accept explicit file or flag arguments and exit `0` on success or non-zero with actionable error messages on failure. Never prompt for interactive TTY input.
+- **Documented invocation.** Show the exact command line and exit-code completion criterion inside `SKILL.md`.
+
+## Two-tier skill management
+
+- **Vendor skills in `skills-lock.json`.** Skills declared in root `skills-lock.json` are read-only upstream assets updated with `bunx skills`. [`scripts/verify-agents-governance/verify-agents-governance.ts`](../../../scripts/verify-agents-governance/verify-agents-governance.ts) exempts vendor skills from directory-name mismatch, machine-path, local link, and unslop checks.
+- **Customized skills in `.agents/skills-override.json`.** Before editing a vendor skill, eject it by removing its entry from `skills-lock.json` and registering its upstream `source`, `path`, and `commit` SHA in `.agents/skills-override.json`. Ejected skills must pass all governance checks and reconcile upstream changes with [`/update-custom-skills`](../update-custom-skills/SKILL.md).

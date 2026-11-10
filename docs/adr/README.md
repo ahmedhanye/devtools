@@ -22,7 +22,7 @@ All of the following criteria must be satisfied before authoring an ADR:
 1. **Hard to reverse (One-Way Door)**: The cost of changing your mind later is meaningful (such as database engine, persistence model, or communication protocols).
 2. **Surprising without context**: A future reader will inspect the code and wonder "why on earth did they do it this way?"
 3. **The result of a real trade-off**: There were genuine competing technical alternatives and one was selected for deliberate reasons.
-4. **Explicit maintainer confirmation**: Agents must never author or commit an ADR autonomously. Only draft an ADR when explicitly approved by the maintainer during a design session.
+4. **Explicit maintainer confirmation**: Only author or commit an ADR when explicitly approved by the repository maintainer during design planning.
 
 If any criterion is missing, skip the ADR.
 
@@ -32,7 +32,7 @@ If any criterion is missing, skip the ADR.
 - **Runtime execution and network boundaries**: Cross-process contracts, service communication protocols, in-process routing vs background daemons.
 - **Technology choices that carry lock-in**: Foundational runtime engines, database drivers, auth boundaries. Not routine libraries: only choices that would require substantial rewrites or data migrations to swap out.
 - **Boundary and scope decisions**: Package ownership and encapsulation boundaries where reasonable people would assume the opposite.
-- **Load-bearing rejected architectural alternatives**: Architectural options (such as cross-package boundaries, persistence models, or runtime lifecycle/process boundaries) that were investigated and deliberately rejected with non-obvious reasoning. Recording these prevents future AI sessions and developers from repeatedly re-proposing the same rejected design. Requires explicit maintainer confirmation.
+- **Load-bearing rejected architectural alternatives**: Architectural options (such as cross-package boundaries, persistence models, or runtime lifecycle/process boundaries) that were investigated and deliberately rejected with non-obvious reasoning. Recording these prevents future contributors from repeatedly re-proposing the same rejected design. Requires explicit maintainer confirmation.
 
 ### What does NOT qualify
 

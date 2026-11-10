@@ -64,18 +64,19 @@ Run checks across the monorepo during development:
    gh pr create --assignee "@me" --fill
    ```
    Follow [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md) and ensure the description includes `Closes #<ticket_number>`. Inspect the linked issue and parent Spec descriptions (`gh issue view <ticket_number> --json number,title,body,state,labels` and `gh api repos/{owner}/{repo}/issues/<ticket_number>/parent`), updating any completed checklist tasks (`- [ ]` to `- [x]`) using `gh issue edit`.
-5. **Push changes and resolve review comments:** Follow [Pushing changes and review synchronization](docs/contributing/push.md) to verify readiness, pause at git checkpoints, push commits, and resolve review threads post-push.
+5. **Push changes and resolve review comments:** Follow [Pushing changes and review synchronization](docs/contributing/push.md) to verify readiness, push commits, and resolve review threads post-push.
 6. **Merge via squash merge:**
    ```bash
-   gh pr merge <pr_number> --squash --delete-branch
+   gh pr merge <pr_number> --squash --body "" --delete-branch
    ```
 
 ## Documentation
 
 Detailed operational guides live under `docs/contributing/`:
 
-- [Pushing changes and review synchronization](docs/contributing/push.md): Verification, git checkpoints, push execution, and post-push review thread resolution.
+- [Pushing changes and review synchronization](docs/contributing/push.md): Verification, push execution, and post-push review thread resolution.
 - [Pull requests and code review](docs/contributing/pull-requests.md): Review thread resolution and merge requirements.
+- [Stacked pull requests](docs/contributing/stacked-prs.md): Decomposing large changesets (>5,000 LOC or >80 files) into ordered, reviewable PR chains.
 - [Issue tracking and management](docs/contributing/issues.md): Hierarchy, sub-issues, dependencies, and project lifecycle.
 - [Commits and atomic changes](docs/contributing/commits.md): Commit types, subject formats, and staging.
 - [Releases and distribution](docs/contributing/releases.md): Release Please workflow and standalone binary compilation.

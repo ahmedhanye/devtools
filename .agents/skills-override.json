@@ -19,11 +19,6 @@
     "path": "skills/engineering/improve-codebase-architecture/SKILL.md",
     "commit": "7739eaed7f8f3915437a8def198a6d0d7206dbc7"
   },
-  "research": {
-    "source": "mattpocock/skills",
-    "path": "skills/engineering/research/SKILL.md",
-    "commit": "7739eaed7f8f3915437a8def198a6d0d7206dbc7"
-  },
   "teach": {
     "source": "mattpocock/skills",
     "path": "skills/productivity/teach/SKILL.md",
