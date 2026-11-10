@@ -395,6 +395,7 @@ export function verifyDiffCoverage(
     mergeBaseRef = mbCmd.stdout.trim();
   }
 
+  const untrackedFilesMap = new Map<string, number[]>();
   let diffArgs = [`${baseRef}...${headRef}`];
   if (headRef === "HEAD") {
     const status = gitCommand(["status", "--porcelain"]);
@@ -404,6 +405,32 @@ export function verifyDiffCoverage(
       status.stdout.trim().length > 0
     ) {
       diffArgs = [mergeBaseRef];
+
+      // Detect untracked testable files and include them in diff coverage
+      for (const line of status.stdout.split("\n")) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith("?? ")) {
+          let untrackedPath = trimmed.slice(3).trim();
+          if (untrackedPath.startsWith('"') && untrackedPath.endsWith('"')) {
+            untrackedPath = untrackedPath.slice(1, -1);
+          }
+          const normalized = normalizePath(untrackedPath);
+          if (isTestableSourceFile(normalized) && fileExists(normalized)) {
+            try {
+              const content = readFile(normalized, "utf8");
+              const lineCount =
+                content.length === 0 ? 0 : content.split("\n").length;
+              const allLines = Array.from(
+                { length: lineCount },
+                (_, idx) => idx + 1,
+              );
+              untrackedFilesMap.set(normalized, allLines);
+            } catch {
+              // Inaccessible or unreadable file
+            }
+          }
+        }
+      }
     }
   }
 
@@ -430,6 +457,11 @@ export function verifyDiffCoverage(
   }
 
   const diffMap = parseGitDiff(diffText);
+  for (const [file, lines] of untrackedFilesMap.entries()) {
+    if (!diffMap.has(file)) {
+      diffMap.set(file, lines);
+    }
+  }
   const result = calculateDiffCoverage(diffMap, lcovMap, threshold);
   const summary = generateMarkdownSummary(result);
 
