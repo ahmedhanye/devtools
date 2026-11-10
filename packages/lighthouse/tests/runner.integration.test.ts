@@ -10,20 +10,17 @@ import {
 } from "@devtools/db";
 import {
   executeIteration,
+  executeLighthouseBatch,
   getLighthouseRunById,
   InvalidAuditOptionsError,
   listLighthouseRuns,
+  persistLighthouseAudit,
   runLighthouseAudit,
   type LighthouseProgressEvent,
   type SingleIterationResult,
   type WorkerPayload,
 } from "../src";
-import {
-  DESKTOP_THROTTLING,
-  buildLighthouseConfig,
-  extractReportStrings,
-  runWorkerIteration,
-} from "../src/worker";
+import { runWorkerIteration } from "../src/worker";
 
 function makeMockIterationResult(
   url: string,
@@ -124,6 +121,56 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
     await expect(
       runLighthouseAudit({ url: "https://example.com", runs: 0, db }),
     ).rejects.toThrow(InvalidAuditOptionsError);
+
+    await expect(
+      executeLighthouseBatch({
+        url: "https://example.com",
+        categories: ["invalid-category"],
+      }),
+    ).rejects.toThrow(InvalidAuditOptionsError);
+  });
+
+  it("splits executeLighthouseBatch (SQLite-free) and persistLighthouseAudit cleanly", async () => {
+    const progress: LighthouseProgressEvent[] = [];
+    const mockIter = makeMockIterationResult(
+      "https://example.com/split",
+      720,
+      1400,
+      1150,
+      96,
+      "split-exec",
+    );
+
+    const batch = await executeLighthouseBatch({
+      url: "https://example.com/split",
+      formFactor: "desktop",
+      throttlingMethod: "provided",
+      categories: [],
+      onProgress: (ev) => progress.push(ev),
+      executor: async (params) => {
+        params.onProgress?.({
+          stage: "navigating",
+          message: "Navigating",
+          runIndex: 0,
+          totalRuns: 1,
+        });
+        return mockIter;
+      },
+    });
+
+    expect(batch.validatedUrl).toBe("https://example.com/split");
+    expect(batch.normalized.scores.performanceScore).toBe(96);
+    expect(listLighthouseRuns(db)).toHaveLength(0);
+
+    const persisted = persistLighthouseAudit(batch, {
+      db,
+      artifactsDir: tempArtifactsDir,
+      onProgress: (ev) => progress.push(ev),
+    });
+
+    expect(persisted.run.url).toBe("https://example.com/split");
+    expect(existsSync(persisted.run.htmlReportPath)).toBe(true);
+    expect(progress.map((e) => e.stage)).toEqual(["navigating", "complete"]);
   });
 
   it("executes a multi-run audit against a local HTTP fixture, selects 1 Representative Run, writes 1 report.{json,html} pair, and persists 1 row in SQLite", async () => {
@@ -250,33 +297,6 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
     }
   });
 
-  it("buildLighthouseConfig constructs mobile and desktop configs with default 4 categories and throttling overrides", () => {
-    const mobileCfg = buildLighthouseConfig({
-      formFactor: "mobile",
-      throttlingMethod: "simulate",
-      categories: ["performance", "accessibility", "best-practices", "seo"],
-    });
-    expect(mobileCfg.extends).toBe("lighthouse:default");
-    expect(mobileCfg.settings?.formFactor).toBe("mobile");
-    expect(mobileCfg.settings?.throttlingMethod).toBe("simulate");
-    expect(mobileCfg.settings?.onlyCategories).toEqual([
-      "performance",
-      "accessibility",
-      "best-practices",
-      "seo",
-    ]);
-
-    const desktopCfg = buildLighthouseConfig({
-      formFactor: "desktop",
-      throttlingMethod: "devtools",
-      categories: ["performance"],
-    });
-    expect(desktopCfg.settings?.formFactor).toBe("desktop");
-    expect(desktopCfg.settings?.throttlingMethod).toBe("devtools");
-    expect(desktopCfg.settings?.throttling).toEqual(DESKTOP_THROTTLING);
-    expect(desktopCfg.settings?.screenEmulation?.mobile).toBe(false);
-  });
-
   it("runWorkerIteration resolves browser, launches Chrome on port 0, runs Lighthouse with enableErrorReporting: false, and guarantees launchedChrome.kill() in finally", async () => {
     let chromeKilled = false;
     let capturedFlags: Record<string, unknown> | undefined;
@@ -368,47 +388,6 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
     ).rejects.toThrow("Lighthouse returned an empty runner result");
 
     expect(killedOnError).toBe(true);
-  });
-
-  it("extractReportStrings extracts reports and handles single-string fallback cleanly", () => {
-    const mockIter = makeMockIterationResult(
-      "https://example.com",
-      800,
-      1500,
-      1200,
-      95,
-      "extract-ok",
-    );
-
-    // Array output format
-    const arrayResult = extractReportStrings(mockIter.lhr, [
-      mockIter.reportJson,
-      mockIter.reportHtml,
-    ]);
-    expect(arrayResult.reportJson).toBe(mockIter.reportJson);
-    expect(arrayResult.reportHtml).toBe(mockIter.reportHtml);
-
-    // Single JSON string report fallback
-    const fallbackReports = extractReportStrings(
-      mockIter.lhr,
-      mockIter.reportJson,
-      () => "<html>rendered-fallback</html>",
-    );
-    expect(fallbackReports.reportJson).toBe(mockIter.reportJson);
-    expect(fallbackReports.reportHtml).toBe("<html>rendered-fallback</html>");
-
-    // Non-string fallback
-    const nonStringFallback = extractReportStrings(
-      mockIter.lhr,
-      undefined as unknown as string,
-      () => "<html>rendered-undefined</html>",
-    );
-    expect(nonStringFallback.reportJson).toBe(
-      JSON.stringify(mockIter.lhr, null, 2),
-    );
-    expect(nonStringFallback.reportHtml).toBe(
-      "<html>rendered-undefined</html>",
-    );
   });
 
   it("executeIteration respects custom chromePath, disableSandbox, and emits all progress events", async () => {

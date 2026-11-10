@@ -1,4 +1,13 @@
-import { beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   createDb,
   runMigrations,
@@ -7,13 +16,18 @@ import {
 } from "@devtools/db";
 import { AmbiguousRunIdError, LighthouseRunNotFoundError } from "../src/errors";
 import {
+  countLighthouseRuns,
   findPreviousLighthouseRun,
   getLatestLighthouseRun,
   getLighthouseRunById,
   insertLighthouseRun,
   listLighthouseRuns,
+  listLighthouseRunsWithTotal,
   MIN_PREFIX_LENGTH,
   resolveLighthouseRun,
+  resolveSafeHtmlReportPath,
+  serializeLighthouseRunDetail,
+  serializeLighthouseRunListItem,
 } from "../src/repository";
 
 function makeSampleRow(
@@ -288,6 +302,155 @@ describe("Lighthouse Repository (Drizzle SQLite persistence)", () => {
         LighthouseRunNotFoundError,
       );
       expect(() => getLatestLighthouseRun(db)).toThrow(/No audit runs found/i);
+    });
+  });
+
+  describe("listLighthouseRunsWithTotal, search filtering & DTO serialization", () => {
+    let artifactsDir: string;
+
+    beforeEach(() => {
+      artifactsDir = mkdtempSync(join(tmpdir(), "devtools-repo-artifacts-"));
+    });
+
+    afterEach(() => {
+      rmSync(artifactsDir, { recursive: true, force: true });
+    });
+
+    it("filters case-insensitively by search substring and returns matching total independent of pagination", () => {
+      insertLighthouseRun(
+        db,
+        makeSampleRow({
+          id: "s1",
+          url: "https://Docs.Example.com/guide",
+          formFactor: "mobile",
+          createdAt: new Date("2026-11-10T10:00:00Z"),
+        }),
+      );
+      insertLighthouseRun(
+        db,
+        makeSampleRow({
+          id: "s2",
+          url: "https://example.com/100%_test",
+          formFactor: "mobile",
+          createdAt: new Date("2026-11-10T11:00:00Z"),
+        }),
+      );
+      insertLighthouseRun(
+        db,
+        makeSampleRow({
+          id: "s3",
+          url: "https://unrelated.dev/home",
+          formFactor: "mobile",
+          createdAt: new Date("2026-11-10T12:00:00Z"),
+        }),
+      );
+
+      const searchResult = listLighthouseRunsWithTotal(db, {
+        search: "example.com",
+        limit: 1,
+        offset: 0,
+      });
+      expect(searchResult.total).toBe(2);
+      expect(searchResult.runs.map((r) => r.id)).toEqual(["s2"]);
+
+      const wildcardSearch = listLighthouseRunsWithTotal(db, {
+        search: "100%_test",
+      });
+      expect(wildcardSearch.total).toBe(1);
+      expect(wildcardSearch.runs.map((r) => r.id)).toEqual(["s2"]);
+
+      insertLighthouseRun(
+        db,
+        makeSampleRow({
+          id: "s4-slash",
+          url: "https://example.com/a/anything",
+          formFactor: "mobile",
+          createdAt: new Date("2026-11-10T13:00:00Z"),
+        }),
+      );
+      expect(listLighthouseRunsWithTotal(db, { search: "a/%" }).total).toBe(0);
+      expect(
+        listLighthouseRunsWithTotal(db, { search: "a/any" }).runs.map(
+          (r) => r.id,
+        ),
+      ).toEqual(["s4-slash"]);
+      expect(countLighthouseRuns(db)).toBe(4);
+    });
+
+    it("resolves safe HTML report paths confined inside artifactsDir and rejects missing, directory, or escaped paths", () => {
+      const runDir = join(artifactsDir, "run-ok");
+      mkdirSync(runDir, { recursive: true });
+      const validHtmlPath = join(runDir, "report.html");
+      writeFileSync(validHtmlPath, "<html><body>OK</body></html>", "utf-8");
+
+      const outsideDir = mkdtempSync(join(tmpdir(), "devtools-outside-"));
+      const outsideHtmlPath = join(outsideDir, "secret.html");
+      writeFileSync(outsideHtmlPath, "<html>secret</html>", "utf-8");
+
+      const siblingDir = `${artifactsDir}-sibling`;
+      mkdirSync(siblingDir, { recursive: true });
+      const siblingHtmlPath = join(siblingDir, "report.html");
+      writeFileSync(siblingHtmlPath, "<html>sibling</html>", "utf-8");
+
+      const symlinkEscapePath = join(runDir, "escape.html");
+      symlinkSync(outsideHtmlPath, symlinkEscapePath);
+
+      try {
+        expect(resolveSafeHtmlReportPath(validHtmlPath, artifactsDir)).toBe(
+          validHtmlPath,
+        );
+        expect(resolveSafeHtmlReportPath("", artifactsDir)).toBeNull();
+        expect(
+          resolveSafeHtmlReportPath(
+            validHtmlPath,
+            join(artifactsDir, "missing"),
+          ),
+        ).toBeNull();
+        expect(
+          resolveSafeHtmlReportPath(join(runDir, "missing.html"), artifactsDir),
+        ).toBeNull();
+        expect(resolveSafeHtmlReportPath(runDir, artifactsDir)).toBeNull();
+        expect(
+          resolveSafeHtmlReportPath(outsideHtmlPath, artifactsDir),
+        ).toBeNull();
+        expect(
+          resolveSafeHtmlReportPath(siblingHtmlPath, artifactsDir),
+        ).toBeNull();
+        expect(
+          resolveSafeHtmlReportPath(symlinkEscapePath, artifactsDir),
+        ).toBeNull();
+
+        const inserted = insertLighthouseRun(
+          db,
+          makeSampleRow({
+            id: "run-ok",
+            htmlReportPath: validHtmlPath,
+          }),
+        );
+        const listItem = serializeLighthouseRunListItem(inserted, artifactsDir);
+        expect(listItem.hasHtmlReport).toBe(true);
+        expect(listItem.createdAt).toBe("2026-10-29T20:00:00.000Z");
+        expect("htmlReportPath" in listItem).toBe(false);
+        expect("summaryJson" in listItem).toBe(false);
+
+        const detail = serializeLighthouseRunDetail(inserted, artifactsDir);
+        expect(detail.summary).toEqual(inserted.summaryJson);
+        expect("jsonReportPath" in detail).toBe(false);
+
+        const corruptedDetail = serializeLighthouseRunDetail(
+          {
+            ...inserted,
+            htmlReportPath: outsideHtmlPath,
+            summaryJson: "bad-json" as unknown as typeof inserted.summaryJson,
+          },
+          artifactsDir,
+        );
+        expect(corruptedDetail.hasHtmlReport).toBe(false);
+        expect(corruptedDetail.summary.insights).toEqual([]);
+      } finally {
+        rmSync(outsideDir, { recursive: true, force: true });
+        rmSync(siblingDir, { recursive: true, force: true });
+      }
     });
   });
 });
