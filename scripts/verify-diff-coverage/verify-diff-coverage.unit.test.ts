@@ -435,7 +435,8 @@ diff --git a/counter.ts b/counter.ts
       ).toBe(true);
     });
 
-    it("includes untracked testable files in diff coverage and fails when uncovered", () => {
+    it("queries git status with --untracked-files=all to detect files in new untracked directories", () => {
+      let statusArgs: string[] = [];
       const errorLogs: string[] = [];
       const exitCode = verifyDiffCoverage({
         baseRef: "origin/main",
@@ -443,13 +444,13 @@ diff --git a/counter.ts b/counter.ts
         lcovPath: "coverage/lcov.info",
         fileExists: (p) =>
           p === "coverage/lcov.info" ||
-          p === "packages/core/src/new-feature.ts",
+          p === "packages/core/src/new-submodule/handler.ts",
         readFile: (p) => {
           if (p === "coverage/lcov.info") {
             return "TN:\nSF:packages/core/src/index.ts\nDA:1,1\nend_of_record";
           }
-          if (p === "packages/core/src/new-feature.ts") {
-            return "export function newFeature() {\n  return 42;\n}";
+          if (p === "packages/core/src/new-submodule/handler.ts") {
+            return "export function handler() {\n  return 'ok';\n}";
           }
           return "";
         },
@@ -458,9 +459,10 @@ diff --git a/counter.ts b/counter.ts
             return { status: 0, stdout: "abc1234", stderr: "" };
           }
           if (args[0] === "status") {
+            statusArgs = args;
             return {
               status: 0,
-              stdout: "?? packages/core/src/new-feature.ts\n",
+              stdout: "?? packages/core/src/new-submodule/handler.ts\n",
               stderr: "",
             };
           }
@@ -473,6 +475,7 @@ diff --git a/counter.ts b/counter.ts
         error: (msg) => errorLogs.push(msg),
       });
 
+      expect(statusArgs).toContain("--untracked-files=all");
       expect(exitCode).toBe(1);
       expect(errorLogs.some((msg) => msg.includes("below required 100%"))).toBe(
         true,
