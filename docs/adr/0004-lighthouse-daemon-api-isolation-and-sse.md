@@ -1,0 +1,21 @@
+# Lighthouse daemon API isolation, SSE transport, and report sandboxing
+
+## Context
+
+Exposing Lighthouse performance auditing over the local HTTP daemon (`apps/api`) introduces three coupled architectural forces:
+
+1. **Event-loop blocking and compiled binary constraints**: In-process Lighthouse v13 execution freezes concurrent HTTP/SSE sockets during trace analysis and Speedline decoding while mutating global state in `lighthouse-logger` and `virtual-fs`. Conversely, single-entrypoint `bun build --compile` binaries fail when spawning dynamic `Worker` scripts unless all worker entrypoints are registered at compile time, and separate OS subprocesses cannot share in-memory SQLite (`":memory:"`) test databases.
+2. **Bun `idleTimeout` vs. silent Lighthouse phases**: `Bun.serve` enforces a default 10-second `idleTimeout`, whereas Lighthouse navigation spans >15 seconds with zero progress callbacks, dropping unconfigured SSE connections mid-flight. In addition, native browser `EventSource` supports only `GET` requests, and Hono's `streamSSE` `onError` hook emits a duplicate plain-text error frame alongside custom error writes.
+3. **Cross-package schema reuse and `report.html` origin isolation**: [ADR 0003](0003-lighthouse-audit-isolation-and-tiered-storage.md) keeps Lighthouse schemas out of `@devtools/core`, yet the web dashboard (`apps/frontend`) cannot import Node/Bun-bound `@devtools/lighthouse` runtime modules. Meanwhile, serving saved `report.html` files inline on the same loopback origin exposes `/api/*` endpoints to embedded report scripts unless origin-isolated.
+
+## Decision
+
+1. **Dedicated Bun `Worker` Thread with Parent Persistence and Multi-Entry Compilation**: Offload SQLite-free batch execution (`executeLighthouseBatch`) to a dedicated Bun `Worker` (`apps/api/src/lighthouse/worker.ts`) while keeping cold disk artifact writes and SQLite persistence (`persistLighthouseAudit`) on the parent HTTP thread. Register both `apps/cli/bin/devtools.js` and `apps/api/src/lighthouse/worker.ts` in multi-entry `bun build --compile` commands (`package.json` and `.github/workflows/release.yml`), and unify DB initialization, migrations, and `{ server }` Hono binding injection inside `startServer` (`apps/api/src/server.ts`) reused by `startDaemon` (`apps/cli/src/daemon.ts`).
+2. **Single-Flight Two-Step `POST` + `GET` SSE Contract**: Enforce single-flight audit execution (`409 Conflict` with `activeJobId` on overlap), trigger jobs via `POST /api/lighthouse/audits` (`202 Accepted`), expose reload discovery via `GET /api/lighthouse/audits/active`, and stream progress via `GET /api/lighthouse/audits/:jobId/stream` (`EventSource`-compatible). Passive SSE disconnects do not abort running jobs; streams call `server.timeout(req, 0)`, emit `: keepalive\n\n` every `5000 ms`, omit Hono's `onError` callback in favor of in-callback error handling, replay the latest snapshot immediately, and retain the most recent terminal snapshot for 5 minutes (or until the next job starts).
+3. **Browser-Safe `@devtools/lighthouse/schemas` Subpath, All-Verb Loopback Checks, and Opaque-Origin `report.html` Sandbox**: Keep Lighthouse schemas inside `@devtools/lighthouse` via a pure `zod`-only subpath `@devtools/lighthouse/schemas` (`lighthouse-schemas` boundary zone in `.fallowrc.json`), enforce `Sec-Fetch-Site: cross-site`, non-loopback `Origin`, and `server.requestIP` loopback peer checks across all `/api/*` HTTP verbs (including `GET`), and serve `report.html` inline with `Content-Security-Policy: sandbox allow-scripts allow-popups allow-downloads; frame-ancestors 'self'`, `X-Content-Type-Options: nosniff`, and canonical symlink-safe path confinement inside `resolveArtifactsDir`.
+
+## Consequences
+
+- `/api/health` and active SSE heartbeats remain responsive throughout heavy trace analysis while preserving `:memory:` SQLite hermetic integration tests via `CreateAppOptions` seams.
+- Standalone compiled binaries bundle the `Worker` entrypoint cleanly without external script files, and dashboard tabs recover gracefully across page reloads and SSE reconnects.
+- Embedded `report.html` documents execute inside an opaque `null` origin (`Origin: null` is also rejected by `/api/*` loopback protection), preventing cross-endpoint access while keeping interactive report features intact inside dashboard iframes.
