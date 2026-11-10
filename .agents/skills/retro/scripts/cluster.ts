@@ -465,19 +465,33 @@ export function sessionMatchesRepo(
 ): boolean {
   if (meta.filePath) {
     const normalizedFile = path.resolve(meta.filePath);
+    if (
+      normalizedFile.startsWith(repo.root + "/") ||
+      normalizedFile === repo.root
+    ) {
+      return true;
+    }
     if (normalizedFile.includes("/.claude/projects/")) {
       const projectEncoded =
         normalizedFile.split("/.claude/projects/")[1]?.split("/")[0] ?? "";
       if (projectEncoded) {
-        const decoded = projectEncoded.replace(/^-/, "/").replace(/-/g, "/");
+        const cleanEncoded = projectEncoded.replace(/^-/, "");
+        const repoEncoded = repo.root.replace(/\//g, "-").replace(/^-/, "");
         if (
-          decoded &&
-          !decoded.includes(repo.name) &&
-          !repo.root.includes(decoded)
+          cleanEncoded === repoEncoded ||
+          cleanEncoded.endsWith("-" + repo.name) ||
+          cleanEncoded === repo.name
         ) {
-          return false;
+          return true;
         }
+        return false;
       }
+    }
+  }
+
+  for (const e of events) {
+    if (e.branch && repo.branches.has(e.branch)) {
+      return true;
     }
   }
 
@@ -506,6 +520,12 @@ export function sessionMatchesRepo(
     fullText.includes(`'${repo.name}'`)
   ) {
     return true;
+  }
+
+  for (const pr of repo.prs) {
+    if (pr.headRefName && fullText.includes(pr.headRefName)) {
+      return true;
+    }
   }
 
   return false;
