@@ -398,7 +398,11 @@ export function verifyDiffCoverage(
   const untrackedFilesMap = new Map<string, number[]>();
   let diffArgs = [`${baseRef}...${headRef}`];
   if (headRef === "HEAD") {
-    const status = gitCommand(["status", "--porcelain"]);
+    const status = gitCommand([
+      "status",
+      "--porcelain",
+      "--untracked-files=all",
+    ]);
     if (
       status.status === 0 &&
       status.stdout &&
