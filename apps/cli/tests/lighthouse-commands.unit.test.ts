@@ -496,6 +496,40 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
       expect(parsed[0].id).toBe("run-bbb-222");
     });
 
+    test("filters runs cleanly when valid formFactor mobile or desktop is passed", async () => {
+      insertLighthouseRun(
+        db,
+        makeSampleRow({ id: "run-mob-1", formFactor: "mobile" }),
+      );
+      insertLighthouseRun(
+        db,
+        makeSampleRow({ id: "run-desk-2", formFactor: "desktop" }),
+      );
+      const desktopOut: string[] = [];
+      await runLighthouseListCommand(
+        { formFactor: "desktop", json: true },
+        {
+          getDb: () => db,
+          log: (msg) => desktopOut.push(msg),
+        },
+      );
+      const desktopParsed = JSON.parse(desktopOut.join("\n"));
+      expect(desktopParsed).toHaveLength(1);
+      expect(desktopParsed[0].id).toBe("run-desk-2");
+
+      const mobileOut: string[] = [];
+      await runLighthouseListCommand(
+        { formFactor: "mobile", json: true },
+        {
+          getDb: () => db,
+          log: (msg) => mobileOut.push(msg),
+        },
+      );
+      const mobileParsed = JSON.parse(mobileOut.join("\n"));
+      expect(mobileParsed).toHaveLength(1);
+      expect(mobileParsed[0].id).toBe("run-mob-1");
+    });
+
     test("exits with 1 when database connection throws in list command", async () => {
       let exitCode: number | undefined;
       const origError = console.error;
