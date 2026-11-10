@@ -70,6 +70,109 @@ describe("CLI Browser Command Surface (Unit)", () => {
     expect(combined).toContain('Run "devtools browser install"');
   });
 
+  test("runBrowserStatusCommand isolates stdout and stderr color formatting for redirected output", async () => {
+    const origLog = console.log;
+    const origErr = console.error;
+    const stdoutLogs: string[] = [];
+    const stderrLogs: string[] = [];
+    console.log = (...args: any[]) => stdoutLogs.push(args.join(" "));
+    console.error = (...args: any[]) => stderrLogs.push(args.join(" "));
+
+    try {
+      // Case 1: Browser not found - stderr is TTY, stdout is redirected (non-TTY)
+      await runBrowserStatusCommand(
+        { env: { TERM: "xterm-256color" } },
+        {
+          isStderrTTY: true,
+          isStdoutTTY: false,
+          exit: () => {},
+          getBrowserStatus: async () => ({
+            found: false,
+            code: "BROWSER_NOT_FOUND",
+            error: "Browser not found",
+          }),
+        },
+      );
+
+      const stderrCombined1 = stderrLogs.join("\n");
+      // Diagnostic on stderr should be colorized because isStderrTTY is true
+      expect(stderrCombined1.includes("\x1b[")).toBe(true);
+      expect(stderrCombined1).toContain("Browser not found");
+
+      stdoutLogs.length = 0;
+      stderrLogs.length = 0;
+
+      // Case 2: Browser not found - stderr is redirected (non-TTY), stdout is TTY
+      await runBrowserStatusCommand(
+        { env: { TERM: "xterm-256color" } },
+        {
+          isStderrTTY: false,
+          isStdoutTTY: true,
+          exit: () => {},
+          getBrowserStatus: async () => ({
+            found: false,
+            code: "BROWSER_NOT_FOUND",
+            error: "Browser not found",
+          }),
+        },
+      );
+
+      const stderrCombined2 = stderrLogs.join("\n");
+      // Diagnostic on stderr should be plain text because isStderrTTY is false
+      expect(stderrCombined2.includes("\x1b[")).toBe(false);
+      expect(stderrCombined2).toContain("Browser not found");
+
+      stdoutLogs.length = 0;
+      stderrLogs.length = 0;
+
+      // Case 3: Browser found - stdout is redirected (non-TTY), stderr is TTY
+      await runBrowserStatusCommand(
+        { env: { TERM: "xterm-256color" } },
+        {
+          isStderrTTY: true,
+          isStdoutTTY: false,
+          getBrowserStatus: async () => ({
+            found: true,
+            path: "/path/to/chrome",
+            version: "130.0.0",
+            source: "system",
+          }),
+        },
+      );
+
+      const stdoutCombined3 = stdoutLogs.join("\n");
+      // Result on stdout redirected to file should be plain text
+      expect(stdoutCombined3.includes("\x1b[")).toBe(false);
+      expect(stdoutCombined3).toContain("Chromium-compatible browser found:");
+
+      stdoutLogs.length = 0;
+      stderrLogs.length = 0;
+
+      // Case 4: Browser found - stdout is TTY, stderr is redirected (non-TTY)
+      await runBrowserStatusCommand(
+        { env: { TERM: "xterm-256color" } },
+        {
+          isStderrTTY: false,
+          isStdoutTTY: true,
+          getBrowserStatus: async () => ({
+            found: true,
+            path: "/path/to/chrome",
+            version: "130.0.0",
+            source: "system",
+          }),
+        },
+      );
+
+      const stdoutCombined4 = stdoutLogs.join("\n");
+      // Result on stdout interactive terminal should be colorized
+      expect(stdoutCombined4.includes("\x1b[")).toBe(true);
+      expect(stdoutCombined4).toContain("Chromium-compatible browser found:");
+    } finally {
+      console.log = origLog;
+      console.error = origErr;
+    }
+  });
+
   test("status command exits 1 with JSON payload in --json mode when no browser is found", async () => {
     const logs: string[] = [];
     const origLog = console.log;
