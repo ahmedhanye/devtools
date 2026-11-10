@@ -43,6 +43,9 @@ export async function runBrowserStatusCommand(
   deps?: {
     getBrowserStatus?: typeof GetBrowserStatusFn;
     exit?: (code?: number) => void;
+    isStderrTTY?: boolean;
+    isStdoutTTY?: boolean;
+    isTTY?: boolean;
   },
 ): Promise<void> {
   const exit = (code = 1) => {
@@ -62,7 +65,18 @@ export async function runBrowserStatusCommand(
     env: options.env,
   });
 
-  const pc = getColors({ env: options.env as NodeJS.ProcessEnv });
+  const isStderrTTY =
+    deps?.isStderrTTY ?? deps?.isTTY ?? Boolean(process.stderr.isTTY);
+  const isStdoutTTY =
+    deps?.isStdoutTTY ?? deps?.isTTY ?? Boolean(process.stdout.isTTY);
+  const pcStderr = getColors({
+    env: options.env as NodeJS.ProcessEnv,
+    isTTY: isStderrTTY,
+  });
+  const pcStdout = getColors({
+    env: options.env as NodeJS.ProcessEnv,
+    isTTY: isStdoutTTY,
+  });
 
   if (options.json) {
     console.log(JSON.stringify(status, null, 2));
@@ -73,12 +87,12 @@ export async function runBrowserStatusCommand(
   }
 
   if (status.found) {
-    console.log(pc.green("Chromium-compatible browser found:"));
-    console.log(`  ${pc.bold("Path:")}    ${status.path}`);
-    console.log(`  ${pc.bold("Version:")} ${status.version}`);
-    console.log(`  ${pc.bold("Source:")}  ${status.source}`);
+    console.log(pcStdout.green("Chromium-compatible browser found:"));
+    console.log(`  ${pcStdout.bold("Path:")}    ${status.path}`);
+    console.log(`  ${pcStdout.bold("Version:")} ${status.version}`);
+    console.log(`  ${pcStdout.bold("Source:")}  ${status.source}`);
   } else {
-    console.error(pc.red(status.error));
+    console.error(pcStderr.red(status.error));
     exit(1);
   }
 }

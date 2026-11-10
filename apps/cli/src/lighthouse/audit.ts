@@ -33,7 +33,12 @@ export async function runLighthouseAuditCommand(
   options: LighthouseAuditCommandOptions = {},
   deps?: LighthouseAuditCommandDeps,
 ): Promise<void> {
-  const pc = getColors();
+  const isStderrTTY =
+    deps?.isStderrTTY ?? deps?.isTTY ?? Boolean(process.stderr.isTTY);
+  const pc = getColors({
+    env: options.env as NodeJS.ProcessEnv,
+    isTTY: isStderrTTY,
+  });
   const exit = (code = 1) => {
     if (deps?.exit) {
       deps.exit(code);
