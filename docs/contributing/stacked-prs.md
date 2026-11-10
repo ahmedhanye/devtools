@@ -72,7 +72,11 @@ gh stack view
 Before submitting, verify that every layer compiles and passes automated checks against its base branch:
 
 ```bash
+# For the first layer (based on main):
 bun run verify
+
+# For intermediate layers (based on a preceding stack branch):
+BASE_REF="<parent-layer-branch>" bun run verify
 ```
 
 ### Step 3: Submitting the Stack for Review

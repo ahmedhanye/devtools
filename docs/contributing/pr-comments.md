@@ -27,11 +27,15 @@ Evaluate each review comment to determine whether the suggested change is valid 
 Query open review threads, modified paths, line numbers, thread IDs, and comment database IDs:
 
 ```bash
-gh api graphql -F owner='{owner}' -F repo='{repo}' -F pr=<pr_number> -f query='
-  query($owner: String!, $repo: String!, $pr: Int!) {
+gh api graphql --paginate -F owner='{owner}' -F repo='{repo}' -F pr=<pr_number> -f query='
+  query($owner: String!, $repo: String!, $pr: Int!, $endCursor: String) {
     repository(owner: $owner, name: $repo) {
       pullRequest(number: $pr) {
-        reviewThreads(first: 100) {
+        reviewThreads(first: 100, after: $endCursor) {
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
           nodes {
             id
             isResolved
