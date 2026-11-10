@@ -260,6 +260,59 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
       expect(stderr.join("\n")).toContain("Chromium launch failed");
     });
 
+    test("isolates stderr color formatting and respects options.env seam", async () => {
+      const stderrInteractive: string[] = [];
+      await runLighthouseAuditCommand(
+        "https://example.com/",
+        { env: { TERM: "xterm-256color" } },
+        {
+          isStderrTTY: true,
+          getDb: () => db,
+          writeStderr: (msg) => stderrInteractive.push(msg),
+          exit: () => {},
+          runLighthouseAudit: async () => {
+            throw new Error("Audit execution failed");
+          },
+        },
+      );
+      expect(stderrInteractive.join("\n").includes("\x1b[")).toBe(true);
+      expect(stderrInteractive.join("\n")).toContain("Audit execution failed");
+
+      const stderrRedirected: string[] = [];
+      await runLighthouseAuditCommand(
+        "https://example.com/",
+        { env: { TERM: "xterm-256color" } },
+        {
+          isStderrTTY: false,
+          getDb: () => db,
+          writeStderr: (msg) => stderrRedirected.push(msg),
+          exit: () => {},
+          runLighthouseAudit: async () => {
+            throw new Error("Audit execution failed");
+          },
+        },
+      );
+      expect(stderrRedirected.join("\n").includes("\x1b[")).toBe(false);
+      expect(stderrRedirected.join("\n")).toContain("Audit execution failed");
+
+      const stderrNoColor: string[] = [];
+      await runLighthouseAuditCommand(
+        "https://example.com/",
+        { env: { TERM: "xterm-256color", NO_COLOR: "1" } },
+        {
+          isStderrTTY: true,
+          getDb: () => db,
+          writeStderr: (msg) => stderrNoColor.push(msg),
+          exit: () => {},
+          runLighthouseAudit: async () => {
+            throw new Error("Audit execution failed");
+          },
+        },
+      );
+      expect(stderrNoColor.join("\n").includes("\x1b[")).toBe(false);
+      expect(stderrNoColor.join("\n")).toContain("Audit execution failed");
+    });
+
     test("relays progress events to writeStderr and parses categories", async () => {
       const stderr: string[] = [];
       let capturedCategories: readonly string[] | undefined;
@@ -530,6 +583,44 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
       expect(errors.join("\n")).toContain(
         'Invalid form-factor "tablet": must be "mobile" or "desktop"',
       );
+    });
+
+    test("isolates stderr color formatting and respects options.env seam", async () => {
+      const errorsInteractive: string[] = [];
+      await runLighthouseListCommand(
+        { env: { TERM: "xterm-256color" }, limit: -1 },
+        {
+          isStderrTTY: true,
+          getDb: () => db,
+          error: (msg) => errorsInteractive.push(msg),
+          exit: () => {},
+        },
+      );
+      expect(errorsInteractive.join("\n").includes("\x1b[")).toBe(true);
+
+      const errorsRedirected: string[] = [];
+      await runLighthouseListCommand(
+        { env: { TERM: "xterm-256color" }, limit: -1 },
+        {
+          isStderrTTY: false,
+          getDb: () => db,
+          error: (msg) => errorsRedirected.push(msg),
+          exit: () => {},
+        },
+      );
+      expect(errorsRedirected.join("\n").includes("\x1b[")).toBe(false);
+
+      const errorsNoColor: string[] = [];
+      await runLighthouseListCommand(
+        { env: { TERM: "xterm-256color", NO_COLOR: "1" }, limit: -1 },
+        {
+          isStderrTTY: true,
+          getDb: () => db,
+          error: (msg) => errorsNoColor.push(msg),
+          exit: () => {},
+        },
+      );
+      expect(errorsNoColor.join("\n").includes("\x1b[")).toBe(false);
     });
   });
 
@@ -802,6 +893,50 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
 
       expect(exitCode).toBe(1);
       expect(errors.join("\n")).toContain("not found");
+    });
+
+    test("isolates stderr color formatting and respects options.env seam", async () => {
+      const errorsInteractive: string[] = [];
+      await runLighthouseDiffCommand(
+        "invalid1",
+        "invalid2",
+        { env: { TERM: "xterm-256color" } },
+        {
+          isStderrTTY: true,
+          getDb: () => db,
+          error: (msg) => errorsInteractive.push(msg),
+          exit: () => {},
+        },
+      );
+      expect(errorsInteractive.join("\n").includes("\x1b[")).toBe(true);
+
+      const errorsRedirected: string[] = [];
+      await runLighthouseDiffCommand(
+        "invalid1",
+        "invalid2",
+        { env: { TERM: "xterm-256color" } },
+        {
+          isStderrTTY: false,
+          getDb: () => db,
+          error: (msg) => errorsRedirected.push(msg),
+          exit: () => {},
+        },
+      );
+      expect(errorsRedirected.join("\n").includes("\x1b[")).toBe(false);
+
+      const errorsNoColor: string[] = [];
+      await runLighthouseDiffCommand(
+        "invalid1",
+        "invalid2",
+        { env: { TERM: "xterm-256color", NO_COLOR: "1" } },
+        {
+          isStderrTTY: true,
+          getDb: () => db,
+          error: (msg) => errorsNoColor.push(msg),
+          exit: () => {},
+        },
+      );
+      expect(errorsNoColor.join("\n").includes("\x1b[")).toBe(false);
     });
 
     test("exits with 1 when database connection throws in diff command", async () => {

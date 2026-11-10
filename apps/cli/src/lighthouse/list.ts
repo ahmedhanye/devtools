@@ -1,5 +1,5 @@
 import type { DevtoolsDb } from "@devtools/db";
-import pc from "picocolors";
+import { getColors } from "../colors";
 import { formatJson } from "./formatters/json";
 import { formatTerminalList } from "./formatters/terminal";
 import type {
@@ -17,6 +17,12 @@ export async function runLighthouseListCommand(
   options: LighthouseListCommandOptions = {},
   deps?: LighthouseListCommandDeps,
 ): Promise<void> {
+  const isStderrTTY =
+    deps?.isStderrTTY ?? deps?.isTTY ?? Boolean(process.stderr.isTTY);
+  const pc = getColors({
+    env: options.env as NodeJS.ProcessEnv,
+    isTTY: isStderrTTY,
+  });
   const exit = (code = 1) => {
     if (deps?.exit) {
       deps.exit(code);

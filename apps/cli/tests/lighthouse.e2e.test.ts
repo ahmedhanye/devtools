@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { closeDb, createDb, runMigrations } from "@devtools/db";
+import { closeDb, createDb, lighthouseRuns, runMigrations } from "@devtools/db";
 import type { Server } from "bun";
 
 const binPath = resolve(__dirname, "../bin/devtools.js");
@@ -34,6 +34,50 @@ describe("Lighthouse CLI Subprocess Tests (E2E)", () => {
 
     const initialDb = createDb({ path: tempDbPath });
     runMigrations(initialDb);
+
+    // Seed synthetic audit record and mock report artifact to decouple downstream list/diff/open tests
+    const syntheticHtmlPath = join(tempArtifactsDir, "synthetic-report.html");
+    const syntheticJsonPath = join(tempArtifactsDir, "synthetic-report.json");
+    writeFileSync(
+      syntheticHtmlPath,
+      "<!DOCTYPE html><html><body>Synthetic Report</body></html>",
+    );
+    writeFileSync(syntheticJsonPath, "{}");
+
+    initialDb
+      .insert(lighthouseRuns)
+      .values({
+        id: "run-synthetic-seed-001",
+        url: "http://127.0.0.1:4000/seeded",
+        finalUrl: "http://127.0.0.1:4000/seeded",
+        formFactor: "mobile",
+        throttlingMethod: "simulate",
+        performanceScore: 95,
+        accessibilityScore: 100,
+        bestPracticesScore: 92,
+        seoScore: 98,
+        lcpMs: 1200.5,
+        cls: 0.01,
+        tbtMs: 45,
+        fcpMs: 800,
+        siMs: 1100,
+        ttfbMs: 120,
+        summaryJson: {
+          lcpElement: null,
+          lcpPhases: null,
+          clsCulprits: [],
+          insights: [],
+          failedAudits: [],
+          runWarnings: [],
+          runtimeError: null,
+          medianMetadata: null,
+        },
+        jsonReportPath: syntheticJsonPath,
+        htmlReportPath: syntheticHtmlPath,
+        durationMs: 3200,
+      })
+      .run();
+
     closeDb();
 
     server = Bun.serve({
@@ -283,5 +327,21 @@ describe("Lighthouse CLI Subprocess Tests (E2E)", () => {
     ]);
     expect(failCode).toBe(1);
     expect(failErr).toContain("Error parsing budget rules");
-  });
+
+    // Binary audit execution initializes without ENOENT virtual filesystem locales crash
+    const { exitCode: auditCode, stderr: auditErr } = await runSubprocess([
+      compiledBinPath,
+      "lighthouse",
+      "https://example.com/",
+      "--runs",
+      "1",
+      "--chrome-path",
+      "/nonexistent/chrome",
+    ]);
+    expect(auditCode).toBe(1);
+    expect(auditErr).not.toContain("scandir '/$bunfs/root/locales/'");
+    expect(auditErr).toContain(
+      'Specified browser path is invalid or non-executable: "/nonexistent/chrome"',
+    );
+  }, 20000);
 });
