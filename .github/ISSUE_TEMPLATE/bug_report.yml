@@ -1,6 +1,5 @@
 name: Bug Report
 description: File a reproducible bug report to help us improve DevTools
-title: "[Bug]: "
 labels: ["type:bug"]
 body:
   - type: markdown
@@ -16,8 +15,11 @@ body:
         - "@devtools/cli"
         - "@devtools/api"
         - "@devtools/frontend"
+        - "@devtools/browser"
+        - "@devtools/lighthouse"
         - "@devtools/core"
         - "@devtools/db"
+        - "@devtools/site"
         - "toolchain / infra"
     validations:
       required: true

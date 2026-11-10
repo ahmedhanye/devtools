@@ -20,9 +20,9 @@ Confirm with the user that these seams match expectations.
 
 Completion criterion: Testing seams identified and user confirmation recorded in context.
 
-3. Write the spec using the template below and publish it as an issue with title prefix `[Spec]: <title>`, label `type:spec`, and the assigned capability milestone.
+3. Write the spec using the template below and publish it as an issue with a clean descriptive title (no bracketed or type prefixes), label `type:spec`, and the assigned capability milestone.
 
-Completion criterion: Spec issue published with prefix `[Spec]: <title>`, labeled `type:spec`, assigned to active milestone, and issue URL returned.
+Completion criterion: Spec issue published with clean title, labeled `type:spec`, assigned to active milestone, and issue URL returned.
 
 <spec-template>
 
