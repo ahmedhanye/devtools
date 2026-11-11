@@ -104,10 +104,13 @@ export function startServer(options: StartServerOptions = {}): ServerInstance {
   });
 
   const stop = async () => {
-    await server.stop(true);
     const shutdownApp = (activeApp as { shutdown?: () => Promise<void> })
       .shutdown;
-    await shutdownApp?.();
+    try {
+      await server.stop(true);
+    } finally {
+      await shutdownApp?.();
+    }
   };
 
   return {
@@ -200,22 +203,34 @@ export function runServerCli(deps?: ServerCliDeps): ServerInstance | undefined {
     );
 
     let shuttingDown = false;
+    const handleShutdownError = (err: unknown): void => {
+      error("Failed to shut down server cleanly:", err);
+      exit(1);
+    };
     const shutdown = () => {
       if (shuttingDown) return;
       shuttingDown = true;
       log("Shutting down server...");
-      const stopResult = instance.stop();
-      if (
-        stopResult &&
-        typeof (stopResult as Promise<void>).then === "function"
-      ) {
-        void (async () => {
-          await stopResult;
-          exit(0);
-        })();
-        return;
+      try {
+        const stopResult = instance.stop();
+        if (
+          stopResult &&
+          typeof (stopResult as Promise<void>).then === "function"
+        ) {
+          void (async () => {
+            try {
+              await stopResult;
+              exit(0);
+            } catch (err: unknown) {
+              handleShutdownError(err);
+            }
+          })();
+          return;
+        }
+        exit(0);
+      } catch (err: unknown) {
+        handleShutdownError(err);
       }
-      exit(0);
     };
 
     onSignal("SIGINT", shutdown);
