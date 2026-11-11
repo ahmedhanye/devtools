@@ -23,39 +23,44 @@ import {
 } from "../src/lighthouse/open";
 import { LighthouseOpenerError } from "../src/lighthouse/errors";
 
+const DEFAULT_SAMPLE_ROW: Omit<NewLighthouseRunRow, "createdAt"> = {
+  id: "11111111-2222-3333-4444-555555555555",
+  url: "https://example.com/",
+  finalUrl: "https://example.com/",
+  formFactor: "mobile",
+  throttlingMethod: "simulate",
+  performanceScore: 90,
+  accessibilityScore: 95,
+  bestPracticesScore: 90,
+  seoScore: 90,
+  lcpMs: 1500,
+  cls: 0.01,
+  tbtMs: 100,
+  fcpMs: 800,
+  siMs: 1200,
+  ttfbMs: 150,
+  summaryJson: {
+    lcpElement: null,
+    lcpPhases: null,
+    clsCulprits: [],
+    insights: [],
+    failedAudits: [],
+    runWarnings: [],
+    runtimeError: null,
+    medianMetadata: null,
+  },
+  jsonReportPath: "/tmp/artifacts/report.json",
+  htmlReportPath: "/tmp/artifacts/report.html",
+  durationMs: 3000,
+};
+
 function makeSampleRow(
   overrides: Partial<NewLighthouseRunRow> = {},
 ): NewLighthouseRunRow {
   return {
-    id: overrides.id ?? "11111111-2222-3333-4444-555555555555",
-    url: overrides.url ?? "https://example.com/",
-    finalUrl: overrides.finalUrl ?? "https://example.com/",
-    formFactor: overrides.formFactor ?? "mobile",
-    throttlingMethod: overrides.throttlingMethod ?? "simulate",
-    performanceScore: overrides.performanceScore ?? 90,
-    accessibilityScore: overrides.accessibilityScore ?? 95,
-    bestPracticesScore: overrides.bestPracticesScore ?? 90,
-    seoScore: overrides.seoScore ?? 90,
-    lcpMs: overrides.lcpMs ?? 1500,
-    cls: overrides.cls ?? 0.01,
-    tbtMs: overrides.tbtMs ?? 100,
-    fcpMs: overrides.fcpMs ?? 800,
-    siMs: overrides.siMs ?? 1200,
-    ttfbMs: overrides.ttfbMs ?? 150,
-    summaryJson: overrides.summaryJson ?? {
-      lcpElement: null,
-      lcpPhases: null,
-      clsCulprits: [],
-      insights: [],
-      failedAudits: [],
-      runWarnings: [],
-      runtimeError: null,
-      medianMetadata: null,
-    },
-    jsonReportPath: overrides.jsonReportPath ?? "/tmp/artifacts/report.json",
-    htmlReportPath: overrides.htmlReportPath ?? "/tmp/artifacts/report.html",
-    durationMs: overrides.durationMs ?? 3000,
-    createdAt: overrides.createdAt ?? new Date(),
+    ...DEFAULT_SAMPLE_ROW,
+    createdAt: new Date(),
+    ...overrides,
   };
 }
 

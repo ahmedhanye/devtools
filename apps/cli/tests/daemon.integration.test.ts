@@ -1,9 +1,8 @@
-import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { afterEach, describe, expect, test } from "bun:test";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ApiErrorResponseSchema, HealthResponseSchema } from "@devtools/core";
-import * as dbModule from "@devtools/db";
 import { db, resetDb, systemMetadata } from "@devtools/db";
 import {
   type DaemonInstance,
@@ -24,35 +23,43 @@ describe("Unified Loopback Daemon Lifecycle and Routing", () => {
 
   test("initializes persistence database migrations on daemon startup", async () => {
     resetDb();
-    activeDaemon = startDaemon({ port: 0, host: "127.0.0.1" });
+    activeDaemon = startDaemon({
+      port: 0,
+      host: "127.0.0.1",
+      env: { DEVTOOLS_DB_PATH: ":memory:" },
+    });
     const records = await db.select().from(systemMetadata);
     expect(Array.isArray(records)).toBe(true);
   });
 
   test("throws and attaches cause when database migrations fail", () => {
     resetDb();
-    const migrationError = new Error("Disk full or corrupted SQLite database");
-    const migrationSpy = spyOn(dbModule, "runMigrations").mockImplementation(
-      () => {
-        throw migrationError;
-      },
-    );
+    const tmpDir = mkdtempSync(join(tmpdir(), "devtools-daemon-ro-"));
+    const readOnlyDbPath = join(tmpDir, "readonly.db");
+    writeFileSync(readOnlyDbPath, "");
+    chmodSync(readOnlyDbPath, 0o444);
 
     try {
       let caughtError: unknown;
       try {
-        startDaemon({ port: 0, host: "127.0.0.1" });
+        startDaemon({
+          port: 0,
+          host: "127.0.0.1",
+          env: { DEVTOOLS_DB_PATH: readOnlyDbPath },
+        });
       } catch (err) {
         caughtError = err;
       }
 
       expect(caughtError).toBeInstanceOf(Error);
-      expect((caughtError as Error).message).toBe(
-        "Fatal: failed to initialize persistence database: Disk full or corrupted SQLite database",
+      expect((caughtError as Error).message).toMatch(
+        /^Fatal: failed to initialize persistence database: /,
       );
-      expect((caughtError as Error).cause).toBe(migrationError);
+      expect((caughtError as Error).cause).toBeInstanceOf(Error);
     } finally {
-      migrationSpy.mockRestore();
+      chmodSync(readOnlyDbPath, 0o644);
+      rmSync(tmpDir, { recursive: true, force: true });
+      resetDb();
     }
   });
 

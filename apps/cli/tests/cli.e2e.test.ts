@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
@@ -20,6 +26,7 @@ import {
 } from "./support/network";
 
 const binPath = resolve(__dirname, "../bin/devtools.js");
+const compiledBinPath = resolve(__dirname, "../../../dist/devtools");
 
 function createSanitizedEnv(
   overrides: Record<string, string> = {},
@@ -241,28 +248,40 @@ describe("CLI Subprocess Integration Tests (E2E)", () => {
     }
   });
 
-  test("executes Lighthouse API endpoints and real Bun Worker SSE lifecycle through devtools web daemon", async () => {
+  async function assertLighthouseDaemonWorkerLifecycle(
+    spawnCmd: (port: number, staticDir?: string) => string[],
+    options: { withTempStaticDir?: boolean } = {},
+  ): Promise<void> {
     const tmpDir = mkdtempSync(join(tmpdir(), "devtools-cli-e2e-lh-"));
     const dbPath = join(tmpDir, "e2e.db");
     const artifactsDir = join(tmpDir, "artifacts");
+    let staticDir: string | undefined;
+    if (options.withTempStaticDir) {
+      staticDir = join(tmpDir, "static");
+      mkdirSync(staticDir, { recursive: true });
+      writeFileSync(
+        join(staticDir, "index.html"),
+        "<!DOCTYPE html><html></html>",
+      );
+    }
     const port = getFreePort();
-    const proc = Bun.spawn(
-      ["bun", binPath, "web", "--port", String(port), "--host", "127.0.0.1"],
-      {
-        env: createSanitizedEnv({
-          DEVTOOLS_DB_PATH: dbPath,
-          DEVTOOLS_LIGHTHOUSE_ARTIFACTS_DIR: artifactsDir,
-          DEVTOOLS_CHROME_PATH: "/nonexistent/devtools-e2e-chrome",
-        }),
-        stdout: "pipe",
-        stderr: "pipe",
-      },
-    );
+    const proc = Bun.spawn(spawnCmd(port, staticDir), {
+      env: createSanitizedEnv({
+        DEVTOOLS_DB_PATH: dbPath,
+        DEVTOOLS_LIGHTHOUSE_ARTIFACTS_DIR: artifactsDir,
+        DEVTOOLS_CHROME_PATH: "/nonexistent/devtools-e2e-chrome",
+      }),
+      stdout: "pipe",
+      stderr: "pipe",
+    });
 
     try {
       const ready = await waitForServer(port, "127.0.0.1");
       expect(ready).toBe(true);
       const baseUrl = `http://127.0.0.1:${port}`;
+
+      const healthRes = await fetch(`${baseUrl}/api/health`);
+      expect(healthRes.status).toBe(200);
 
       const runsRes = await fetch(`${baseUrl}/api/lighthouse/runs`);
       expect(runsRes.status).toBe(200);
@@ -317,6 +336,40 @@ describe("CLI Subprocess Integration Tests (E2E)", () => {
       proc.kill();
       rmSync(tmpDir, { recursive: true, force: true });
     }
+  }
+
+  test("executes Lighthouse API endpoints and real Bun Worker SSE lifecycle through devtools web daemon", async () => {
+    await assertLighthouseDaemonWorkerLifecycle((port) => [
+      "bun",
+      binPath,
+      "web",
+      "--port",
+      String(port),
+      "--host",
+      "127.0.0.1",
+    ]);
+  });
+
+  test("executes compiled dist/devtools web with embedded migrations and multi-entry Bun Worker SSE lifecycle", async () => {
+    if (!existsSync(compiledBinPath)) {
+      throw new Error(
+        `Compiled binary not found at ${compiledBinPath}. Run 'bun run build:bin' first.`,
+      );
+    }
+
+    await assertLighthouseDaemonWorkerLifecycle(
+      (port, staticDir) => [
+        compiledBinPath,
+        "web",
+        "--port",
+        String(port),
+        "--host",
+        "127.0.0.1",
+        "--static-dir",
+        staticDir!,
+      ],
+      { withTempStaticDir: true },
+    );
   });
 });
 
