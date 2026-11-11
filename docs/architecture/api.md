@@ -45,7 +45,20 @@ export function createApp(options: CreateAppOptions = {}) {
 }
 ```
 
-This factory enables the CLI loopback daemon to mount routes under `/api` in-process while allowing test suites to instantiate isolated test applications with injected `:memory:` SQLite databases and fast audit runners.
+This factory enables the CLI loopback daemon to mount routes under `/api` in-process while allowing test suites to instantiate isolated test applications with injected `:memory:` SQLite databases and fast audit runners. Both `startServer` (`apps/api/src/server.ts`) and `startDaemon` (`apps/cli/src/daemon.ts`) stop HTTP connections (`await server.stop(true)`) before awaiting `app.shutdown()` to abort active Lighthouse jobs cleanly.
+
+## Mounted routes and SSE transport
+
+| Method & Path                              | Response                                                | Purpose                                                                     |
+| :----------------------------------------- | :------------------------------------------------------ | :-------------------------------------------------------------------------- |
+| `GET /api/health`                          | `200 OK` (`HealthResponseSchema`)                       | Process liveness, uptime, and `APP_VERSION`                                 |
+| `POST /api/lighthouse/audits`              | `202 Accepted` (`AuditJobSchema`) / `409 Conflict`      | Start a single-flight Audit Job                                             |
+| `GET /api/lighthouse/audits/active`        | `200 OK` (`ActiveAuditJobResponseSchema`)               | Discover the currently running Audit Job for reload recovery                |
+| `GET /api/lighthouse/audits/:jobId/stream` | `200 OK` (`text/event-stream`)                          | Replay latest snapshot and stream `progress`, `complete`, or `error` frames |
+| `GET /api/lighthouse/runs`                 | `200 OK` (`ListLighthouseRunsResponseSchema`)           | Paginated, filtered historical Audit Run list                               |
+| `GET /api/lighthouse/runs/:id`             | `200 OK` (`LighthouseRunDetailSchema`) / `409 Conflict` | Resolve full run detail by UUID or unique 6+ char prefix                    |
+| `GET /api/lighthouse/runs/:id/report`      | `200 OK` (`text/html`)                                  | Serve symlink-confined `report.html` inside an opaque-origin CSP sandbox    |
+| `GET /api/lighthouse/diff`                 | `200 OK` (`LighthouseDiffResponseSchema`)               | Compute score, Core Web Vitals, and Insight Audit deltas                    |
 
 ## Loopback security and origin protection
 

@@ -77,14 +77,14 @@ Detailed architecture guides live under `docs/architecture/`:
 
 ### Application architectures
 
-- [HTTP API architecture](docs/architecture/api.md): `apps/api` architecture, Hono route factory, in-process mounting, loopback CORS protection, and socketless testing.
+- [HTTP API architecture](docs/architecture/api.md): `apps/api` architecture, Hono route factory, in-process mounting, all-verb loopback security, SSE job streaming, and cooperative shutdown.
 - [Frontend application architecture](docs/architecture/frontend.md): `apps/frontend` architecture, Feature-Sliced Design v2.1 layers, App Router adapters, hydration safety, and static asset delivery.
 
 ### Package architectures
 
 - [Persistence and database architecture](docs/architecture/persistence.md): `packages/db` architecture, embedded SQLite engine, WAL mode, Drizzle ORM schema, and startup migration execution.
 - [Browser automation architecture](docs/architecture/browser.md): `packages/browser` architecture, 3-tier Chromium resolution waterfall algorithm, managed Chrome for Testing cache, and binary verification.
-- [Performance auditing architecture](docs/architecture/lighthouse.md): `packages/lighthouse` architecture, isolated worker process execution, representative run selection, normalizer, and 3-tier persistence.
+- [Performance auditing architecture](docs/architecture/lighthouse.md): `packages/lighthouse` architecture, direct in-process execution with `AbortSignal` cancellation, representative run selection, normalizer, and 3-tier persistence.
 
 ## Core runtime lifecycles
 
@@ -100,8 +100,8 @@ Browser operations in `@devtools/browser` resolve Chromium binaries through a 3-
 
 For the detailed resolution flowchart, binary validation checks, and download protocols, consult [Browser Automation Architecture](docs/architecture/browser.md).
 
-### Isolated Lighthouse audit lifecycle (`packages/lighthouse`)
+### Direct in-process Lighthouse audit lifecycle (`packages/lighthouse`)
 
-Programmatic audits launch an isolated worker subprocess with an ephemeral Chrome port, select representative runs across multi-run batches via Euclidean distance minimization, and persist data across hot SQLite columns, warm JSON summaries, and cold disk artifacts.
+Programmatic audits execute Lighthouse iterations directly in-process against an ephemeral Chrome port (`port: 0`) with `AbortSignal` cancellation, select representative runs across multi-run batches via Euclidean distance minimization, and persist data across hot SQLite columns, warm JSON summaries, and cold disk artifacts.
 
-For the sequence diagram, worker lifecycle guarantees, and 3-tier storage contracts, consult [Performance Auditing Architecture](docs/architecture/lighthouse.md).
+For the sequence diagram, execution lifecycle guarantees, and 3-tier storage contracts, consult [Performance Auditing Architecture](docs/architecture/lighthouse.md).
