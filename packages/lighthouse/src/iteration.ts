@@ -233,7 +233,11 @@ export async function executeIteration(
     await launchedChrome.kill();
   };
   const onAbort = (): void => {
-    void launchedChrome.kill();
+    try {
+      void Promise.resolve(launchedChrome.kill()).catch(() => {});
+    } catch {
+      // finally block retries kill()
+    }
   };
   process.once("SIGTERM", cleanupSignal);
   process.once("SIGINT", cleanupSignal);
