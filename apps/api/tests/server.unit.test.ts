@@ -233,4 +233,73 @@ describe("runServerCli", () => {
     await new Promise((r) => setTimeout(r, 10));
     expect(exitCodes).toEqual([0]);
   });
+
+  test("logs shutdown error and exits 1 when async instance.stop() rejects", async () => {
+    const shutdownErr = new Error("stop rejected");
+    const exitCodes: Array<number | undefined> = [];
+    const errors: Array<{ message: string; rest: unknown[] }> = [];
+    const signals: Record<string, () => void> = {};
+
+    runServerCli({
+      resolveConfig: () => ({ host: "127.0.0.1", port: 4000 }),
+      start: () => ({
+        server: { hostname: "127.0.0.1" } as any,
+        port: 4000,
+        stop: async () => {
+          throw shutdownErr;
+        },
+      }),
+      log: () => {},
+      error: (message, ...rest) => {
+        errors.push({ message, rest });
+      },
+      exit: (code) => {
+        exitCodes.push(code);
+      },
+      onSignal: (evt, handler) => {
+        signals[evt] = handler;
+      },
+    });
+
+    signals.SIGTERM?.();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(exitCodes).toEqual([1]);
+    expect(errors).toEqual([
+      { message: "Failed to shut down server cleanly:", rest: [shutdownErr] },
+    ]);
+  });
+
+  test("logs shutdown error and exits 1 when synchronous instance.stop() throws", () => {
+    const shutdownErr = new Error("sync stop failure");
+    const exitCodes: Array<number | undefined> = [];
+    const errors: Array<{ message: string; rest: unknown[] }> = [];
+    const signals: Record<string, () => void> = {};
+
+    runServerCli({
+      resolveConfig: () => ({ host: "127.0.0.1", port: 4000 }),
+      start: () => ({
+        server: { hostname: "127.0.0.1" } as any,
+        port: 4000,
+        stop: () => {
+          throw shutdownErr;
+        },
+      }),
+      log: () => {},
+      error: (message, ...rest) => {
+        errors.push({ message, rest });
+      },
+      exit: (code) => {
+        exitCodes.push(code);
+      },
+      onSignal: (evt, handler) => {
+        signals[evt] = handler;
+      },
+    });
+
+    signals.SIGINT?.();
+    expect(exitCodes).toEqual([1]);
+    expect(errors).toEqual([
+      { message: "Failed to shut down server cleanly:", rest: [shutdownErr] },
+    ]);
+  });
 });
