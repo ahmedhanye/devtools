@@ -371,10 +371,9 @@ describe("Migrations & Database Client Operations", () => {
           ],
         }),
       );
-      writeFileSync(
-        join(tmpFolder, "0000_custom.sql"),
-        "CREATE TABLE `custom_probe` (`id` text PRIMARY KEY NOT NULL);",
-      );
+      const customSql =
+        "CREATE TABLE `custom_probe` (`id` text PRIMARY KEY NOT NULL);";
+      writeFileSync(join(tmpFolder, "0000_custom.sql"), customSql);
 
       const testDb = createDb({ connection: conn });
       runMigrations(testDb, {
@@ -389,9 +388,50 @@ describe("Migrations & Database Client Operations", () => {
           )
           .get(),
       ).toEqual({ name: "custom_probe" });
+
+      const expectedHash = createHash("sha256").update(customSql).digest("hex");
+      const trackingRows = conn
+        .query(
+          'SELECT hash, created_at FROM "__custom_folder_migrations" ORDER BY created_at ASC',
+        )
+        .all() as Array<{ hash: string; created_at: number }>;
+      expect(trackingRows).toEqual([
+        { hash: expectedHash, created_at: 1700000000000 },
+      ]);
+
+      expect(
+        conn
+          .query(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('__devtools_migrations', '__drizzle_migrations')",
+          )
+          .all(),
+      ).toEqual([]);
     } finally {
       conn.close();
       rmSync(tmpFolder, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects empty or whitespace migrationsFolder instead of falling back to embedded migrations", () => {
+    for (const invalidFolder of ["", "   "]) {
+      const conn = createSqliteConnection(":memory:");
+      try {
+        const testDb = createDb({ connection: conn });
+
+        expect(() =>
+          runMigrations(testDb, { migrationsFolder: invalidFolder }),
+        ).toThrow("migrationsFolder must be a non-empty directory path");
+
+        expect(
+          conn
+            .query(
+              "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'system_metadata'",
+            )
+            .get(),
+        ).toBeNull();
+      } finally {
+        conn.close();
+      }
     }
   });
 });
