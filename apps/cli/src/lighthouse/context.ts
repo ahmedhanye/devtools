@@ -6,7 +6,7 @@ import { getColors } from "../colors";
  * Shared dependency injection seams across Lighthouse CLI commands (`audit`, `diff`, `list`).
  */
 export interface LighthouseCliContextDeps {
-  getDb?: () => DevtoolsDb;
+  getDb?: (options?: { env?: EnvMap }) => DevtoolsDb;
   log?: (chunk: string) => void;
   error?: (chunk: string) => void;
   writeStderr?: (chunk: string) => void;
@@ -60,7 +60,10 @@ export function createLighthouseCliContext(
     writeStderr:
       deps?.writeStderr ?? ((chunk: string) => process.stderr.write(chunk)),
     exit,
-    getDb: async () => (deps?.getDb ?? (await import("@devtools/db")).getDb)(),
+    getDb: async () =>
+      (deps?.getDb ?? (await import("@devtools/db")).getDb)({
+        env: options.env,
+      }),
   };
 }
 

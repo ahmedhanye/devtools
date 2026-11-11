@@ -1,11 +1,14 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
-import type { DevtoolsDb, LighthouseRunRow } from "@devtools/db";
+import type { LighthouseRunRow } from "@devtools/db";
 import {
   getLatestLighthouseRun,
   resolveLighthouseRun,
 } from "@devtools/lighthouse";
-import { getColors } from "../colors";
+import {
+  connectRequiredLighthouseDb,
+  createLighthouseCliContext,
+} from "./context";
 import { LighthouseOpenerError } from "./errors";
 import type {
   LighthouseOpenCommandDeps,
@@ -95,29 +98,14 @@ export async function runLighthouseOpenCommand(
   options: LighthouseOpenCommandOptions = {},
   deps?: LighthouseOpenCommandDeps,
 ): Promise<void> {
-  const exit = (code = 1) => {
-    if (deps?.exit) {
-      deps.exit(code);
-      return;
-    }
-    process.exit(code);
-  };
-
-  const log = deps?.log ?? console.log;
-  const error = deps?.error ?? console.error;
-  const getDb = deps?.getDb ?? (await import("@devtools/db")).getDb;
+  const ctx = createLighthouseCliContext(options, deps);
+  const { pc, log, error, exit } = ctx;
   const fileExists = deps?.fileExists ?? fs.existsSync;
   const isHeadless = deps?.isHeadless ?? defaultIsHeadless;
   const spawnOpener = deps?.spawnOpener ?? defaultSpawnOpener;
-  const pc = getColors({ env: options.env as NodeJS.ProcessEnv });
 
-  let db: DevtoolsDb;
-  try {
-    db = getDb();
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    error(pc.red(`Error connecting to database: ${message}`));
-    exit(1);
+  const db = await connectRequiredLighthouseDb(ctx);
+  if (!db) {
     return;
   }
 
