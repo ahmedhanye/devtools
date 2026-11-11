@@ -6,7 +6,7 @@ Architectural guidelines, boundary rules, and development practices for shared d
 
 1. **Unidirectional dependency ordering**: Packages under `packages/*` are headless domain libraries (`@devtools/core`, `@devtools/db`, `@devtools/browser`, `@devtools/lighthouse`). They supply shared business logic, schemas, and persistence primitives:
    - Packages must **never** import from applications (`apps/*`) or documentation (`site/`).
-   - Packages follow a strict hierarchy: `@devtools/core` is a zero-dependency foundation; `@devtools/db` and `@devtools/browser` depend on `@devtools/core`; `@devtools/lighthouse` depends on `@devtools/core`, `@devtools/db`, and `@devtools/browser`. Sibling packages must not form circular references.
+   - Packages follow a strict hierarchy: `@devtools/core` is a zero-dependency foundation; `@devtools/db` and `@devtools/browser` depend on `@devtools/core`; `@devtools/lighthouse` depends on `@devtools/core`, `@devtools/db`, and `@devtools/browser` while exposing a browser-safe, `zod`-only `@devtools/lighthouse/schemas` subpath (`packages/lighthouse/src/schemas.ts`) for `apps/frontend` via `.fallowrc.json` boundary rules. Sibling packages must not form circular references.
 2. **Framework independence**: Headless packages must remain independent of frontend UI frameworks (React, Next.js) and HTTP routing engines (Hono). Keep domain models and business rules pure and decoupled from delivery mechanisms.
 3. **Packages are headless domain libraries, not process orchestrators**: Packages must not spawn runtime child processes (such as `Bun.spawn` executing external scripts or worker processes) to manage internal execution flow. Monorepo packages provide programmatic libraries, leaving long-running background orchestration, process supervision, worker threads, and queue concurrency to application boundary layers (`apps/api`, `apps/cli`).
 
@@ -25,7 +25,7 @@ Architectural guidelines, boundary rules, and development practices for shared d
    }
    ```
 2. **Bundler resolution**: Consuming workspaces resolve TypeScript files on the fly via `moduleResolution: "bundler"`, eliminating build delays and ensuring immediate feedback during development.
-3. **Explicit public seams**: Only symbols exported from designated subpath entrypoints (`src/index.ts`, `src/schema/index.ts`) constitute the public API. Consuming applications must never import internal paths directly (e.g. `@devtools/db/src/internal/connection`).
+3. **Explicit public seams**: Only symbols exported from designated subpath entrypoints (`src/index.ts`, `src/schema/index.ts`, `src/migrator.ts`, `src/schemas.ts`) constitute the public API. Consuming applications must never import internal paths directly (e.g. `@devtools/db/src/internal/connection`).
 
 ## Configuration seams and ADR 0002
 

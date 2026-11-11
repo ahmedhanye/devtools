@@ -10,6 +10,7 @@ Developer tooling monorepo providing development utilities and workflows across 
 - **`packages/core`** (`@devtools/core`): Shared domain models, configuration schemas, and utilities.
 - **`packages/db`** (`@devtools/db`): Database persistence schemas and migration utilities.
 - **`packages/browser`** (`@devtools/browser`): Chromium provisioning, resolution waterfall, and managed cache.
+- **`packages/lighthouse`** (`@devtools/lighthouse`): Direct in-process Lighthouse v13 audit engine, metric extraction, pairwise diffing, and 3-tier persistence.
 - **`site`** (`@devtools/site`): Documentation platform and guides built with Fumadocs.
 
 ## Quick Start

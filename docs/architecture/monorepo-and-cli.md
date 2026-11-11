@@ -38,7 +38,8 @@ graph TD
   subgraph Packages ["packages/* (Headless Domain Packages)"]
     Browser["packages/browser<br/>(Chromium Waterfall)"]
     DB["packages/db<br/>(SQLite / Drizzle)"]
-    Core["packages/core<br/>(Zod Schemas & Domain Errors)"]
+    Core["packages/core<br/>(Platform Schemas & Errors)"]
+    LighthouseSchemas["packages/lighthouse/schemas<br/>(Browser-Safe Zod Schemas)"]
     Lighthouse["packages/lighthouse<br/>(Lighthouse Audit Engine)"]
   end
 
@@ -46,27 +47,35 @@ graph TD
   CLI --> Core
   CLI --> DB
   CLI --> Browser
+  CLI --> Lighthouse
+  CLI --> LighthouseSchemas
   API --> Core
+  API --> DB
+  API --> Lighthouse
+  API --> LighthouseSchemas
   Frontend --> Core
+  Frontend --> LighthouseSchemas
   DB --> Core
   Browser --> Core
   Lighthouse --> Core
   Lighthouse --> DB
   Lighthouse --> Browser
+  Lighthouse --> LighthouseSchemas
 ```
 
 ### Architectural tier invariants
 
 1. **Headless domain packages (`packages/*`)**:
-   - Leaf foundation: `@devtools/core` has zero workspace dependencies and declares shared Zod schemas, error primitives, and configuration types.
+   - Leaf foundation: `@devtools/core` has zero workspace dependencies and declares cross-cutting platform Zod schemas (`health`, `config`, `errors`), error constants (`API_ERROR_CODES`), and environment map types.
+   - Browser-safe domain contracts: `@devtools/lighthouse/schemas` (`packages/lighthouse/src/schemas.ts`) depends only on `zod` (zero Node/Bun, SQLite, or Chromium imports), enabling both backend services and `apps/frontend` to share domain DTO and SSE schemas safely.
    - Persistence and automation: `@devtools/db` and `@devtools/browser` consume `@devtools/core`.
-   - Performance auditing: `@devtools/lighthouse` consumes `@devtools/core`, `@devtools/db`, and `@devtools/browser`.
+   - Performance auditing: `@devtools/lighthouse` consumes `@devtools/core`, `@devtools/db`, `@devtools/browser`, and `@devtools/lighthouse/schemas`.
    - Invariant: Packages must **never** import from applications (`apps/*`) or documentation (`site/`).
 2. **Deployable applications (`apps/*`)**:
-   - Applications consume headless packages via `"workspace:*"`.
+   - Applications consume headless packages via `"workspace:*"` (`apps/api` consumes `@devtools/core`, `@devtools/db`, and `@devtools/lighthouse`; `apps/frontend` is restricted to `@devtools/core` and `@devtools/lighthouse/schemas` via `.fallowrc.json`).
    - Sibling applications (`apps/api`, `apps/frontend`) remain siloed; they never cross-import source files directly.
 3. **Buildless development with direct source exports**:
-   - Internal packages declare direct source exports in `package.json` (`"exports": { ".": "./src/index.ts" }`).
+   - Internal packages declare direct source exports in `package.json` (`"exports": { ".": "./src/index.ts" }`, plus `"./schemas": "./src/schemas.ts"` on `@devtools/lighthouse`).
    - Combined with `moduleResolution: "bundler"`, applications resolve TypeScript source files directly without intermediate compilation lag.
 
 ## CLI integration and runtime orchestration
@@ -80,9 +89,9 @@ graph TD
    - Commander.js registers command structures and options synchronously, ensuring `--help` cold starts in under 20ms.
    - Heavy execution logic (SQLite initialization, Chromium downloading, server startup) is dynamically imported only when a specific command action runs.
 3. **Unified loopback daemon host**:
-   - Rather than requiring multiple processes or ports, running `devtools web` starts a single Bun HTTP daemon process.
-   - The daemon runs SQLite migrations, mounts the in-process Hono API application from `apps/api` on `/api/*`, and serves pre-rendered Next.js frontend static assets on all other paths.
+   - Rather than requiring multiple processes or ports, running `devtools web` invokes `startDaemon` (`apps/cli/src/daemon.ts`) to run a single Bun HTTP daemon process.
+   - `startDaemon` initializes SQLite (`getDb` + `runMigrations`), mounts the in-process `@devtools/api` Hono application via `createApp()` on `/api/*` (forwarding `{ server }` bindings for peer IP checks and SSE timeouts), serves pre-rendered Next.js frontend static assets on all other paths, and awaits `api.shutdown()` before calling `closeDb()` on shutdown.
 4. **Standalone binary compilation**:
-   - For distribution without requiring a local Bun installation, `bun build apps/cli/bin/devtools.js --compile --outfile dist/devtools` produces a self-contained single-file executable embedding the Bun engine, bytecode, and dependencies.
+   - For distribution without requiring a local Bun installation, single-entrypoint compilation (`bun build apps/cli/bin/devtools.js --compile --outfile dist/devtools`) produces a self-contained single-file executable embedding the Bun engine, bytecode, embedded Drizzle migrations, and the CLI/daemon/Lighthouse runtime.
 
 For deep details on daemon startup lifecycles, graceful shutdown, and CLI testing seams, consult [CLI and Daemon Architecture](docs/architecture/cli-and-daemon.md).

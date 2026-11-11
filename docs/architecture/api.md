@@ -9,13 +9,18 @@ Architecture, route design, security boundaries, and validation contracts for `a
 ```text
 apps/api/
 ├── src/
+│   ├── lighthouse/
+│   │   ├── job-manager.ts     # Single-flight Audit Job registry, shutdown cancellation, SSE & persistence
+│   │   └── serializers.ts     # Run detail/list DTO and structured AuditJobError serializers
 │   ├── middleware/
-│   │   └── security.ts        # Loopback origin, CORS, & CSRF protection middleware
+│   │   └── security.ts        # All-verb loopback peer, Host, Origin & CSRF protection
 │   ├── routes/
-│   │   └── health.ts          # Health probe & uptime endpoint
-│   ├── index.ts               # Hono app factory & middleware registration
-│   └── server.ts              # Standalone HTTP server runner
-└── tests/                     # Socketless in-memory test suites
+│   │   ├── health.ts          # Health probe & uptime endpoint
+│   │   └── lighthouse.ts      # Audit triggers, SSE progress, runs, diff & sandboxed HTML
+│   ├── app.ts                 # Hono app factory, middleware registration & shutdown() hook
+│   ├── index.ts               # Public API package exports
+│   └── server.ts              # Standalone DB-free Bun.serve bootstrap & signal shutdown
+└── tests/                     # Socketless in-memory, job-manager, and HTTP lifecycle suites
 ```
 
 Instead of exporting an ambient singleton, `apps/api` exposes a factory function:
@@ -23,35 +28,54 @@ Instead of exporting an ambient singleton, `apps/api` exposes a factory function
 ```ts
 export interface CreateAppOptions {
   basePath?: string;
+  db?: DevtoolsDb;
+  env?: EnvMap;
+  artifactsDir?: string;
+  auditRunner?: LighthouseAuditRunner;
+  jobRetentionMs?: number;
+  keepaliveIntervalMs?: number;
 }
 
-export function createApp(options: CreateAppOptions = {}): Hono {
-  const app = new Hono();
+export function createApp(options: CreateAppOptions = {}) {
+  const app = new Hono<{ Bindings: ApiBindings }>();
   const basePath = options.basePath ?? "/api";
 
-  // Register middleware and routes under basePath
-  return app;
+  // Register middleware, routes, and cooperative shutdown() under basePath
+  return Object.assign(app, { shutdown });
 }
 ```
 
-This factory enables the CLI loopback daemon to mount routes under `/api` in-process while allowing test suites to instantiate isolated test applications.
+This factory enables the CLI loopback daemon to mount routes under `/api` in-process while allowing test suites to instantiate isolated test applications with injected `:memory:` SQLite databases and fast audit runners. Both `startServer` (`apps/api/src/server.ts`) and `startDaemon` (`apps/cli/src/daemon.ts`) stop HTTP connections (`await server.stop(true)`) before awaiting `app.shutdown()` to abort active Lighthouse jobs cleanly.
+
+## Mounted routes and SSE transport
+
+| Method & Path                              | Response                                                | Purpose                                                                     |
+| :----------------------------------------- | :------------------------------------------------------ | :-------------------------------------------------------------------------- |
+| `GET /api/health`                          | `200 OK` (`HealthResponseSchema`)                       | Process liveness, uptime, and `APP_VERSION`                                 |
+| `POST /api/lighthouse/audits`              | `202 Accepted` (`AuditJobSchema`) / `409 Conflict`      | Start a single-flight Audit Job                                             |
+| `GET /api/lighthouse/audits/active`        | `200 OK` (`ActiveAuditJobResponseSchema`)               | Discover the currently running Audit Job for reload recovery                |
+| `GET /api/lighthouse/audits/:jobId/stream` | `200 OK` (`text/event-stream`)                          | Replay latest snapshot and stream `progress`, `complete`, or `error` frames |
+| `GET /api/lighthouse/runs`                 | `200 OK` (`ListLighthouseRunsResponseSchema`)           | Paginated, filtered historical Audit Run list                               |
+| `GET /api/lighthouse/runs/:id`             | `200 OK` (`LighthouseRunDetailSchema`) / `409 Conflict` | Resolve full run detail by UUID or unique 6+ char prefix                    |
+| `GET /api/lighthouse/runs/:id/report`      | `200 OK` (`text/html`)                                  | Serve symlink-confined `report.html` inside an opaque-origin CSP sandbox    |
+| `GET /api/lighthouse/diff`                 | `200 OK` (`LighthouseDiffResponseSchema`)               | Compute score, Core Web Vitals, and Insight Audit deltas                    |
 
 ## Loopback security and origin protection
 
 Because DevTools operates on developer workstations, `apps/api` enforces loopback isolation:
 
 1. **Host binding**: Listens on `127.0.0.1`, `localhost`, or `[::1]` by default. Never exposes endpoints to public interfaces without explicit user flags.
-2. **CORS policy**: Cross-Origin Resource Sharing is locked down to loopback origins (`http://localhost:*`, `http://127.0.0.1:*`, `http://[::1]:*`).
-3. **Cross-site request forgery protection**: Verifies request origins on mutating HTTP verbs (POST, PUT, DELETE, PATCH) by rejecting non-loopback `Origin` headers, checking `Sec-Fetch-Site: cross-site`, and requiring explicit JSON content types. This prevents malicious external websites running in the developer's browser from issuing cross-origin commands against the local daemon.
+2. **CORS policy**: Cross-Origin Resource Sharing is locked down to loopback origins (`http://localhost:*`, `http://127.0.0.1:*`, `http://[::1]:*`, `http://[::ffff:127.0.0.1]:*`).
+3. **All-verb cross-site & peer IP protection**: Verifies socket peer IP via `server.requestIP(req)` (recognizing IPv4, IPv6, IPv4-mapped `[::ffff:127.0.0.1]`, and container-local host interface NAT on loopback servers), validates `Host` headers, rejects `Sec-Fetch-Site: cross-site` and non-loopback or opaque `"null"` `Origin` headers across **all** `/api/*` verbs (including `GET`, SSE streams, and `report.html`), and requires `Content-Type: application/json` on mutating payloads.
 
 ## Request validation and response contracts
 
-1. **Schema validation with Zod**: Incoming query parameters, path variables, and request JSON payloads are validated through Zod schemas defined in `@devtools/core`.
+1. **Schema validation with Zod**: Cross-cutting envelopes (`HealthResponseSchema`, `ApiErrorResponseSchema`, `API_ERROR_CODES`) live in `@devtools/core`, while domain-specific API/SSE request and DTO schemas live in their owning domain package's browser-safe subpath (such as `@devtools/lighthouse/schemas` per [ADR 0003](../adr/0003-lighthouse-audit-isolation-and-tiered-storage.md) and [ADR 0004](../adr/0004-lighthouse-daemon-api-isolation-and-sse.md)).
 2. **Standardized error envelopes**: Any non-2xx HTTP response formats its body according to `ApiErrorResponseSchema` from `@devtools/core`:
    ```json
    {
      "error": {
-       "code": "BAD_REQUEST",
+       "code": "VALIDATION_ERROR",
        "message": "Invalid query parameter",
        "details": {}
      }
@@ -60,8 +84,12 @@ Because DevTools operates on developer workstations, `apps/api` enforces loopbac
 3. **Status code discipline**:
    - `200 OK`: Successful read or update.
    - `201 Created`: Successful creation.
-   - `400 Bad Request`: Syntax or parsing error.
-   - `404 Not Found`: Unknown endpoint or resource.
+   - `202 Accepted`: Asynchronous background job triggered (e.g. Audit Job).
+   - `400 Bad Request`: Malformed JSON or syntax error.
+   - `403 Forbidden`: Loopback or cross-site boundary violation.
+   - `404 Not Found`: Unknown endpoint or missing resource.
+   - `409 Conflict`: Single-flight concurrency conflict or ambiguous run prefix.
+   - `415 Unsupported Media Type`: Non-JSON request body on mutating verb.
    - `422 Unprocessable Entity`: Validation failure on input schema.
    - `500 Internal Server Error`: Unhandled internal exception.
 
