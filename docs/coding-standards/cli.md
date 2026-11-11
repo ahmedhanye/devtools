@@ -67,4 +67,4 @@ CLI errors must guide the user directly to a resolution:
 
 1. **Unified loopback daemon**: Commands that start local services (e.g. `devtools web`) boot a single Bun HTTP daemon process serving API routes on `/api/*` and pre-rendered frontend static assets on root paths.
 2. **Ephemeral port binding**: The daemon must accept `--port 0` to let the operating system assign an available port dynamically, avoiding fixed port conflicts.
-3. **Graceful signal termination & database closing**: Listen for `SIGINT` and `SIGTERM` signals. When received, stop the HTTP server gracefully, drain active connections, close SQLite database handles cleanly (checkpointing WAL journals), and exit cleanly with code `0`.
+3. **Graceful signal termination & database closing**: Listen for `SIGINT` and `SIGTERM` signals. When received, stop the HTTP server (`await server.stop(true)`), await in-process API/background audit shutdown (`await api.shutdown()`), close SQLite database handles cleanly (`closeDb()`, checkpointing WAL journals) last, and exit cleanly with code `0`.
