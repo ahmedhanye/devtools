@@ -5,6 +5,7 @@ export {
   type AppType,
   type CreateAppOptions,
 } from "./app";
+export { type LighthouseAuditRunner } from "./lighthouse/job-manager";
 export {
   type ApiBindings,
   createLoopbackProtectionMiddleware,
@@ -23,9 +24,3 @@ export {
   type ServerInstance,
   type StartServerOptions,
 } from "./server";
-export {
-  AuditWorkerError,
-  createWorkerAuditRunner,
-  runAuditInWorker,
-  type LighthouseAuditRunner,
-} from "./lighthouse/worker-runner";

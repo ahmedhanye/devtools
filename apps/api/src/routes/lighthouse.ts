@@ -26,12 +26,12 @@ import { streamSSE } from "hono/streaming";
 import {
   AuditJobManager,
   type AuditJobStreamEvent,
+  type LighthouseAuditRunner,
 } from "../lighthouse/job-manager";
 import {
   serializeLighthouseRunDetail,
   serializeLighthouseRunListItem,
 } from "../lighthouse/serializers";
-import type { LighthouseAuditRunner } from "../lighthouse/worker-runner";
 import { type ApiBindings, formatError } from "../middleware/security";
 
 const DEFAULT_KEEPALIVE_INTERVAL_MS = 5000;
@@ -48,7 +48,7 @@ export interface LighthouseRoutesOptions {
   env?: EnvMap;
   /** Optional explicit artifacts root directory override. */
   artifactsDir?: string;
-  /** Optional batch execution runner overriding the production Bun `Worker`. */
+  /** Optional batch execution runner overriding `executeLighthouseBatch`. */
   auditRunner?: LighthouseAuditRunner;
   /** Retention duration (ms) for the latest completed/failed Audit Job SSE snapshot. */
   jobRetentionMs?: number;
@@ -119,7 +119,7 @@ export function createLighthouseRoutes(options: LighthouseRoutesOptions = {}) {
     return handler(resolved.row, resolveArtifacts());
   };
 
-  return new Hono<{ Bindings: ApiBindings }>()
+  const router = new Hono<{ Bindings: ApiBindings }>()
     .post("/audits", async (c) => {
       let rawBody: unknown;
       try {
@@ -371,4 +371,8 @@ export function createLighthouseRoutes(options: LighthouseRoutesOptions = {}) {
         200,
       );
     });
+
+  return Object.assign(router, {
+    shutdown: () => jobManager.shutdown(),
+  });
 }

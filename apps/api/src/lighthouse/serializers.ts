@@ -1,9 +1,11 @@
+import { API_ERROR_CODES } from "@devtools/core";
 import type { LighthouseRunRow } from "@devtools/db";
 import {
   parseRunSummary,
   resolveSafeHtmlReportPath,
 } from "@devtools/lighthouse";
 import type {
+  AuditJobError,
   LighthouseRunDetail,
   LighthouseRunListItem,
   LighthouseRunSummary,
@@ -70,5 +72,33 @@ export function serializeLighthouseRunDetail(
   return {
     ...serializeLighthouseRunListItem(row, artifactsDir),
     summary: parseRunSummary(row.summaryJson) ?? EMPTY_SUMMARY,
+  };
+}
+
+/**
+ * Converts an arbitrary thrown error into a structured {@link AuditJobError} envelope
+ * preserving domain error codes (`BROWSER_NOT_FOUND`, `AUDIT_CANCELLED`, etc.).
+ *
+ * @param err - Caught error value.
+ * @returns Structured error payload suitable for SSE `error` frames and job snapshots.
+ */
+export function serializeAuditError(err: unknown): AuditJobError {
+  if (err instanceof Error) {
+    const maybeCode = (err as { code?: unknown }).code;
+    const code =
+      typeof maybeCode === "string" && maybeCode.length > 0
+        ? maybeCode
+        : API_ERROR_CODES.INTERNAL_ERROR;
+    return {
+      code,
+      message: err.message || "Lighthouse audit execution failed",
+    };
+  }
+  return {
+    code: API_ERROR_CODES.INTERNAL_ERROR,
+    message:
+      typeof err === "string" && err.length > 0
+        ? err
+        : "Lighthouse audit execution failed",
   };
 }

@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
 import type { EnvMap } from "@devtools/core";
 import type { DevtoolsDb } from "@devtools/db";
-import { persistLighthouseAudit } from "@devtools/lighthouse";
+import {
+  AuditCancelledError,
+  executeLighthouseBatch,
+  persistLighthouseAudit,
+  type ExecuteLighthouseBatchOptions,
+  type LighthouseBatchExecutionResult,
+} from "@devtools/lighthouse";
 import type {
   AuditJob,
   AuditSseCompleteEvent,
@@ -9,11 +15,20 @@ import type {
   AuditSseProgressEvent,
   NormalizedLighthouseAuditRequest,
 } from "@devtools/lighthouse/schemas";
-import { serializeLighthouseRunDetail } from "./serializers";
-import { serializeAuditError } from "./worker-handler";
-import { runAuditInWorker, type LighthouseAuditRunner } from "./worker-runner";
+import {
+  serializeAuditError,
+  serializeLighthouseRunDetail,
+} from "./serializers";
 
 const DEFAULT_JOB_RETENTION_MS = 5 * 60 * 1000;
+
+/**
+ * Function signature for executing a Lighthouse batch either directly via
+ * `executeLighthouseBatch` or an injected fast test seam on `CreateAppOptions.auditRunner`.
+ */
+export type LighthouseAuditRunner = (
+  params: ExecuteLighthouseBatchOptions,
+) => Promise<LighthouseBatchExecutionResult>;
 
 /**
  * Discriminated SSE payload emitted by {@link AuditJobManager} subscribers.
@@ -40,9 +55,9 @@ export interface AuditJobManagerOptions {
   resolveDb: () => DevtoolsDb;
   /** Lazy artifacts directory resolver executed on the parent thread. */
   resolveArtifactsDir: () => string;
-  /** Optional environment map forwarded to worker execution and persistence. */
+  /** Optional environment map forwarded to execution and persistence. */
   env?: EnvMap;
-  /** Injectable batch execution runner (defaults to Bun Worker execution). */
+  /** Injectable batch execution runner (defaults to `executeLighthouseBatch`). */
   auditRunner?: LighthouseAuditRunner;
   /** Duration in milliseconds to retain the latest terminal job snapshot for SSE replay. */
   jobRetentionMs?: number;
@@ -59,7 +74,7 @@ function cloneAuditJob(job: AuditJob): AuditJob {
 
 /**
  * Coordinates single-flight Lighthouse Audit Jobs, SSE progress replay, terminal snapshot
- * retention, and parent-thread SQLite persistence.
+ * retention, cooperative shutdown cancellation, and SQLite persistence.
  */
 export class AuditJobManager {
   private readonly resolveDb: () => DevtoolsDb;
@@ -71,6 +86,9 @@ export class AuditJobManager {
   private activeJob: InternalAuditJob | null = null;
   private retainedJob: InternalAuditJob | null = null;
   private retentionTimer: ReturnType<typeof setTimeout> | null = null;
+  private activeAbortController: AbortController | null = null;
+  private activeExecution: Promise<void> | null = null;
+  private shuttingDown = false;
 
   /**
    * Creates an {@link AuditJobManager}.
@@ -81,20 +99,25 @@ export class AuditJobManager {
     this.resolveDb = options.resolveDb;
     this.resolveArtifactsDir = options.resolveArtifactsDir;
     this.env = options.env;
-    this.auditRunner = options.auditRunner ?? runAuditInWorker;
+    this.auditRunner = options.auditRunner ?? executeLighthouseBatch;
     this.jobRetentionMs = options.jobRetentionMs ?? DEFAULT_JOB_RETENTION_MS;
   }
 
   /**
-   * Starts a new Audit Job unless another Audit Job is currently running.
+   * Starts a new Audit Job unless shutdown has begun or another Audit Job is currently running.
    *
    * @param request - Validated and normalized audit execution parameters.
    * @returns Started job descriptor or single-flight conflict metadata containing `activeJobId`.
+   * @throws {@link Error} When called after {@link shutdown} has started.
    */
   startJob(
     request: NormalizedLighthouseAuditRequest,
   ):
     { started: true; job: AuditJob } | { started: false; activeJobId: string } {
+    if (this.shuttingDown) {
+      throw new Error("AuditJobManager is shutting down");
+    }
+
     if (this.activeJob && this.activeJob.snapshot.status === "running") {
       return {
         started: false,
@@ -124,8 +147,23 @@ export class AuditJobManager {
       terminalEvent: null,
     };
 
+    const abortController = new AbortController();
     this.activeJob = internalJob;
-    void this.executeJob(internalJob, request);
+    this.activeAbortController = abortController;
+
+    const execution = this.executeJob(
+      internalJob,
+      request,
+      abortController,
+    ).finally(() => {
+      if (this.activeExecution === execution) {
+        this.activeExecution = null;
+      }
+      if (this.activeAbortController === abortController) {
+        this.activeAbortController = null;
+      }
+    });
+    this.activeExecution = execution;
 
     return {
       started: true,
@@ -193,6 +231,17 @@ export class AuditJobManager {
     };
   }
 
+  /**
+   * Cancels any running Lighthouse audit job, clears retained job timers,
+   * and waits for active job execution to settle without writing post-shutdown artifacts or DB rows.
+   */
+  async shutdown(): Promise<void> {
+    this.shuttingDown = true;
+    this.clearRetainedJob();
+    this.activeAbortController?.abort(new Error("Server shutdown requested"));
+    await this.activeExecution;
+  }
+
   private findJob(jobId: string): InternalAuditJob | null {
     if (this.activeJob?.snapshot.id === jobId) {
       return this.activeJob;
@@ -217,15 +266,19 @@ export class AuditJobManager {
   ): void {
     job.terminalEvent = terminalEvent;
     this.activeJob = null;
-    this.retainedJob = job;
 
-    this.retentionTimer = setTimeout(() => {
-      if (this.retainedJob?.snapshot.id === job.snapshot.id) {
-        this.retainedJob = null;
-      }
-      this.retentionTimer = null;
-    }, this.jobRetentionMs);
-    this.retentionTimer.unref?.();
+    if (this.shuttingDown) {
+      this.retainedJob = null;
+    } else {
+      this.retainedJob = job;
+      this.retentionTimer = setTimeout(() => {
+        if (this.retainedJob?.snapshot.id === job.snapshot.id) {
+          this.retainedJob = null;
+        }
+        this.retentionTimer = null;
+      }, this.jobRetentionMs);
+      this.retentionTimer.unref?.();
+    }
 
     for (const subscriber of job.subscribers) {
       subscriber(terminalEvent);
@@ -236,6 +289,7 @@ export class AuditJobManager {
   private async executeJob(
     job: InternalAuditJob,
     request: NormalizedLighthouseAuditRequest,
+    abortController: AbortController,
   ): Promise<void> {
     const jobId = job.snapshot.id;
     try {
@@ -246,8 +300,13 @@ export class AuditJobManager {
         runs: request.runs,
         categories: request.categories,
         env: this.env,
+        signal: abortController.signal,
         onProgress: (event) => {
-          if (event.stage === "complete") {
+          if (
+            event.stage === "complete" ||
+            abortController.signal.aborted ||
+            this.shuttingDown
+          ) {
             return;
           }
           const progressEvent: AuditSseProgressEvent = {
@@ -269,6 +328,12 @@ export class AuditJobManager {
           }
         },
       });
+
+      if (abortController.signal.aborted || this.shuttingDown) {
+        throw new AuditCancelledError(
+          "Lighthouse audit cancelled during shutdown",
+        );
+      }
 
       let persisted: ReturnType<typeof persistLighthouseAudit>;
       let serializedRun: ReturnType<typeof serializeLighthouseRunDetail>;

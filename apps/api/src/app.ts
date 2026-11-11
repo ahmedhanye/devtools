@@ -2,7 +2,7 @@ import { API_ERROR_CODES, type EnvMap } from "@devtools/core";
 import type { DevtoolsDb } from "@devtools/db";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import type { LighthouseAuditRunner } from "./lighthouse/worker-runner";
+import type { LighthouseAuditRunner } from "./lighthouse/job-manager";
 import {
   type ApiBindings,
   createLoopbackProtectionMiddleware,
@@ -28,7 +28,7 @@ export interface CreateAppOptions {
   env?: EnvMap;
   /** Optional explicit Lighthouse artifacts root directory override. */
   artifactsDir?: string;
-  /** Optional audit batch runner seam overriding the production Bun `Worker`. */
+  /** Optional audit batch runner seam overriding `executeLighthouseBatch`. */
   auditRunner?: LighthouseAuditRunner;
   /** Duration in milliseconds to retain the latest terminal Audit Job SSE snapshot. */
   jobRetentionMs?: number;
@@ -36,12 +36,24 @@ export interface CreateAppOptions {
   keepaliveIntervalMs?: number;
 }
 
+function mountDefaultApiRoutes(
+  baseApp: Hono<{ Bindings: ApiBindings }>,
+  lighthouseRoutes: ReturnType<typeof createLighthouseRoutes>,
+) {
+  return baseApp
+    .basePath("/api")
+    .route("/", createHealthRoutes())
+    .route("/lighthouse", lighthouseRoutes);
+}
+
+type DefaultMountedApp = ReturnType<typeof mountDefaultApiRoutes>;
+
 /**
  * Creates a configured Hono application instance with loopback CORS, CSRF protection,
- * structured JSON error boundaries, and API route modules.
+ * structured JSON error boundaries, API route modules, and a cooperative `shutdown()` hook.
  *
  * @param options - Optional route mounting prefix and test injection seams.
- * @returns Chained Hono application instance preserving full route type inference (`AppType`).
+ * @returns Chained Hono application instance with `shutdown()` while preserving {@link AppType} RPC inference.
  */
 export function createApp(options: CreateAppOptions = {}) {
   const basePath = options.basePath ?? "/api";
@@ -88,19 +100,26 @@ export function createApp(options: CreateAppOptions = {}) {
     return c.json(formatError(API_ERROR_CODES.INTERNAL_ERROR, message), 500);
   });
 
-  const api = basePath ? app.basePath(basePath) : app;
+  const lighthouseRoutes = createLighthouseRoutes({
+    db: options.db,
+    env: options.env,
+    artifactsDir: options.artifactsDir,
+    auditRunner: options.auditRunner,
+    jobRetentionMs: options.jobRetentionMs,
+    keepaliveIntervalMs: options.keepaliveIntervalMs,
+  });
 
-  return api.route("/", createHealthRoutes()).route(
-    "/lighthouse",
-    createLighthouseRoutes({
-      db: options.db,
-      env: options.env,
-      artifactsDir: options.artifactsDir,
-      auditRunner: options.auditRunner,
-      jobRetentionMs: options.jobRetentionMs,
-      keepaliveIntervalMs: options.keepaliveIntervalMs,
-    }),
-  );
+  const mounted =
+    basePath === "/api"
+      ? mountDefaultApiRoutes(app, lighthouseRoutes)
+      : (app
+          .basePath(basePath)
+          .route("/", createHealthRoutes())
+          .route("/lighthouse", lighthouseRoutes) as DefaultMountedApp);
+
+  return Object.assign(mounted, {
+    shutdown: () => lighthouseRoutes.shutdown(),
+  });
 }
 
 /**
@@ -111,9 +130,9 @@ export const app = createApp();
 /**
  * Inferred Hono RPC router type for end-to-end typed client consumption (`hc<AppType>`).
  */
-export type AppType = typeof app;
+export type AppType = DefaultMountedApp;
 
 /**
  * Alias for {@link AppType}.
  */
-export type App = typeof app;
+export type App = AppType;
