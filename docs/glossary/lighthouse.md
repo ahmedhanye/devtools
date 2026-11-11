@@ -38,6 +38,6 @@ _Avoid_: LLM dump, text output, compact report
 
 ## Flagged ambiguities
 
-- **Audit Job vs. Audit Run**: An Audit Job is the transient, single-flight execution managed by the daemon API (`POST /api/lighthouse/audits`, tracked by `jobId` via SSE and `/api/lighthouse/audits/active`), which creates no database row or report file if execution fails; an **Audit Run** / **Representative Run** is a completed navigation pass persisted in `lighthouse_runs` with a `runId`.
+- **Audit Job vs. Audit Run**: An Audit Job is the transient, single-flight execution managed by the daemon API (`POST /api/lighthouse/audits`, tracked by `jobId` via SSE and `/api/lighthouse/audits/active`), which creates no database row or report file if execution fails or is cancelled before persistence begins (failures while saving report files or inserting the SQLite row in `persistLighthouseAudit()` can still leave report files on disk); an **Audit Run** / **Representative Run** is a completed navigation pass persisted in `lighthouse_runs` with a `runId`.
 - **Representative Run vs. Per-Metric Median**: Computing independent medians across metrics produces a synthetic result that contradicts the saved Report Artifact and trace attributions; DevTools always selects one real Representative Run from the batch.
 - **Audit Summary vs. Report Artifact**: An Audit Summary is the compact structured JSON stored inline in `lighthouse_runs.summary_json` for fast API and CLI queries, whereas a Report Artifact is the multi-megabyte raw `.json` and `.html` file pair stored on disk.
