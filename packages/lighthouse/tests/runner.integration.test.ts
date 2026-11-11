@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -9,6 +15,7 @@ import {
   type DevtoolsDb,
 } from "@devtools/db";
 import {
+  AuditCancelledError,
   executeIteration,
   executeLighthouseBatch,
   getLighthouseRunById,
@@ -537,5 +544,332 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
       },
     });
     expect(killedViaSignal).toBe(true);
+  });
+
+  it("executeIteration rejects before browser resolution or Chrome launch when signal is already aborted", async () => {
+    const controller = new AbortController();
+    controller.abort("pre-aborted");
+
+    let resolveBrowserCalled = false;
+    let launchChromeCalled = false;
+
+    await expect(
+      executeIteration(
+        {
+          url: "https://example.com",
+          formFactor: "mobile",
+          throttlingMethod: "simulate",
+          categories: ["performance"],
+          runIndex: 0,
+          totalRuns: 1,
+          signal: controller.signal,
+        },
+        {
+          resolveBrowser: async () => {
+            resolveBrowserCalled = true;
+            return {
+              executablePath: "/mock/chrome",
+              version: "Chrome 136",
+              source: "explicit",
+            };
+          },
+          launchChrome: async () => {
+            launchChromeCalled = true;
+            return { port: 44444, kill: async () => {} };
+          },
+        },
+      ),
+    ).rejects.toBeInstanceOf(AuditCancelledError);
+
+    expect(resolveBrowserCalled).toBe(false);
+    expect(launchChromeCalled).toBe(false);
+  });
+
+  it("executeIteration rejects before launching Chrome if signal aborts during resolveBrowser", async () => {
+    const controller = new AbortController();
+    let launchChromeCalled = false;
+
+    await expect(
+      executeIteration(
+        {
+          url: "https://example.com",
+          formFactor: "mobile",
+          throttlingMethod: "simulate",
+          categories: ["performance"],
+          runIndex: 0,
+          totalRuns: 1,
+          signal: controller.signal,
+        },
+        {
+          resolveBrowser: async () => {
+            controller.abort();
+            return {
+              executablePath: "/mock/chrome",
+              version: "Chrome 136",
+              source: "explicit",
+            };
+          },
+          launchChrome: async () => {
+            launchChromeCalled = true;
+            return { port: 44444, kill: async () => {} };
+          },
+        },
+      ),
+    ).rejects.toBeInstanceOf(AuditCancelledError);
+
+    expect(launchChromeCalled).toBe(false);
+  });
+
+  it("executeIteration kills launchedChrome immediately if signal aborts while launchChrome is in flight", async () => {
+    const controller = new AbortController();
+    let killCount = 0;
+    let runLighthouseCalled = false;
+
+    await expect(
+      executeIteration(
+        {
+          url: "https://example.com",
+          formFactor: "mobile",
+          throttlingMethod: "simulate",
+          categories: ["performance"],
+          runIndex: 0,
+          totalRuns: 1,
+          signal: controller.signal,
+        },
+        {
+          resolveBrowser: async () => ({
+            executablePath: "/mock/chrome",
+            version: "Chrome 136",
+            source: "explicit",
+          }),
+          launchChrome: async () => {
+            controller.abort();
+            return {
+              port: 44444,
+              kill: async () => {
+                killCount += 1;
+              },
+            };
+          },
+          runLighthouse: async () => {
+            runLighthouseCalled = true;
+            return undefined;
+          },
+        },
+      ),
+    ).rejects.toBeInstanceOf(AuditCancelledError);
+
+    expect(killCount).toBe(1);
+    expect(runLighthouseCalled).toBe(false);
+  });
+
+  it("executeIteration kills Chrome via abort listener during runLighthouse, converts rejection to AuditCancelledError, and removes listener", async () => {
+    const controller = new AbortController();
+    let killCount = 0;
+    let rejectRun!: (err: Error) => void;
+
+    const signal = controller.signal;
+    let addCalls = 0;
+    let removeCalls = 0;
+    const origAdd = signal.addEventListener.bind(signal);
+    const origRemove = signal.removeEventListener.bind(signal);
+    signal.addEventListener = ((...args: Parameters<typeof origAdd>) => {
+      addCalls += 1;
+      return origAdd(...args);
+    }) as typeof signal.addEventListener;
+    signal.removeEventListener = ((...args: Parameters<typeof origRemove>) => {
+      removeCalls += 1;
+      return origRemove(...args);
+    }) as typeof signal.removeEventListener;
+
+    const promise = executeIteration(
+      {
+        url: "https://example.com",
+        formFactor: "mobile",
+        throttlingMethod: "simulate",
+        categories: ["performance"],
+        runIndex: 0,
+        totalRuns: 1,
+        signal,
+      },
+      {
+        resolveBrowser: async () => ({
+          executablePath: "/mock/chrome",
+          version: "Chrome 136",
+          source: "explicit",
+        }),
+        launchChrome: async () => ({
+          port: 44444,
+          kill: async () => {
+            killCount += 1;
+            rejectRun(new Error("Target closed"));
+          },
+        }),
+        runLighthouse: async () =>
+          new Promise((_, rej) => {
+            rejectRun = rej;
+            queueMicrotask(() => controller.abort());
+          }),
+      },
+    );
+
+    await expect(promise).rejects.toBeInstanceOf(AuditCancelledError);
+    expect(killCount).toBeGreaterThanOrEqual(2);
+    expect(addCalls).toBe(1);
+    expect(removeCalls).toBe(1);
+  });
+
+  it("executeIteration rejects with AuditCancelledError if signal aborts before runLighthouse resolves normally, and removes listener on success", async () => {
+    const controller = new AbortController();
+    const stages: string[] = [];
+    const mockIter = makeMockIterationResult(
+      "https://example.com",
+      800,
+      1500,
+      1200,
+      90,
+      "abort-before-resolve",
+    );
+
+    await expect(
+      executeIteration(
+        {
+          url: "https://example.com",
+          formFactor: "mobile",
+          throttlingMethod: "simulate",
+          categories: ["performance"],
+          runIndex: 0,
+          totalRuns: 1,
+          signal: controller.signal,
+          onProgress: (ev) => stages.push(ev.stage),
+        },
+        {
+          resolveBrowser: async () => ({
+            executablePath: "/mock/chrome",
+            version: "Chrome 136",
+            source: "explicit",
+          }),
+          launchChrome: async () => ({
+            port: 44444,
+            kill: async () => {},
+          }),
+          runLighthouse: async () => {
+            controller.abort();
+            return {
+              lhr: mockIter.lhr,
+              report: [mockIter.reportJson, mockIter.reportHtml],
+            };
+          },
+        },
+      ),
+    ).rejects.toBeInstanceOf(AuditCancelledError);
+
+    expect(stages).not.toContain("analyzing");
+    expect(stages).not.toContain("generating_report");
+
+    // Listener is also removed when completing normally with an un-aborted signal
+    const healthyController = new AbortController();
+    let removed = 0;
+    const origRemove = healthyController.signal.removeEventListener.bind(
+      healthyController.signal,
+    );
+    healthyController.signal.removeEventListener = ((
+      ...args: Parameters<typeof origRemove>
+    ) => {
+      removed += 1;
+      return origRemove(...args);
+    }) as typeof healthyController.signal.removeEventListener;
+
+    const ok = await executeIteration(
+      {
+        url: "https://example.com",
+        formFactor: "mobile",
+        throttlingMethod: "simulate",
+        categories: ["performance"],
+        runIndex: 0,
+        totalRuns: 1,
+        signal: healthyController.signal,
+      },
+      {
+        resolveBrowser: async () => ({
+          executablePath: "/mock/chrome",
+          version: "Chrome 136",
+          source: "explicit",
+        }),
+        launchChrome: async () => ({
+          port: 44444,
+          kill: async () => {},
+        }),
+        runLighthouse: async () => ({
+          lhr: mockIter.lhr,
+          report: [mockIter.reportJson, mockIter.reportHtml],
+        }),
+      },
+    );
+    expect(ok.reportHtml).toBe(mockIter.reportHtml);
+    expect(removed).toBe(1);
+  });
+
+  it("executeLighthouseBatch rejects pre-aborted signal without invoking executor", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    let calls = 0;
+
+    await expect(
+      executeLighthouseBatch({
+        url: "https://example.com",
+        runs: 2,
+        signal: controller.signal,
+        executor: async () => {
+          calls += 1;
+          return makeMockIterationResult(
+            "https://example.com",
+            700,
+            1200,
+            1000,
+            95,
+            "unused",
+          );
+        },
+      }),
+    ).rejects.toBeInstanceOf(AuditCancelledError);
+
+    expect(calls).toBe(0);
+  });
+
+  it("executeLighthouseBatch forwards signal, halts multi-run loop on abort, and prevents persistence in runLighthouseAudit", async () => {
+    const controller = new AbortController();
+    const seenSignals: Array<AbortSignal | undefined> = [];
+    let calls = 0;
+
+    await expect(
+      runLighthouseAudit({
+        url: "https://example.com/multi-abort",
+        runs: 3,
+        artifactsDir: tempArtifactsDir,
+        db,
+        signal: controller.signal,
+        executor: async (params) => {
+          calls += 1;
+          seenSignals.push(params.signal);
+          if (calls === 1) {
+            controller.abort();
+          }
+          return makeMockIterationResult(
+            params.url,
+            700,
+            1200,
+            1000,
+            95,
+            `iter-${calls}`,
+          );
+        },
+      }),
+    ).rejects.toBeInstanceOf(AuditCancelledError);
+
+    expect(calls).toBe(1);
+    expect(seenSignals).toEqual([controller.signal]);
+    expect(listLighthouseRuns(db)).toHaveLength(0);
+    expect(readdirSync(tempArtifactsDir)).toHaveLength(0);
   });
 });
