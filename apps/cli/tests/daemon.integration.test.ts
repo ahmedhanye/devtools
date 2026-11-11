@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ApiErrorResponseSchema, HealthResponseSchema } from "@devtools/core";
 import { db, resetDb, systemMetadata } from "@devtools/db";
+import { TriggerLighthouseAuditResponseSchema } from "@devtools/lighthouse/schemas";
 import {
   type DaemonInstance,
   serveStaticAsset,
@@ -32,20 +33,20 @@ describe("Unified Loopback Daemon Lifecycle and Routing", () => {
     expect(Array.isArray(records)).toBe(true);
   });
 
-  test("throws and attaches cause when database migrations fail", () => {
+  test("throws and attaches cause when database initialization fails regardless of user privileges", async () => {
     resetDb();
-    const tmpDir = mkdtempSync(join(tmpdir(), "devtools-daemon-ro-"));
-    const readOnlyDbPath = join(tmpDir, "readonly.db");
-    writeFileSync(readOnlyDbPath, "");
-    chmodSync(readOnlyDbPath, 0o444);
+    const tmpDir = mkdtempSync(join(tmpdir(), "devtools-daemon-corrupt-"));
+    const corruptDbPath = join(tmpDir, "corrupt.db");
+    writeFileSync(corruptDbPath, "not-a-sqlite-database\n");
+    let unexpectedDaemon: DaemonInstance | undefined;
 
     try {
       let caughtError: unknown;
       try {
-        startDaemon({
+        unexpectedDaemon = startDaemon({
           port: 0,
           host: "127.0.0.1",
-          env: { DEVTOOLS_DB_PATH: readOnlyDbPath },
+          env: { DEVTOOLS_DB_PATH: corruptDbPath },
         });
       } catch (err) {
         caughtError = err;
@@ -57,8 +58,79 @@ describe("Unified Loopback Daemon Lifecycle and Routing", () => {
       );
       expect((caughtError as Error).cause).toBeInstanceOf(Error);
     } finally {
-      chmodSync(readOnlyDbPath, 0o644);
+      if (unexpectedDaemon) {
+        await unexpectedDaemon.stop();
+      }
       rmSync(tmpDir, { recursive: true, force: true });
+      resetDb();
+    }
+  });
+
+  test("closes opened database handle when port binding fails on an occupied port", async () => {
+    resetDb();
+    const tmpDir = mkdtempSync(join(tmpdir(), "devtools-daemon-port-"));
+    const blocker = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch: () => new Response("occupied"),
+    });
+    let unexpectedDaemon: DaemonInstance | undefined;
+
+    try {
+      let caughtError: unknown;
+      try {
+        unexpectedDaemon = startDaemon({
+          port: blocker.port,
+          host: "127.0.0.1",
+          env: { DEVTOOLS_DB_PATH: join(tmpDir, "blocked.db") },
+        });
+      } catch (err) {
+        caughtError = err;
+      }
+
+      expect(caughtError).toBeInstanceOf(Error);
+    } finally {
+      if (unexpectedDaemon) {
+        await unexpectedDaemon.stop();
+      }
+      await blocker.stop(true);
+      rmSync(tmpDir, { recursive: true, force: true });
+      resetDb();
+    }
+  });
+
+  test("stop() cancels active Lighthouse audit via api.shutdown() before closing database", async () => {
+    resetDb();
+    const artifactsDir = mkdtempSync(
+      join(tmpdir(), "devtools-daemon-lh-stop-"),
+    );
+    try {
+      activeDaemon = startDaemon({
+        port: 0,
+        host: "127.0.0.1",
+        env: {
+          DEVTOOLS_DB_PATH: ":memory:",
+          DEVTOOLS_CHROME_PATH: "/nonexistent/devtools-daemon-chrome",
+          DEVTOOLS_LIGHTHOUSE_ARTIFACTS_DIR: artifactsDir,
+        },
+      });
+
+      const baseUrl = `http://127.0.0.1:${activeDaemon.port}`;
+      const triggerRes = await fetch(`${baseUrl}/api/lighthouse/audits`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: "https://example.com/" }),
+      });
+      expect(triggerRes.status).toBe(202);
+      TriggerLighthouseAuditResponseSchema.parse(await triggerRes.json());
+
+      const daemonToStop = activeDaemon;
+      activeDaemon = null;
+      await daemonToStop.stop();
+
+      expect(readdirSync(artifactsDir)).toHaveLength(0);
+    } finally {
+      rmSync(artifactsDir, { recursive: true, force: true });
       resetDb();
     }
   });
