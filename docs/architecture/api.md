@@ -10,19 +10,17 @@ Architecture, route design, security boundaries, and validation contracts for `a
 apps/api/
 ├── src/
 │   ├── lighthouse/
-│   │   ├── job-manager.ts     # Single-flight Audit Job registry, SSE replay & persistence
-│   │   ├── worker-handler.ts  # Worker IPC dispatcher & error serializer
-│   │   ├── worker-runner.ts   # Bun Worker orchestrator seam
-│   │   └── worker.ts          # Dedicated Bun Worker entrypoint (multi-entry compiled)
+│   │   ├── job-manager.ts     # Single-flight Audit Job registry, shutdown cancellation, SSE & persistence
+│   │   └── serializers.ts     # Run detail/list DTO and structured AuditJobError serializers
 │   ├── middleware/
 │   │   └── security.ts        # All-verb loopback peer, Host, Origin & CSRF protection
 │   ├── routes/
 │   │   ├── health.ts          # Health probe & uptime endpoint
 │   │   └── lighthouse.ts      # Audit triggers, SSE progress, runs, diff & sandboxed HTML
-│   ├── app.ts                 # Hono app factory & middleware registration
+│   ├── app.ts                 # Hono app factory, middleware registration & shutdown() hook
 │   ├── index.ts               # Public API package exports
-│   └── server.ts              # Unified DB + Bun.serve bootstrap reused by startDaemon
-└── tests/                     # Socketless in-memory, Worker, and HTTP lifecycle suites
+│   └── server.ts              # Standalone DB-free Bun.serve bootstrap & signal shutdown
+└── tests/                     # Socketless in-memory, job-manager, and HTTP lifecycle suites
 ```
 
 Instead of exporting an ambient singleton, `apps/api` exposes a factory function:
@@ -42,8 +40,8 @@ export function createApp(options: CreateAppOptions = {}) {
   const app = new Hono<{ Bindings: ApiBindings }>();
   const basePath = options.basePath ?? "/api";
 
-  // Register middleware and routes under basePath
-  return app;
+  // Register middleware, routes, and cooperative shutdown() under basePath
+  return Object.assign(app, { shutdown });
 }
 ```
 

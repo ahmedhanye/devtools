@@ -1,6 +1,6 @@
 # Performance Auditing Architecture
 
-Architecture, isolated worker process execution, representative run selection, and 3-tier audit persistence for `packages/lighthouse`.
+Architecture, direct in-process execution with `AbortSignal` cancellation, representative run selection, and 3-tier audit persistence for `packages/lighthouse`.
 
 ## Package structure
 
@@ -9,14 +9,15 @@ Architecture, isolated worker process execution, representative run selection, a
 ```text
 packages/lighthouse/
 ├── src/
+│   ├── abort.ts               # AbortSignal cancellation guard (throwIfAborted)
 │   ├── config.ts              # Artifacts directory resolution, path confinement, & env seams
 │   ├── diff.ts                # Pairwise score, CWV, and insight audit diffing
-│   ├── errors.ts              # Actionable domain error classes
+│   ├── errors.ts              # Actionable domain error classes (including AuditCancelledError)
 │   ├── index.ts               # Public package entrypoint
-│   ├── iteration.ts           # Headless Chrome iteration execution & Lighthouse lifecycle
+│   ├── iteration.ts           # Headless Chrome iteration execution & AbortSignal cleanup
 │   ├── median.ts              # Representative run selection via Euclidean distance
 │   ├── normalizer.ts          # LHR extraction, TTFB fallback, & trace insights
-│   ├── runner.ts              # Multi-run orchestrator & batch normalization
+│   ├── runner.ts              # Multi-run orchestrator, AbortSignal forwarding & batch normalization
 │   ├── runs.ts                # Drizzle SQLite persistence, queries, & short-ID lookup
 │   ├── schemas.ts             # Browser-safe Zod DTO & SSE contract schemas
 │   └── types.ts               # Domain models, runner options, & summary types
@@ -56,7 +57,7 @@ sequenceDiagram
 
 1. **In-process domain purity**: `executeIteration` executes directly within the active JavaScript runtime without spawning child script processes via `Bun.spawn`. Standalone compiled binaries (`dist/devtools`) execute audits out-of-the-box without requiring an external `bun` interpreter or loose script files on disk. Concurrency isolation and background scheduling belong to application service layers (`apps/api`).
 2. **Ephemeral port assignment**: Chrome launches with `port: 0` to let the operating system allocate an available port, avoiding port collisions during concurrent test or audit runs.
-3. **Deterministic cleanup**: A `finally` block in `executeIteration` along with `SIGTERM`/`SIGINT` signal handlers ensures `chrome.kill()` terminates the browser process upon normal completion, unhandled errors, or handled lifecycle signals.
+3. **Deterministic cleanup and cooperative cancellation**: `executeIteration` and `executeLighthouseBatch` accept `signal?: AbortSignal` to stop multi-run loops between iterations and immediately kill headless Chrome on abort, alongside a `finally` block and `SIGTERM`/`SIGINT` handlers guaranteeing `chrome.kill()` terminates the browser process upon normal completion, cancellation, or unhandled errors.
 
 ## Representative run selection algorithm
 

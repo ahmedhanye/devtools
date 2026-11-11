@@ -89,9 +89,9 @@ graph TD
    - Commander.js registers command structures and options synchronously, ensuring `--help` cold starts in under 20ms.
    - Heavy execution logic (SQLite initialization, Chromium downloading, server startup) is dynamically imported only when a specific command action runs.
 3. **Unified loopback daemon host**:
-   - Rather than requiring multiple processes or ports, running `devtools web` delegates to `@devtools/api`'s shared `startServer` bootstrap to start a single Bun HTTP daemon process.
-   - The bootstrap runs SQLite migrations, mounts the in-process Hono API application on `/api/*` (forwarding `{ server }` bindings for peer IP checks and SSE timeouts), and serves pre-rendered Next.js frontend static assets via `fallbackFetch` on all other paths.
+   - Rather than requiring multiple processes or ports, running `devtools web` invokes `startDaemon` (`apps/cli/src/daemon.ts`) to run a single Bun HTTP daemon process.
+   - `startDaemon` initializes SQLite (`getDb` + `runMigrations`), mounts the in-process `@devtools/api` Hono application via `createApp()` on `/api/*` (forwarding `{ server }` bindings for peer IP checks and SSE timeouts), serves pre-rendered Next.js frontend static assets on all other paths, and awaits `api.shutdown()` before calling `closeDb()` on shutdown.
 4. **Standalone binary compilation**:
-   - For distribution without requiring a local Bun installation, multi-entrypoint compilation (`bun build apps/cli/bin/devtools.js apps/api/src/lighthouse/worker.ts --compile --outfile dist/devtools`) produces a self-contained single-file executable embedding the Bun engine, bytecode, CLI entrypoint, and background Lighthouse `Worker`.
+   - For distribution without requiring a local Bun installation, single-entrypoint compilation (`bun build apps/cli/bin/devtools.js --compile --outfile dist/devtools`) produces a self-contained single-file executable embedding the Bun engine, bytecode, embedded Drizzle migrations, and the CLI/daemon/Lighthouse runtime.
 
 For deep details on daemon startup lifecycles, graceful shutdown, and CLI testing seams, consult [CLI and Daemon Architecture](docs/architecture/cli-and-daemon.md).
