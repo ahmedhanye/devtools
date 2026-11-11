@@ -8,6 +8,7 @@ import {
 } from "@devtools/core";
 import {
   closeDb,
+  type DevtoolsDb,
   getDb,
   resolveDatabasePath,
   runMigrations,
@@ -87,9 +88,13 @@ function formatDaemonValidationError(
   envPort: string | undefined,
 ): Error {
   const portIssue = error.issues.find((issue) => issue.path.includes("port"));
-  if (portIssue && portOverride === undefined && envPort !== undefined) {
+  if (portIssue) {
+    const label =
+      portOverride !== undefined
+        ? `port number "${portOverride}"`
+        : `environment variable PORT="${String(envPort)}"`;
     return new Error(
-      `Invalid environment variable PORT="${envPort}": must be an integer between 0 and 65535`,
+      `Invalid ${label}: must be an integer between 0 and 65535`,
       { cause: error },
     );
   }
@@ -245,11 +250,12 @@ export function startDaemon(options: StartDaemonOptions = {}): DaemonInstance {
   }
 
   const dbPath = resolveDatabasePath({ env: options.env });
-  const daemonDb = getDb({ path: dbPath, env: options.env });
-
+  let daemonDb: DevtoolsDb;
   try {
+    daemonDb = getDb({ path: dbPath, env: options.env });
     runMigrations(daemonDb);
   } catch (error) {
+    closeDb();
     throw new Error(
       `Fatal: failed to initialize persistence database: ${error instanceof Error ? error.message : String(error)}`,
       { cause: error },
@@ -259,22 +265,33 @@ export function startDaemon(options: StartDaemonOptions = {}): DaemonInstance {
   const pc = getColors({ env: options.env as NodeJS.ProcessEnv });
   console.error(pc.dim(`Persistence initialized: SQLite (${dbPath})`));
 
-  const api = createApp({ basePath: "/api" });
-
-  const server = Bun.serve({
-    port: config.port,
-    hostname: config.host,
-    fetch(req) {
-      const url = new URL(req.url);
-      if (url.pathname === "/api" || url.pathname.startsWith("/api/")) {
-        return api.fetch(req);
-      }
-      return serveStaticAsset(staticDir, url.pathname, req.method);
-    },
+  const api = createApp({
+    basePath: "/api",
+    db: daemonDb,
+    env: options.env,
   });
 
-  const stop = () => {
-    server.stop(true);
+  let server: Server<unknown>;
+  try {
+    server = Bun.serve({
+      port: config.port,
+      hostname: config.host,
+      fetch(req, bunServer) {
+        const url = new URL(req.url);
+        if (url.pathname === "/api" || url.pathname.startsWith("/api/")) {
+          return api.fetch(req, { server: bunServer });
+        }
+        return serveStaticAsset(staticDir, url.pathname, req.method);
+      },
+    });
+  } catch (error) {
+    closeDb();
+    throw error;
+  }
+
+  const stop = async () => {
+    await server.stop(true);
+    await api.shutdown();
     closeDb();
   };
 

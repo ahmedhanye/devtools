@@ -84,7 +84,7 @@ export interface LighthouseAuditCommandDeps {
   runLighthouseAudit?: (
     options: RunLighthouseAuditOptions,
   ) => Promise<LighthouseAuditExecutionResult>;
-  getDb?: () => DevtoolsDb;
+  getDb?: (options?: { env?: EnvMap }) => DevtoolsDb;
   findPreviousLighthouseRun?: (
     db: DevtoolsDb,
     options: {
@@ -116,7 +116,7 @@ export interface LighthouseListCommandOptions {
  * Dependency injection seam for `devtools lighthouse list`.
  */
 export interface LighthouseListCommandDeps {
-  getDb?: () => DevtoolsDb;
+  getDb?: (options?: { env?: EnvMap }) => DevtoolsDb;
   listRuns?: typeof import("@devtools/lighthouse").listLighthouseRuns;
   log?: (chunk: string) => void;
   error?: (chunk: string) => void;
@@ -137,7 +137,7 @@ export interface LighthouseDiffCommandOptions {
  * Dependency injection seam for `devtools lighthouse diff`.
  */
 export interface LighthouseDiffCommandDeps {
-  getDb?: () => DevtoolsDb;
+  getDb?: (options?: { env?: EnvMap }) => DevtoolsDb;
   log?: (chunk: string) => void;
   error?: (chunk: string) => void;
   exit?: (code?: number) => void;
@@ -156,10 +156,13 @@ export interface LighthouseOpenCommandOptions {
  * Dependency injection seam for `devtools lighthouse open`.
  */
 export interface LighthouseOpenCommandDeps {
-  getDb?: () => DevtoolsDb;
+  getDb?: (options?: { env?: EnvMap }) => DevtoolsDb;
   log?: (chunk: string) => void;
   error?: (chunk: string) => void;
   exit?: (code?: number) => void;
+  isStderrTTY?: boolean;
+  isStdoutTTY?: boolean;
+  isTTY?: boolean;
   spawnOpener?: (path: string) => void | Promise<void>;
   fileExists?: (path: string) => boolean;
   isHeadless?: (
