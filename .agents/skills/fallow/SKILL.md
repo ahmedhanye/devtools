@@ -36,7 +36,7 @@ Fallow must be installed. If not available, install it:
 
 ```bash
 npm install -g fallow      # prebuilt binaries (fastest, recommended)
-npx fallow dead-code       # run without installing
+npx fallow@3.42.0 dead-code       # run without installing
 cargo install fallow-cli   # build from source
 ```
 
@@ -215,6 +215,13 @@ fallow dead-code --format json --quiet --production
 
 Excludes test/dev files (`*.test.*`, `*.spec.*`, `*.stories.*`) and only analyzes production scripts.
 
+### Review parameters that each call passes in one way
+```bash
+fallow dead-code --constant-parameters --production --format json --quiet
+```
+
+The opt-in rule reports a function parameter that each visible call passes the same value (`identical-argument`), or an optional parameter that no call passes (`never-passed`). The same value is the same literal, or the same `const` with a literal initializer or enum member (`value.kind` is `binding`). A finding with `option_key` is about one key of an object-pattern parameter, such as `retries` in `{ retries = 3 }`. It reports only when it sees each caller, and it never reports a function that a test file declares. Start with findings where `condition_reads` is above 0: a condition tests the constant, so a branch cannot run. Read the `inspected_call_sites` and the intent before a change. Keep a deliberate option, a test seam, or a parameter that matches a sibling API. `--production` drops test callers. With `--type-aware`, the rule also reports `unused-default` (each call passes a value whose type excludes `undefined`, so the default never applies) and reads the methods of exported classes (`function_name` is `Class.method`). These findings carry `evidence: "type-aware"`: a type does not prove a run-time value, so check that no `any` value or cast reaches the parameter. There is no auto-fix.
+
 ### Analyze specific workspaces
 ```bash
 fallow dead-code --format json --quiet --workspace my-package                # single package (lists: web,admin)
@@ -355,7 +362,9 @@ fallow dead-code --type-aware --symbol-impact src/api.ts:Client --format json --
 fallow health --type-aware --type-coupling --format json --quiet
 ```
 
-The optional companion must match the installed Fallow version. Semantic
+The `fallow-type-aware` companion is an install on demand
+(`npm install --save-dev fallow-type-aware@<fallow version>`), and it must
+match the installed Fallow version. Semantic
 results expose completeness, per-candidate decisions, and omissions.
 `confirmed-used` and `contract-preserved` remove syntactic false positives.
 `confirmed-no-static-references` retains the finding and only enables a guarded
