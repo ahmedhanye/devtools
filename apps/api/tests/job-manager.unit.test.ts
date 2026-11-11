@@ -2,12 +2,14 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { API_ERROR_CODES } from "@devtools/core";
 import { createDb, runMigrations, type DevtoolsDb } from "@devtools/db";
 import type { LighthouseBatchExecutionResult } from "@devtools/lighthouse";
 import {
   AuditJobManager,
   type AuditJobStreamEvent,
 } from "../src/lighthouse/job-manager";
+import { AuditWorkerError } from "../src/lighthouse/worker-runner";
 
 function makeBatchResult(url: string): LighthouseBatchExecutionResult {
   return {
@@ -50,6 +52,14 @@ function makeBatchResult(url: string): LighthouseBatchExecutionResult {
   };
 }
 
+const DEFAULT_REQUEST = {
+  url: "https://example.com/",
+  formFactor: "mobile" as const,
+  throttlingMethod: "simulate" as const,
+  runs: 1,
+  categories: ["performance" as const],
+};
+
 describe("AuditJobManager (Unit)", () => {
   let db: DevtoolsDb;
   let artifactsDir: string;
@@ -87,15 +97,10 @@ describe("AuditJobManager (Unit)", () => {
     });
 
     expect(manager.subscribe("nonexistent-id", () => {})).toBeNull();
+    expect(manager.hasJob("nonexistent-id")).toBe(false);
     expect(manager.getActiveJob()).toBeNull();
 
-    const started = manager.startJob({
-      url: "https://example.com/",
-      formFactor: "mobile",
-      throttlingMethod: "simulate",
-      runs: 1,
-      categories: ["performance"],
-    });
+    const started = manager.startJob(DEFAULT_REQUEST);
     expect(started.started).toBe(true);
     if (!started.started) return;
 
@@ -104,6 +109,7 @@ describe("AuditJobManager (Unit)", () => {
     const active = manager.getActiveJob();
     expect(active?.categories).toEqual(["performance"]);
     expect(capturedEnv).toEqual({ CUSTOM_ENV: "yes" });
+    expect(manager.hasJob(started.job.id)).toBe(true);
 
     // Progress event without optional runIndex/totalRuns omits those keys
     expect(active?.latestProgress?.stage).toBe("launching_browser");
@@ -119,6 +125,189 @@ describe("AuditJobManager (Unit)", () => {
     releaseRunner();
     await new Promise((r) => setTimeout(r, 15));
     expect(events.at(-1)?.type).toBe("complete");
+    expect(manager.getActiveJob()).toBeNull();
+  });
+
+  it("enforces single-flight conflict, filters complete progress, forwards runIndex/totalRuns, and honors unsubscribe", async () => {
+    let emitProgress!: (event: {
+      stage: "navigating" | "complete";
+      message: string;
+      runIndex?: number;
+      totalRuns?: number;
+    }) => void;
+    let releaseRunner!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseRunner = resolve;
+    });
+
+    const manager = new AuditJobManager({
+      resolveDb: () => db,
+      resolveArtifactsDir: () => artifactsDir,
+      auditRunner: async (params) => {
+        emitProgress = (event) => params.onProgress?.(event);
+        await gate;
+        return makeBatchResult(params.url);
+      },
+    });
+
+    const first = manager.startJob(DEFAULT_REQUEST);
+    expect(first.started).toBe(true);
+    if (!first.started) return;
+
+    const conflict = manager.startJob(DEFAULT_REQUEST);
+    expect(conflict).toEqual({ started: false, activeJobId: first.job.id });
+
+    const retainedEvents: AuditJobStreamEvent[] = [];
+    const unsubscribedEvents: AuditJobStreamEvent[] = [];
+    manager.subscribe(first.job.id, (ev) => retainedEvents.push(ev));
+    const subToRemove = manager.subscribe(first.job.id, (ev) =>
+      unsubscribedEvents.push(ev),
+    );
+    expect(subToRemove?.initialTerminal).toBe(false);
+
+    emitProgress({
+      stage: "navigating",
+      message: "Loading page",
+      runIndex: 0,
+      totalRuns: 2,
+    });
+    expect(retainedEvents).toHaveLength(1);
+    expect(retainedEvents[0]).toMatchObject({
+      type: "progress",
+      data: {
+        jobId: first.job.id,
+        stage: "navigating",
+        message: "Loading page",
+        runIndex: 0,
+        totalRuns: 2,
+      },
+    });
+    expect(unsubscribedEvents).toHaveLength(1);
+
+    // stage === "complete" from worker progress is filtered out
+    emitProgress({ stage: "complete", message: "Finished" });
+    expect(retainedEvents).toHaveLength(1);
+    expect(manager.getActiveJob()?.latestProgress?.stage).toBe("navigating");
+
+    // Unsubscribed listener stops receiving subsequent progress and terminal events
+    subToRemove?.unsubscribe();
+    releaseRunner();
+    await new Promise((r) => setTimeout(r, 15));
+
+    expect(unsubscribedEvents).toHaveLength(1);
+    expect(retainedEvents).toHaveLength(2);
+    expect(retainedEvents[1]?.type).toBe("complete");
+  });
+
+  it("replays terminal snapshot, expires retained jobs after retention window, and cancels prior retention timer on new job", async () => {
+    const manager = new AuditJobManager({
+      resolveDb: () => db,
+      resolveArtifactsDir: () => artifactsDir,
+      jobRetentionMs: 25,
+      auditRunner: async (params) => makeBatchResult(params.url),
+    });
+
+    const first = manager.startJob(DEFAULT_REQUEST);
+    expect(first.started).toBe(true);
+    if (!first.started) return;
+
+    await new Promise((r) => setTimeout(r, 10));
+    expect(manager.hasJob(first.job.id)).toBe(true);
+
+    // Late subscriber replays terminal snapshot immediately with initialTerminal: true
+    const replayed: AuditJobStreamEvent[] = [];
+    const replaySub = manager.subscribe(first.job.id, (ev) =>
+      replayed.push(ev),
+    );
+    expect(replaySub?.initialTerminal).toBe(true);
+    expect(replayed).toHaveLength(1);
+    expect(replayed[0]?.type).toBe("complete");
+    replaySub?.unsubscribe();
+
+    // Starting a new job clears retained snapshot and cancels its retention timer
+    const second = manager.startJob(DEFAULT_REQUEST);
+    expect(second.started).toBe(true);
+    if (!second.started) return;
+    expect(manager.hasJob(first.job.id)).toBe(false);
+
+    await new Promise((r) => setTimeout(r, 10));
+    expect(manager.hasJob(second.job.id)).toBe(true);
+
+    // Wait past retention window for second job to expire
+    await new Promise((r) => setTimeout(r, 40));
+    expect(manager.hasJob(second.job.id)).toBe(false);
+    expect(manager.subscribe(second.job.id, () => {})).toBeNull();
+  });
+
+  it("transitions to failed, emits error event, and clears active job on runner rejection and persistence failure", async () => {
+    let mode: "worker-error" | "persist-error" | "ok" = "worker-error";
+    const manager = new AuditJobManager({
+      resolveDb: () => {
+        if (mode === "persist-error") {
+          throw new Error("DB closed");
+        }
+        return db;
+      },
+      resolveArtifactsDir: () => artifactsDir,
+      auditRunner: async (params) => {
+        if (mode === "worker-error") {
+          throw new AuditWorkerError("BROWSER_NOT_FOUND", "Chrome missing");
+        }
+        return makeBatchResult(params.url);
+      },
+    });
+
+    const runnerFail = manager.startJob(DEFAULT_REQUEST);
+    expect(runnerFail.started).toBe(true);
+    if (!runnerFail.started) return;
+
+    const errEvents: AuditJobStreamEvent[] = [];
+    manager.subscribe(runnerFail.job.id, (ev) => errEvents.push(ev));
+    await new Promise((r) => setTimeout(r, 15));
+
+    expect(manager.getActiveJob()).toBeNull();
+    expect(errEvents).toHaveLength(1);
+    expect(errEvents[0]).toEqual({
+      type: "error",
+      data: {
+        jobId: runnerFail.job.id,
+        status: "failed",
+        error: {
+          code: "BROWSER_NOT_FOUND",
+          message: "Chrome missing",
+        },
+      },
+    });
+
+    // Persistence failure after runner succeeds also transitions cleanly to failed
+    mode = "persist-error";
+    const persistFail = manager.startJob(DEFAULT_REQUEST);
+    expect(persistFail.started).toBe(true);
+    if (!persistFail.started) return;
+
+    const persistEvents: AuditJobStreamEvent[] = [];
+    manager.subscribe(persistFail.job.id, (ev) => persistEvents.push(ev));
+    await new Promise((r) => setTimeout(r, 15));
+
+    expect(manager.getActiveJob()).toBeNull();
+    expect(persistEvents).toHaveLength(1);
+    expect(persistEvents[0]).toEqual({
+      type: "error",
+      data: {
+        jobId: persistFail.job.id,
+        status: "failed",
+        error: {
+          code: API_ERROR_CODES.INTERNAL_ERROR,
+          message: "Failed to persist completed audit results",
+        },
+      },
+    });
+
+    // Subsequent job can still start cleanly after failure
+    mode = "ok";
+    const recovered = manager.startJob(DEFAULT_REQUEST);
+    expect(recovered.started).toBe(true);
+    await new Promise((r) => setTimeout(r, 15));
     expect(manager.getActiveJob()).toBeNull();
   });
 });

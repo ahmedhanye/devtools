@@ -403,6 +403,24 @@ describe("Lighthouse API Worker Unit Seams", () => {
       expect(fakeCrash.terminated).toBe(true);
       expect(terminateCount).toBe(1);
 
+      const fakeCrashWithMsg = createFakeWorker();
+      const runnerCrashWithMsg = createWorkerAuditRunner({
+        createWorker: () => fakeCrashWithMsg,
+      });
+      const p2b = runnerCrashWithMsg({ url: "https://example.com/" });
+      fakeCrashWithMsg.emitError("Worker syntax error");
+      try {
+        await p2b;
+        throw new Error("Expected rejection");
+      } catch (err) {
+        expect(err).toBeInstanceOf(AuditWorkerError);
+        expect((err as AuditWorkerError).code).toBe(
+          API_ERROR_CODES.INTERNAL_ERROR,
+        );
+        expect((err as AuditWorkerError).message).toBe("Worker syntax error");
+      }
+      expect(fakeCrashWithMsg.terminated).toBe(true);
+
       const fakeMsgErr = createFakeWorker();
       const runnerMsgErr = createWorkerAuditRunner({
         createWorker: () => fakeMsgErr,
