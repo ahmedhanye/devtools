@@ -12,7 +12,8 @@ docs/adr/
 ├── README.md
 ├── 0001-embedded-database-foundation.md
 ├── 0002-package-configuration-and-environment-seams.md
-└── 0003-lighthouse-audit-isolation-and-tiered-storage.md
+├── 0003-lighthouse-audit-isolation-and-tiered-storage.md
+└── 0004-lighthouse-daemon-api-isolation-and-sse.md
 ```
 
 ## When to offer an ADR

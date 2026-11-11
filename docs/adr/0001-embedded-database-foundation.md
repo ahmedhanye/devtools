@@ -29,7 +29,7 @@ DevTools requires an embedded local persistence layer to store configuration, au
    - Modular schemas live in `packages/db/src/schema/<domain>.ts` and are aggregated in `packages/db/src/schema/index.ts`, maintaining an acyclic DAG (`feature -> @devtools/db`).
 
 5. **Migration lifecycle**:
-   - Programmatic runtime migrations run on startup via `runMigrations()` using `drizzle-orm/bun-sqlite/migrator`.
+   - Programmatic runtime migrations run on startup via `runMigrations()` using statically bundled SQL migrations inside `@devtools/db` (delegating to `drizzle-orm/bun-sqlite/migrator` when an explicit `migrationsFolder` override is provided).
    - Schema generation is driven via `drizzle-kit generate` to maintain immutable snapshot SQL files under `packages/db/drizzle/`.
 
 ## Consequences

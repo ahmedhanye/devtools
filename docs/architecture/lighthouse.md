@@ -1,6 +1,6 @@
 # Performance Auditing Architecture
 
-Architecture, isolated worker process execution, representative run selection, and 3-tier audit persistence for `packages/lighthouse`.
+Architecture, direct in-process execution with `AbortSignal` cancellation, representative run selection, and 3-tier audit persistence for `packages/lighthouse`.
 
 ## Package structure
 
@@ -9,16 +9,23 @@ Architecture, isolated worker process execution, representative run selection, a
 ```text
 packages/lighthouse/
 ├── src/
-│   ├── config.ts              # Artifacts directory resolution & env seams
-│   ├── errors.ts              # Actionable domain error classes
+│   ├── abort.ts               # AbortSignal cancellation guard (throwIfAborted)
+│   ├── bundled-modules.ts     # Compiled-binary embedded Lighthouse module loader
+│   ├── config.ts              # Artifacts directory, sandbox, & path confinement seams
+│   ├── declarations.d.ts      # Embedded Lighthouse asset module declarations
+│   ├── diff.ts                # Pairwise score, CWV, and insight audit diffing
+│   ├── errors.ts              # Actionable domain error classes (including AuditCancelledError)
 │   ├── index.ts               # Public package entrypoint
+│   ├── iteration.ts           # Headless Chrome iteration execution & AbortSignal cleanup
 │   ├── median.ts              # Representative run selection via Euclidean distance
 │   ├── normalizer.ts          # LHR extraction, TTFB fallback, & trace insights
-│   ├── repository.ts          # Drizzle SQLite persistence & queries
-│   ├── runner.ts              # Multi-run orchestrator & worker lifecycle
-│   ├── types.ts               # Zod schemas, domain models, & summary types
-│   └── worker.ts              # Headless Chrome iteration execution & Lighthouse lifecycle
-└── tests/                     # Unit & headless Chromium integration test suites
+│   ├── runner.ts              # Two-phase batch execution (executeLighthouseBatch) & persistence
+│   ├── runs.ts                # Drizzle SQLite persistence, queries, & short-ID lookup
+│   ├── schemas.ts             # Browser-safe Zod DTO & SSE contract schemas
+│   ├── types.ts               # Domain models, runner options, & summary types
+│   ├── virtual-dirs.json      # Embedded locale & Lighthouse asset manifest
+│   └── virtual-fs.ts          # Virtual filesystem shim for compiled binary execution
+└── tests/                     # Unit, integration, & headless Chromium E2E test suites
 ```
 
 ## Direct in-process iteration execution
@@ -29,7 +36,7 @@ packages/lighthouse/
 sequenceDiagram
     participant App as Application (CLI / API Daemon)
     participant Runner as Audit Runner (runner.ts)
-    participant Iter as Iteration Executor (worker.ts)
+    participant Iter as Iteration Executor (iteration.ts)
     participant Chrome as Headless Chrome (port: 0)
     participant Disk as Artifact Storage
     participant DB as SQLite (packages/db)
@@ -52,9 +59,9 @@ sequenceDiagram
 
 ### Execution lifecycle guarantees
 
-1. **In-process domain purity**: `executeIteration` executes directly within the active JavaScript runtime without spawning child script processes via `Bun.spawn`. Standalone compiled binaries (`dist/devtools`) execute audits out-of-the-box without requiring an external `bun` interpreter or loose script files on disk. Concurrency isolation and background scheduling belong to application service layers (`apps/api`).
+1. **In-process domain purity & two-phase batching**: `executeIteration` executes directly within the active JavaScript runtime without spawning child script processes via `Bun.spawn`. Standalone compiled binaries (`dist/devtools`) execute audits out-of-the-box without requiring an external `bun` interpreter or loose script files on disk. `runner.ts` splits SQLite-free multi-run orchestration (`executeLighthouseBatch`) from disk/SQLite persistence (`persistLighthouseAudit`), which `runLighthouseAudit` composes for CLI runs while `apps/api` manages concurrency isolation and cooperative cancellation in `AuditJobManager`.
 2. **Ephemeral port assignment**: Chrome launches with `port: 0` to let the operating system allocate an available port, avoiding port collisions during concurrent test or audit runs.
-3. **Deterministic cleanup**: A `finally` block in `executeIteration` along with `SIGTERM`/`SIGINT` signal handlers ensures `chrome.kill()` terminates the browser process upon normal completion, unhandled errors, or handled lifecycle signals.
+3. **Deterministic cleanup and cooperative cancellation**: `executeIteration` and `executeLighthouseBatch` accept `signal?: AbortSignal` to stop multi-run loops between iterations and immediately kill headless Chrome on abort, alongside a `finally` block and `SIGTERM`/`SIGINT` handlers guaranteeing `chrome.kill()` terminates the browser process upon normal completion, cancellation, or unhandled errors.
 
 ## Representative run selection algorithm
 
@@ -78,7 +85,7 @@ Audit results range from sub-millisecond status checks to multi-megabyte trace r
 
 `packages/lighthouse/src/config.ts` accepts an optional `options.env` seam and resolves the artifacts directory using a 4-tier waterfall:
 
-1. **Explicit options**: `options.customDir` if provided.
-2. **Environment override**: `DEVTOOLS_LIGHTHOUSE_ARTIFACTS_DIR` if set.
+1. **Explicit override**: `options.customDir` or `DEVTOOLS_LIGHTHOUSE_ARTIFACTS_DIR` if set.
+2. **Test environment**: `<tmpdir>/devtools-tests/lighthouse` when `NODE_ENV === "test"` or `BUN_ENV === "test"`.
 3. **Development fallback**: `<repo_root>/.devtools/artifacts/lighthouse` in development mode (`NODE_ENV !== "production"`).
 4. **Production default**: `~/.devtools/artifacts/lighthouse` in production mode.
