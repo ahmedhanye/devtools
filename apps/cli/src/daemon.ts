@@ -1,11 +1,18 @@
 import { existsSync, statSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
-import { startServer } from "@devtools/api";
+import { createApp } from "@devtools/api";
 import {
   type EnvMap,
   RuntimeConfigSchema,
   parsePortFromEnv,
 } from "@devtools/core";
+import {
+  closeDb,
+  type DevtoolsDb,
+  getDb,
+  resolveDatabasePath,
+  runMigrations,
+} from "@devtools/db";
 import type { Server } from "bun";
 import { getColors } from "./colors";
 
@@ -242,25 +249,57 @@ export function startDaemon(options: StartDaemonOptions = {}): DaemonInstance {
     );
   }
 
+  const dbPath = resolveDatabasePath({ env: options.env });
+  let daemonDb: DevtoolsDb;
+  try {
+    daemonDb = getDb({ path: dbPath, env: options.env });
+    runMigrations(daemonDb);
+  } catch (error) {
+    closeDb();
+    throw new Error(
+      `Fatal: failed to initialize persistence database: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
+  }
+
   const pc = getColors({ env: options.env as NodeJS.ProcessEnv });
-  const instance = startServer({
-    port: config.port,
-    host: config.host,
+  console.error(pc.dim(`Persistence initialized: SQLite (${dbPath})`));
+
+  const api = createApp({
+    basePath: "/api",
+    db: daemonDb,
     env: options.env,
-    onDbInitialized: (dbPath) => {
-      console.error(pc.dim(`Persistence initialized: SQLite (${dbPath})`));
-    },
-    fallbackFetch: (req) => {
-      const url = new URL(req.url);
-      return serveStaticAsset(staticDir, url.pathname, req.method);
-    },
   });
 
+  let server: Server<unknown>;
+  try {
+    server = Bun.serve({
+      port: config.port,
+      hostname: config.host,
+      fetch(req, bunServer) {
+        const url = new URL(req.url);
+        if (url.pathname === "/api" || url.pathname.startsWith("/api/")) {
+          return api.fetch(req, { server: bunServer });
+        }
+        return serveStaticAsset(staticDir, url.pathname, req.method);
+      },
+    });
+  } catch (error) {
+    closeDb();
+    throw error;
+  }
+
+  const stop = async () => {
+    await server.stop(true);
+    await api.shutdown();
+    closeDb();
+  };
+
   return {
-    server: instance.server,
-    port: instance.port,
-    hostname: instance.server.hostname ?? config.host,
+    server,
+    port: server.port ?? config.port,
+    hostname: server.hostname ?? config.host,
     staticDir,
-    stop: instance.stop,
+    stop,
   };
 }
