@@ -1,11 +1,19 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
   findWorkspaceRoot,
   resolveArtifactsDir,
   resolveChromeSandboxDisabled,
+  resolveSafeHtmlReportPath,
 } from "../src/config";
 
 describe("resolveArtifactsDir (4-tier precedence waterfall)", () => {
@@ -202,5 +210,56 @@ describe("resolveChromeSandboxDisabled (Chromium sandbox policy seam)", () => {
         getuid: process.getuid,
       }),
     );
+  });
+});
+
+describe("resolveSafeHtmlReportPath (Artifact symlink & path confinement)", () => {
+  it("resolves safe HTML report paths confined inside artifactsDir and rejects missing, directory, or escaped paths", () => {
+    const artifactsDir = mkdtempSync(
+      join(tmpdir(), "devtools-safe-report-dir-"),
+    );
+    const runDir = join(artifactsDir, "run-ok");
+    mkdirSync(runDir, { recursive: true });
+    const validHtmlPath = join(runDir, "report.html");
+    writeFileSync(validHtmlPath, "<html><body>OK</body></html>", "utf-8");
+
+    const outsideDir = mkdtempSync(join(tmpdir(), "devtools-outside-"));
+    const outsideHtmlPath = join(outsideDir, "secret.html");
+    writeFileSync(outsideHtmlPath, "<html>secret</html>", "utf-8");
+
+    const siblingDir = `${artifactsDir}-sibling`;
+    mkdirSync(siblingDir, { recursive: true });
+    const siblingHtmlPath = join(siblingDir, "report.html");
+    writeFileSync(siblingHtmlPath, "<html>sibling</html>", "utf-8");
+
+    const symlinkEscapePath = join(runDir, "escape.html");
+    symlinkSync(outsideHtmlPath, symlinkEscapePath);
+
+    try {
+      expect(resolveSafeHtmlReportPath(validHtmlPath, artifactsDir)).toBe(
+        validHtmlPath,
+      );
+      expect(resolveSafeHtmlReportPath("", artifactsDir)).toBeNull();
+      expect(
+        resolveSafeHtmlReportPath(validHtmlPath, join(artifactsDir, "missing")),
+      ).toBeNull();
+      expect(
+        resolveSafeHtmlReportPath(join(runDir, "missing.html"), artifactsDir),
+      ).toBeNull();
+      expect(resolveSafeHtmlReportPath(runDir, artifactsDir)).toBeNull();
+      expect(
+        resolveSafeHtmlReportPath(outsideHtmlPath, artifactsDir),
+      ).toBeNull();
+      expect(
+        resolveSafeHtmlReportPath(siblingHtmlPath, artifactsDir),
+      ).toBeNull();
+      expect(
+        resolveSafeHtmlReportPath(symlinkEscapePath, artifactsDir),
+      ).toBeNull();
+    } finally {
+      rmSync(artifactsDir, { recursive: true, force: true });
+      rmSync(outsideDir, { recursive: true, force: true });
+      rmSync(siblingDir, { recursive: true, force: true });
+    }
   });
 });

@@ -3,9 +3,9 @@ import {
   buildLighthouseConfig,
   DESKTOP_THROTTLING,
   extractReportStrings,
-} from "../src/worker";
+} from "../src/iteration";
 
-describe("Lighthouse Worker Pure Configuration & Report Helpers", () => {
+describe("Lighthouse Iteration Pure Configuration & Report Helpers", () => {
   it("buildLighthouseConfig constructs mobile and desktop configs with default 4 categories and throttling overrides", () => {
     const mobileCfg = buildLighthouseConfig({
       formFactor: "mobile",

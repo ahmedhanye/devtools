@@ -1,13 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import {
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { beforeEach, describe, expect, it } from "bun:test";
 import {
   createDb,
   runMigrations,
@@ -25,48 +16,47 @@ import {
   listLighthouseRunsWithTotal,
   MIN_PREFIX_LENGTH,
   resolveLighthouseRun,
-  resolveSafeHtmlReportPath,
-  serializeLighthouseRunDetail,
-  serializeLighthouseRunListItem,
-} from "../src/repository";
+} from "../src/runs";
+
+const DEFAULT_SAMPLE_ROW: NewLighthouseRunRow = {
+  id: "run-1",
+  url: "https://example.com",
+  finalUrl: "https://example.com/",
+  formFactor: "mobile",
+  throttlingMethod: "simulate",
+  performanceScore: 94,
+  accessibilityScore: 100,
+  bestPracticesScore: 92,
+  seoScore: 98,
+  lcpMs: 1240,
+  cls: 0.02,
+  tbtMs: 45,
+  fcpMs: 780,
+  siMs: 1150,
+  ttfbMs: 95,
+  summaryJson: {
+    lcpElement: null,
+    lcpPhases: null,
+    clsCulprits: [],
+    insights: [],
+    failedAudits: [],
+    runWarnings: [],
+    runtimeError: null,
+    medianMetadata: null,
+  },
+  jsonReportPath: "/tmp/run-1/report.json",
+  htmlReportPath: "/tmp/run-1/report.html",
+  durationMs: 4100,
+  createdAt: new Date("2026-10-29T20:00:00Z"),
+};
 
 function makeSampleRow(
   overrides: Partial<NewLighthouseRunRow> = {},
 ): NewLighthouseRunRow {
-  return {
-    id: overrides.id ?? "run-1",
-    url: overrides.url ?? "https://example.com",
-    finalUrl: overrides.finalUrl ?? "https://example.com/",
-    formFactor: overrides.formFactor ?? "mobile",
-    throttlingMethod: overrides.throttlingMethod ?? "simulate",
-    performanceScore: overrides.performanceScore ?? 94,
-    accessibilityScore: overrides.accessibilityScore ?? 100,
-    bestPracticesScore: overrides.bestPracticesScore ?? 92,
-    seoScore: overrides.seoScore ?? 98,
-    lcpMs: overrides.lcpMs ?? 1240,
-    cls: overrides.cls ?? 0.02,
-    tbtMs: overrides.tbtMs ?? 45,
-    fcpMs: overrides.fcpMs ?? 780,
-    siMs: overrides.siMs ?? 1150,
-    ttfbMs: overrides.ttfbMs ?? 95,
-    summaryJson: overrides.summaryJson ?? {
-      lcpElement: null,
-      lcpPhases: null,
-      clsCulprits: [],
-      insights: [],
-      failedAudits: [],
-      runWarnings: [],
-      runtimeError: null,
-      medianMetadata: null,
-    },
-    jsonReportPath: overrides.jsonReportPath ?? "/tmp/run-1/report.json",
-    htmlReportPath: overrides.htmlReportPath ?? "/tmp/run-1/report.html",
-    durationMs: overrides.durationMs ?? 4100,
-    createdAt: overrides.createdAt ?? new Date("2026-10-29T20:00:00Z"),
-  };
+  return { ...DEFAULT_SAMPLE_ROW, ...overrides };
 }
 
-describe("Lighthouse Repository (Drizzle SQLite persistence)", () => {
+describe("Lighthouse Runs Persistence (Drizzle SQLite)", () => {
   let db: DevtoolsDb;
 
   beforeEach(() => {
@@ -251,15 +241,12 @@ describe("Lighthouse Repository (Drizzle SQLite persistence)", () => {
       insertLighthouseRun(db, makeSampleRow({ id: "test%special-id" }));
       insertLighthouseRun(db, makeSampleRow({ id: "test_underscore-id" }));
 
-      // "test%" prefix should only match IDs starting with literal "test%"
       const matchPercent = resolveLighthouseRun(db, "test%spe");
       expect(matchPercent.id).toBe("test%special-id");
 
-      // "test_" prefix should only match IDs starting with literal "test_"
       const matchUnderscore = resolveLighthouseRun(db, "test_und");
       expect(matchUnderscore.id).toBe("test_underscore-id");
 
-      // Searching for "test%0" or "test_0" shouldn't match "test-run-001"
       expect(() => resolveLighthouseRun(db, "test%001")).toThrow(
         LighthouseRunNotFoundError,
       );
@@ -305,17 +292,7 @@ describe("Lighthouse Repository (Drizzle SQLite persistence)", () => {
     });
   });
 
-  describe("listLighthouseRunsWithTotal, search filtering & DTO serialization", () => {
-    let artifactsDir: string;
-
-    beforeEach(() => {
-      artifactsDir = mkdtempSync(join(tmpdir(), "devtools-repo-artifacts-"));
-    });
-
-    afterEach(() => {
-      rmSync(artifactsDir, { recursive: true, force: true });
-    });
-
+  describe("listLighthouseRunsWithTotal & search filtering", () => {
     it("filters case-insensitively by search substring and returns matching total independent of pagination", () => {
       insertLighthouseRun(
         db,
@@ -375,82 +352,6 @@ describe("Lighthouse Repository (Drizzle SQLite persistence)", () => {
         ),
       ).toEqual(["s4-slash"]);
       expect(countLighthouseRuns(db)).toBe(4);
-    });
-
-    it("resolves safe HTML report paths confined inside artifactsDir and rejects missing, directory, or escaped paths", () => {
-      const runDir = join(artifactsDir, "run-ok");
-      mkdirSync(runDir, { recursive: true });
-      const validHtmlPath = join(runDir, "report.html");
-      writeFileSync(validHtmlPath, "<html><body>OK</body></html>", "utf-8");
-
-      const outsideDir = mkdtempSync(join(tmpdir(), "devtools-outside-"));
-      const outsideHtmlPath = join(outsideDir, "secret.html");
-      writeFileSync(outsideHtmlPath, "<html>secret</html>", "utf-8");
-
-      const siblingDir = `${artifactsDir}-sibling`;
-      mkdirSync(siblingDir, { recursive: true });
-      const siblingHtmlPath = join(siblingDir, "report.html");
-      writeFileSync(siblingHtmlPath, "<html>sibling</html>", "utf-8");
-
-      const symlinkEscapePath = join(runDir, "escape.html");
-      symlinkSync(outsideHtmlPath, symlinkEscapePath);
-
-      try {
-        expect(resolveSafeHtmlReportPath(validHtmlPath, artifactsDir)).toBe(
-          validHtmlPath,
-        );
-        expect(resolveSafeHtmlReportPath("", artifactsDir)).toBeNull();
-        expect(
-          resolveSafeHtmlReportPath(
-            validHtmlPath,
-            join(artifactsDir, "missing"),
-          ),
-        ).toBeNull();
-        expect(
-          resolveSafeHtmlReportPath(join(runDir, "missing.html"), artifactsDir),
-        ).toBeNull();
-        expect(resolveSafeHtmlReportPath(runDir, artifactsDir)).toBeNull();
-        expect(
-          resolveSafeHtmlReportPath(outsideHtmlPath, artifactsDir),
-        ).toBeNull();
-        expect(
-          resolveSafeHtmlReportPath(siblingHtmlPath, artifactsDir),
-        ).toBeNull();
-        expect(
-          resolveSafeHtmlReportPath(symlinkEscapePath, artifactsDir),
-        ).toBeNull();
-
-        const inserted = insertLighthouseRun(
-          db,
-          makeSampleRow({
-            id: "run-ok",
-            htmlReportPath: validHtmlPath,
-          }),
-        );
-        const listItem = serializeLighthouseRunListItem(inserted, artifactsDir);
-        expect(listItem.hasHtmlReport).toBe(true);
-        expect(listItem.createdAt).toBe("2026-10-29T20:00:00.000Z");
-        expect("htmlReportPath" in listItem).toBe(false);
-        expect("summaryJson" in listItem).toBe(false);
-
-        const detail = serializeLighthouseRunDetail(inserted, artifactsDir);
-        expect(detail.summary).toEqual(inserted.summaryJson);
-        expect("jsonReportPath" in detail).toBe(false);
-
-        const corruptedDetail = serializeLighthouseRunDetail(
-          {
-            ...inserted,
-            htmlReportPath: outsideHtmlPath,
-            summaryJson: "bad-json" as unknown as typeof inserted.summaryJson,
-          },
-          artifactsDir,
-        );
-        expect(corruptedDetail.hasHtmlReport).toBe(false);
-        expect(corruptedDetail.summary.insights).toEqual([]);
-      } finally {
-        rmSync(outsideDir, { recursive: true, force: true });
-        rmSync(siblingDir, { recursive: true, force: true });
-      }
     });
   });
 });

@@ -18,40 +18,33 @@ function makeSummary(
   };
 }
 
+const DEFAULT_RUN_ROW: LighthouseRunRow = {
+  id: "run-1",
+  url: "https://example.com/",
+  finalUrl: "https://example.com/",
+  formFactor: "mobile",
+  throttlingMethod: "simulate",
+  performanceScore: 80,
+  accessibilityScore: 90,
+  bestPracticesScore: 95,
+  seoScore: 100,
+  lcpMs: 2000,
+  cls: 0.1,
+  tbtMs: 150,
+  fcpMs: 1000,
+  siMs: 1800,
+  ttfbMs: 200,
+  summaryJson: makeSummary(),
+  jsonReportPath: "/tmp/run-1/report.json",
+  htmlReportPath: "/tmp/run-1/report.html",
+  durationMs: 3000,
+  createdAt: new Date("2026-11-10T20:00:00Z"),
+};
+
 function makeRunRow(
   overrides: Partial<LighthouseRunRow> = {},
 ): LighthouseRunRow {
-  return {
-    id: overrides.id ?? "run-1",
-    url: overrides.url ?? "https://example.com/",
-    finalUrl: overrides.finalUrl ?? "https://example.com/",
-    formFactor: overrides.formFactor ?? "mobile",
-    throttlingMethod: overrides.throttlingMethod ?? "simulate",
-    performanceScore:
-      overrides.performanceScore !== undefined
-        ? overrides.performanceScore
-        : 80,
-    accessibilityScore:
-      overrides.accessibilityScore !== undefined
-        ? overrides.accessibilityScore
-        : 90,
-    bestPracticesScore:
-      overrides.bestPracticesScore !== undefined
-        ? overrides.bestPracticesScore
-        : 95,
-    seoScore: overrides.seoScore !== undefined ? overrides.seoScore : 100,
-    lcpMs: overrides.lcpMs !== undefined ? overrides.lcpMs : 2000,
-    cls: overrides.cls !== undefined ? overrides.cls : 0.1,
-    tbtMs: overrides.tbtMs !== undefined ? overrides.tbtMs : 150,
-    fcpMs: overrides.fcpMs !== undefined ? overrides.fcpMs : 1000,
-    siMs: overrides.siMs !== undefined ? overrides.siMs : 1800,
-    ttfbMs: overrides.ttfbMs !== undefined ? overrides.ttfbMs : 200,
-    summaryJson: overrides.summaryJson ?? makeSummary(),
-    jsonReportPath: overrides.jsonReportPath ?? "/tmp/run-1/report.json",
-    htmlReportPath: overrides.htmlReportPath ?? "/tmp/run-1/report.html",
-    durationMs: overrides.durationMs ?? 3000,
-    createdAt: overrides.createdAt ?? new Date("2026-11-10T20:00:00Z"),
-  };
+  return { ...DEFAULT_RUN_ROW, ...overrides };
 }
 
 describe("Lighthouse Shared Diff & Summary Helpers", () => {

@@ -16,11 +16,10 @@ import {
   listLighthouseRuns,
   persistLighthouseAudit,
   runLighthouseAudit,
+  type ExecuteIterationParams,
   type LighthouseProgressEvent,
   type SingleIterationResult,
-  type WorkerPayload,
 } from "../src";
-import { runWorkerIteration } from "../src/worker";
 
 function makeMockIterationResult(
   url: string,
@@ -297,12 +296,12 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
     }
   });
 
-  it("runWorkerIteration resolves browser, launches Chrome on port 0, runs Lighthouse with enableErrorReporting: false, and guarantees launchedChrome.kill() in finally", async () => {
+  it("executeIteration resolves browser, launches Chrome on port 0, runs Lighthouse with enableErrorReporting: false, and guarantees launchedChrome.kill() in finally", async () => {
     let chromeKilled = false;
     let capturedFlags: Record<string, unknown> | undefined;
     const stages: string[] = [];
 
-    const payload: WorkerPayload = {
+    const payload: ExecuteIterationParams = {
       url: "https://example.com",
       formFactor: "mobile",
       throttlingMethod: "simulate",
@@ -320,7 +319,7 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
       "worker-unit",
     );
 
-    const output = await runWorkerIteration(payload, {
+    const output = await executeIteration(payload, {
       onProgress: (ev) => stages.push(ev.stage),
       resolveBrowser: async () => ({
         executablePath: "/mock/chrome",
@@ -359,9 +358,9 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
     ]);
   });
 
-  it("runWorkerIteration kills launched Chrome even when Lighthouse throws or returns undefined", async () => {
+  it("executeIteration kills launched Chrome even when Lighthouse throws or returns undefined", async () => {
     let killedOnError = false;
-    const payload: WorkerPayload = {
+    const payload: ExecuteIterationParams = {
       url: "https://example.com",
       formFactor: "mobile",
       throttlingMethod: "simulate",
@@ -371,7 +370,7 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
     };
 
     await expect(
-      runWorkerIteration(payload, {
+      executeIteration(payload, {
         resolveBrowser: async () => ({
           executablePath: "/mock/chrome",
           version: "Chrome 136.0.0",
@@ -498,9 +497,9 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
     expect(process.listenerCount("SIGINT")).toBe(sigintCountBefore);
   });
 
-  it("runWorkerIteration handles SIGTERM cleanup listener", async () => {
+  it("executeIteration handles SIGTERM cleanup listener", async () => {
     let killedViaSignal = false;
-    const payload: WorkerPayload = {
+    const payload: ExecuteIterationParams = {
       url: "https://example.com",
       formFactor: "mobile",
       throttlingMethod: "simulate",
@@ -517,7 +516,7 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
       "sigterm-test",
     );
 
-    await runWorkerIteration(payload, {
+    await executeIteration(payload, {
       resolveBrowser: async () => ({
         executablePath: "/mock/chrome",
         version: "Chrome 136",
