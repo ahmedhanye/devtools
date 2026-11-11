@@ -184,6 +184,44 @@ export interface ServerCliDeps {
   onSignal?: (event: "SIGINT" | "SIGTERM", handler: () => void) => void;
 }
 
+interface StartupErrorShape {
+  issues?: Array<{ message?: string }>;
+  code?: string;
+  message?: unknown;
+}
+
+function formatConfigValidationError(record: StartupErrorShape): string | null {
+  if (!Array.isArray(record.issues)) {
+    return null;
+  }
+  const messages = record.issues
+    .map((i) => i.message)
+    .filter(Boolean)
+    .join(", ");
+  return `Invalid server configuration: ${messages}`;
+}
+
+function formatServerStartupError(
+  err: unknown,
+  port?: number,
+): { message: string; raw?: unknown } {
+  const record =
+    err && typeof err === "object" ? (err as StartupErrorShape) : {};
+  const configError = formatConfigValidationError(record);
+  if (configError) {
+    return { message: configError };
+  }
+  if (
+    record.code === "EADDRINUSE" ||
+    String(record.message ?? "").includes("in use")
+  ) {
+    return {
+      message: `Port ${port ?? "unknown"} is already in use. Set PORT=<port> to use an alternate port.`,
+    };
+  }
+  return { message: "Failed to start server:", raw: err };
+}
+
 /**
  * Boots the standalone HTTP server application using environment configuration and registers process signal handlers.
  *
@@ -221,29 +259,11 @@ export function runServerCli(deps?: ServerCliDeps): ServerInstance | undefined {
 
     return instance;
   } catch (err: unknown) {
-    if (
-      err &&
-      typeof err === "object" &&
-      "issues" in err &&
-      Array.isArray((err as { issues: unknown }).issues)
-    ) {
-      const messages = (err as { issues: Array<{ message?: string }> }).issues
-        .map((i) => i.message)
-        .filter(Boolean)
-        .join(", ");
-      error(`Invalid server configuration: ${messages}`);
-    } else if (
-      err &&
-      typeof err === "object" &&
-      (("code" in err && (err as { code?: string }).code === "EADDRINUSE") ||
-        ("message" in err &&
-          String((err as { message?: string }).message).includes("in use")))
-    ) {
-      error(
-        `Port ${config?.port ?? "unknown"} is already in use. Set PORT=<port> to use an alternate port.`,
-      );
+    const formatted = formatServerStartupError(err, config?.port);
+    if ("raw" in formatted) {
+      error(formatted.message, formatted.raw);
     } else {
-      error("Failed to start server:", err);
+      error(formatted.message);
     }
     exit(1);
     return undefined;

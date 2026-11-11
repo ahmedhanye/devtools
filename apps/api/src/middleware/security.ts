@@ -63,28 +63,26 @@ function parseBracketedHost(header: string): boolean {
   return isValidPortNumber(rest.slice(1));
 }
 
+const UNBRACKETED_IPV6_LOOPBACK = new Set([
+  "::1",
+  "::ffff:127.0.0.1",
+  "::ffff:7f00:1",
+]);
+
 function parseStandardHost(header: string): boolean {
   const lower = header.toLowerCase();
-  if (
-    lower === "::1" ||
-    lower === "::ffff:127.0.0.1" ||
-    lower === "::ffff:7f00:1"
-  ) {
+  if (UNBRACKETED_IPV6_LOOPBACK.has(lower)) {
     return true;
   }
-  const parts = header.split(":");
-  if (parts.length === 1 && parts[0] !== undefined) {
-    return LOOPBACK_HOSTNAMES.has(parts[0].toLowerCase());
+  const [hostname, portStr, extra] = lower.split(":");
+  if (
+    extra !== undefined ||
+    hostname === undefined ||
+    !LOOPBACK_HOSTNAMES.has(hostname)
+  ) {
+    return false;
   }
-  if (parts.length === 2 && parts[0] !== undefined && parts[1] !== undefined) {
-    const hostname = parts[0];
-    const portStr = parts[1];
-    if (!LOOPBACK_HOSTNAMES.has(hostname.toLowerCase())) {
-      return false;
-    }
-    return isValidPortNumber(portStr);
-  }
-  return false;
+  return portStr === undefined || isValidPortNumber(portStr);
 }
 
 /**
@@ -203,56 +201,82 @@ function hasNonJsonBody(c: Context): boolean {
   return mimeType !== "application/json";
 }
 
+interface RequestViolation {
+  status: 403 | 415;
+  code: ApiErrorCode;
+  message: string;
+}
+
+function forbiddenViolation(message: string): RequestViolation {
+  return { status: 403, code: API_ERROR_CODES.FORBIDDEN, message };
+}
+
+function checkLoopbackPeer(
+  c: Context<{ Bindings: ApiBindings }>,
+): RequestViolation | null {
+  const peer = c.env?.server?.requestIP?.(c.req.raw);
+  return peer && !isTrustedLoopbackPeer(peer.address)
+    ? forbiddenViolation("Non-loopback client address is forbidden")
+    : null;
+}
+
+function checkLoopbackHostHeader(
+  c: Context<{ Bindings: ApiBindings }>,
+): RequestViolation | null {
+  const host = c.req.header("host");
+  return host && !isLoopbackHostHeader(host)
+    ? forbiddenViolation("Non-loopback Host header is forbidden")
+    : null;
+}
+
+function checkCrossSiteHeader(
+  c: Context<{ Bindings: ApiBindings }>,
+): RequestViolation | null {
+  return c.req.header("sec-fetch-site")?.trim().toLowerCase() === "cross-site"
+    ? forbiddenViolation("Cross-site requests are forbidden")
+    : null;
+}
+
+function checkLoopbackOriginHeader(
+  c: Context<{ Bindings: ApiBindings }>,
+): RequestViolation | null {
+  const origin = c.req.header("origin");
+  return origin && !isLoopbackOrigin(origin)
+    ? forbiddenViolation("Non-loopback Origin is forbidden")
+    : null;
+}
+
+function checkMutatingJsonBody(
+  c: Context<{ Bindings: ApiBindings }>,
+): RequestViolation | null {
+  if (!MUTATING_METHODS.has(c.req.method) || !hasNonJsonBody(c)) {
+    return null;
+  }
+  return {
+    status: 415,
+    code: API_ERROR_CODES.UNSUPPORTED_MEDIA_TYPE,
+    message:
+      "Mutating requests with a body must use Content-Type: application/json",
+  };
+}
+
+const REQUEST_GUARDS = [
+  checkLoopbackPeer,
+  checkLoopbackHostHeader,
+  checkCrossSiteHeader,
+  checkLoopbackOriginHeader,
+  checkMutatingJsonBody,
+] as const;
+
 function evaluateLoopbackRequestViolation(
   c: Context<{ Bindings: ApiBindings }>,
-): { status: 403 | 415; code: ApiErrorCode; message: string } | null {
-  const server = c.env?.server;
-  if (server && typeof server.requestIP === "function") {
-    const peer = server.requestIP(c.req.raw);
-    if (peer && !isTrustedLoopbackPeer(peer.address)) {
-      return {
-        status: 403,
-        code: API_ERROR_CODES.FORBIDDEN,
-        message: "Non-loopback client address is forbidden",
-      };
+): RequestViolation | null {
+  for (const guard of REQUEST_GUARDS) {
+    const violation = guard(c);
+    if (violation) {
+      return violation;
     }
   }
-
-  const host = c.req.header("host");
-  if (host && !isLoopbackHostHeader(host)) {
-    return {
-      status: 403,
-      code: API_ERROR_CODES.FORBIDDEN,
-      message: "Non-loopback Host header is forbidden",
-    };
-  }
-
-  if (c.req.header("sec-fetch-site")?.trim().toLowerCase() === "cross-site") {
-    return {
-      status: 403,
-      code: API_ERROR_CODES.FORBIDDEN,
-      message: "Cross-site requests are forbidden",
-    };
-  }
-
-  const origin = c.req.header("origin");
-  if (origin && !isLoopbackOrigin(origin)) {
-    return {
-      status: 403,
-      code: API_ERROR_CODES.FORBIDDEN,
-      message: "Non-loopback Origin is forbidden",
-    };
-  }
-
-  if (MUTATING_METHODS.has(c.req.method) && hasNonJsonBody(c)) {
-    return {
-      status: 415,
-      code: API_ERROR_CODES.UNSUPPORTED_MEDIA_TYPE,
-      message:
-        "Mutating requests with a body must use Content-Type: application/json",
-    };
-  }
-
   return null;
 }
 

@@ -9,8 +9,6 @@ import {
   resolveArtifactsDir,
   resolveLighthouseRun,
   resolveSafeHtmlReportPath,
-  serializeLighthouseRunDetail,
-  serializeLighthouseRunListItem,
 } from "@devtools/lighthouse";
 import {
   ActiveAuditJobResponseSchema,
@@ -29,6 +27,10 @@ import {
   AuditJobManager,
   type AuditJobStreamEvent,
 } from "../lighthouse/job-manager";
+import {
+  serializeLighthouseRunDetail,
+  serializeLighthouseRunListItem,
+} from "../lighthouse/serializers";
 import type { LighthouseAuditRunner } from "../lighthouse/worker-runner";
 import { type ApiBindings, formatError } from "../middleware/security";
 

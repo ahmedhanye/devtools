@@ -1,10 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { EnvMap } from "@devtools/core";
 import type { DevtoolsDb } from "@devtools/db";
-import {
-  persistLighthouseAudit,
-  serializeLighthouseRunDetail,
-} from "@devtools/lighthouse";
+import { persistLighthouseAudit } from "@devtools/lighthouse";
 import type {
   AuditJob,
   AuditSseCompleteEvent,
@@ -12,6 +9,7 @@ import type {
   AuditSseProgressEvent,
   NormalizedLighthouseAuditRequest,
 } from "@devtools/lighthouse/schemas";
+import { serializeLighthouseRunDetail } from "./serializers";
 import { serializeAuditError } from "./worker-handler";
 import { runAuditInWorker, type LighthouseAuditRunner } from "./worker-runner";
 
