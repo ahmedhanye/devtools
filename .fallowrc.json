@@ -1,6 +1,9 @@
 {
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
-  "entry": ["apps/frontend/steiger.config.js"],
+  "entry": [
+    "apps/api/src/lighthouse/worker.ts",
+    "apps/frontend/steiger.config.js"
+  ],
   "ignoreDependencies": ["prettier-plugin-tailwindcss"],
   "ignoreUnresolvedImports": [
     "./.next/**",

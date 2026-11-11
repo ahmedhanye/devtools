@@ -27,8 +27,9 @@
     "test:e2e": "bun --filter '*' test:e2e",
     "test:coverage": "bun scripts/collect-coverage/collect-coverage.ts",
     "build": "bun --filter '*' build",
-    "build:smoke": "bun build apps/cli/bin/devtools.js --compile --outfile dist/devtools && ./dist/devtools --help && ./dist/devtools --version",
-    "build:darwin-arm64": "bun build apps/cli/bin/devtools.js --compile --target=bun-darwin-arm64 --outfile dist/devtools-darwin-arm64",
+    "build:bin": "bun build apps/cli/bin/devtools.js apps/api/src/lighthouse/worker.ts --compile --outfile dist/devtools",
+    "build:smoke": "bun run build:bin && ./dist/devtools --help && ./dist/devtools --version",
+    "build:darwin-arm64": "bun build apps/cli/bin/devtools.js apps/api/src/lighthouse/worker.ts --compile --target=bun-darwin-arm64 --outfile dist/devtools-darwin-arm64",
     "audit": "bun audit --audit-level=high --ignore GHSA-vfj7-8cjw-p6xm --ignore GHSA-mrhx-c7xc-m3w5",
     "pin:actions": ".agents/skills/github-actions/scripts/pin-action.sh",
     "lint:workflows": ".agents/skills/github-actions/scripts/lint.sh",
@@ -43,7 +44,7 @@
     "react-doctor": "CI=true react-doctor --project apps/frontend,site --no-telemetry --no-supply-chain && CI=true react-doctor design --project apps/frontend,site --no-telemetry --no-supply-chain",
     "verify:diff-coverage": "bun scripts/verify-diff-coverage/verify-diff-coverage.ts",
     "verify:fast": "bun run check && bun run typecheck && bun run fallow:dead-code && bun run fallow:arch && bun run fallow:health && bun run lint:agents && bun --filter @devtools/frontend test",
-    "verify": "bun run verify:fast && bun run lint:design && bun run lint:fsd && bun run fallow:dupes && bun run react-doctor && bun run test:coverage && bun run verify:diff-coverage && bun run audit && bun run build:smoke && bun run lint:workflows"
+    "verify": "bun run verify:fast && bun run lint:design && bun run lint:fsd && bun run fallow:dupes && bun run react-doctor && bun run build:bin && bun run test:coverage && bun run verify:diff-coverage && bun run audit && bun run build:smoke && bun run lint:workflows"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.4",
