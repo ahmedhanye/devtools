@@ -333,8 +333,12 @@ describe("CLI Subprocess Integration Tests (E2E)", () => {
       proc.kill("SIGTERM");
       expect(await proc.exited).toBe(0);
     } finally {
-      proc.kill();
-      rmSync(tmpDir, { recursive: true, force: true });
+      try {
+        proc.kill();
+        await proc.exited;
+      } finally {
+        rmSync(tmpDir, { recursive: true, force: true });
+      }
     }
   }
 

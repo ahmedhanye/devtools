@@ -130,8 +130,16 @@ describe("Unified Loopback Daemon Lifecycle and Routing", () => {
 
       expect(readdirSync(artifactsDir)).toHaveLength(0);
     } finally {
-      rmSync(artifactsDir, { recursive: true, force: true });
-      resetDb();
+      try {
+        if (activeDaemon) {
+          const daemonToStop = activeDaemon;
+          activeDaemon = null;
+          await daemonToStop.stop();
+        }
+      } finally {
+        rmSync(artifactsDir, { recursive: true, force: true });
+        resetDb();
+      }
     }
   });
 
