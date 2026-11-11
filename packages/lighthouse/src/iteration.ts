@@ -13,29 +13,7 @@ import type {
   LighthouseThrottlingMethod,
   RawLighthouseResult,
   SingleIterationResult,
-  WorkerPayload,
-  WorkerResultPayload,
 } from "./types";
-
-export type { WorkerPayload };
-
-/**
- * Discriminated JSON-Lines message emitted by the worker subprocess over `stdout`.
- */
-export type WorkerOutboundMessage =
-  | {
-      type: "progress";
-      event: LighthouseProgressEvent;
-    }
-  | {
-      type: "result";
-      result: WorkerResultPayload;
-    }
-  | {
-      type: "error";
-      message: string;
-      code?: string;
-    };
 
 /**
  * Minimal structural shape of a Lighthouse configuration object (`LH.Config`).
@@ -59,9 +37,9 @@ export interface LighthouseConfigShape {
 }
 
 /**
- * Injectable seams for {@link runWorkerIteration} to support hermetic unit tests.
+ * Injectable seams for {@link executeIteration} to support hermetic unit tests.
  */
-export interface WorkerIterationDependencies {
+export interface IterationDependencies {
   onProgress?: (event: LighthouseProgressEvent) => void;
   resolveBrowser?: (
     options?: ResolveBrowserOptions,
@@ -181,13 +159,13 @@ export function extractReportStrings(
  */
 export async function executeIteration(
   params: ExecuteIterationParams,
-  deps: WorkerIterationDependencies = {},
+  deps: IterationDependencies = {},
 ): Promise<SingleIterationResult> {
   const resolveBrowser = deps.resolveBrowser ?? resolveBrowserPath;
   const launchChrome =
     deps.launchChrome ??
     ((await import("chrome-launcher")).launch as unknown as NonNullable<
-      WorkerIterationDependencies["launchChrome"]
+      IterationDependencies["launchChrome"]
     >);
   let runLh = deps.runLighthouse;
   if (!runLh) {
@@ -195,7 +173,7 @@ export async function executeIteration(
     const { registerBundledModules } = await import("./bundled-modules");
     await registerBundledModules();
     runLh = (await import("lighthouse")).default as unknown as NonNullable<
-      WorkerIterationDependencies["runLighthouse"]
+      IterationDependencies["runLighthouse"]
     >;
   }
   const Launcher = (await import("chrome-launcher")).Launcher;
@@ -297,8 +275,3 @@ export async function executeIteration(
     await launchedChrome.kill();
   }
 }
-
-/**
- * @deprecated Use {@link executeIteration} instead.
- */
-export const runWorkerIteration = executeIteration;

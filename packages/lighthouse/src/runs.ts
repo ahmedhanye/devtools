@@ -10,14 +10,16 @@ import {
   type NewLighthouseRunRow,
 } from "@devtools/db";
 import { AmbiguousRunIdError, LighthouseRunNotFoundError } from "./errors";
-import type { LighthouseFormFactor } from "./types";
+import type { LighthouseFormFactor } from "./schemas";
 
 /**
- * Filter and pagination options for {@link listLighthouseRuns}.
+ * Filter and pagination options for {@link listLighthouseRuns} and {@link listLighthouseRunsWithTotal}.
  */
 export interface ListLighthouseRunsOptions {
   /** Optional exact URL filter. */
   url?: string;
+  /** Optional case-insensitive URL substring filter. */
+  search?: string;
   /** Optional form factor filter (`"mobile"` or `"desktop"`). */
   formFactor?: LighthouseFormFactor;
   /** Maximum number of rows to return. Defaults to `50`. */
@@ -71,9 +73,35 @@ export function getLighthouseRunById(
   return row ?? null;
 }
 
+function escapeLikePattern(value: string): string {
+  return value
+    .replaceAll("/", "//")
+    .replaceAll("%", "/%")
+    .replaceAll("_", "/_");
+}
+
+function buildListRunsCondition(
+  options: Pick<ListLighthouseRunsOptions, "url" | "search" | "formFactor">,
+) {
+  const conditions = [];
+  if (options.url) {
+    conditions.push(eq(lighthouseRuns.url, options.url));
+  }
+  if (options.search) {
+    const escaped = escapeLikePattern(options.search.toLowerCase());
+    conditions.push(
+      sql`LOWER(${lighthouseRuns.url}) LIKE ${`%${escaped}%`} ESCAPE '/'`,
+    );
+  }
+  if (options.formFactor) {
+    conditions.push(eq(lighthouseRuns.formFactor, options.formFactor));
+  }
+  return conditions.length > 0 ? and(...conditions) : undefined;
+}
+
 /**
  * Lists Lighthouse run records ordered by `createdAt` descending with optional URL,
- * form factor, limit, and offset filters.
+ * substring search, form factor, limit, and offset filters.
  *
  * @param db - Target {@link DevtoolsDb} instance.
  * @param options - Optional filter and pagination criteria.
@@ -83,25 +111,56 @@ export function listLighthouseRuns(
   db: DevtoolsDb,
   options: ListLighthouseRunsOptions = {},
 ): LighthouseRunRow[] {
-  const conditions = [];
-  if (options.url) {
-    conditions.push(eq(lighthouseRuns.url, options.url));
-  }
-  if (options.formFactor) {
-    conditions.push(eq(lighthouseRuns.formFactor, options.formFactor));
-  }
-
   const limit = options.limit ?? 50;
   const offset = options.offset ?? 0;
 
   return db
     .select()
     .from(lighthouseRuns)
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .where(buildListRunsCondition(options))
     .orderBy(desc(lighthouseRuns.createdAt))
     .limit(limit)
     .offset(offset)
     .all();
+}
+
+/**
+ * Counts historical Lighthouse run records matching the given filter criteria.
+ *
+ * @param db - Target {@link DevtoolsDb} instance.
+ * @param options - Optional URL, substring search, and form factor filters.
+ * @returns Total matching row count.
+ */
+export function countLighthouseRuns(
+  db: DevtoolsDb,
+  options: Pick<
+    ListLighthouseRunsOptions,
+    "url" | "search" | "formFactor"
+  > = {},
+): number {
+  const result = db
+    .select({ count: sql<number>`count(*)` })
+    .from(lighthouseRuns)
+    .where(buildListRunsCondition(options))
+    .get();
+  return Number(result?.count ?? 0);
+}
+
+/**
+ * Lists paginated Lighthouse run records alongside the total matching row count.
+ *
+ * @param db - Target {@link DevtoolsDb} instance.
+ * @param options - Filter and pagination criteria.
+ * @returns Paginated `runs` slice and unpaginated `total` count.
+ */
+export function listLighthouseRunsWithTotal(
+  db: DevtoolsDb,
+  options: ListLighthouseRunsOptions = {},
+): { runs: LighthouseRunRow[]; total: number } {
+  return {
+    runs: listLighthouseRuns(db, options),
+    total: countLighthouseRuns(db, options),
+  };
 }
 
 /**
@@ -154,24 +213,18 @@ export function resolveLighthouseRun(
 ): LighthouseRunRow {
   const query = idOrPrefix.trim();
 
-  // Try exact lookup first
   const exact = getLighthouseRunById(db, query);
   if (exact) {
     return exact;
   }
 
-  // Enforce prefix length for non-exact matches
   if (query.length < MIN_PREFIX_LENGTH) {
     throw new LighthouseRunNotFoundError(
       `Run ID prefix "${query}" is too short. Minimum ${MIN_PREFIX_LENGTH} characters required for prefix lookup.`,
     );
   }
 
-  // Escape SQL wildcards (% and _) using / as escape character
-  const escaped = query
-    .replaceAll("/", "//")
-    .replaceAll("%", "/%")
-    .replaceAll("_", "/_");
+  const escaped = escapeLikePattern(query);
 
   const matches = db
     .select()
