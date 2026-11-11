@@ -1486,6 +1486,121 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
       }
     });
 
+    test("isolates stdout and stderr color formatting in runLighthouseOpenCommand", async () => {
+      insertLighthouseRun(
+        db,
+        makeSampleRow({
+          id: "open-tty-111",
+          htmlReportPath: "/tmp/open-tty-report.html",
+        }),
+      );
+
+      // Case 1: stdout redirected (non-TTY), stderr is TTY -> plain stdout, colored stderr
+      const stdoutRedirected: string[] = [];
+      await runLighthouseOpenCommand(
+        "open-tty-111",
+        { env: { TERM: "xterm-256color" } },
+        {
+          isStderrTTY: true,
+          isStdoutTTY: false,
+          getDb: () => db,
+          fileExists: () => true,
+          isHeadless: () => false,
+          spawnOpener: () => {},
+          log: (msg) => stdoutRedirected.push(msg),
+        },
+      );
+      expect(stdoutRedirected.join("\n").includes("\x1b[")).toBe(false);
+      expect(stdoutRedirected.join("\n")).toContain(
+        "Opening Lighthouse HTML report at:",
+      );
+
+      const stderrInteractive: string[] = [];
+      await runLighthouseOpenCommand(
+        "open-tty-111",
+        { env: { TERM: "xterm-256color" } },
+        {
+          isStderrTTY: true,
+          isStdoutTTY: false,
+          getDb: () => db,
+          fileExists: () => false,
+          error: (msg) => stderrInteractive.push(msg),
+          exit: () => {},
+        },
+      );
+      expect(stderrInteractive.join("\n").includes("\x1b[")).toBe(true);
+
+      // Case 2: stdout is TTY, stderr redirected (non-TTY) -> colored stdout, plain stderr
+      const stdoutInteractive: string[] = [];
+      await runLighthouseOpenCommand(
+        "open-tty-111",
+        { env: { TERM: "xterm-256color" } },
+        {
+          isStderrTTY: false,
+          isStdoutTTY: true,
+          getDb: () => db,
+          fileExists: () => true,
+          isHeadless: () => false,
+          spawnOpener: () => {},
+          log: (msg) => stdoutInteractive.push(msg),
+        },
+      );
+      expect(stdoutInteractive.join("\n").includes("\x1b[")).toBe(true);
+
+      const stderrRedirected: string[] = [];
+      await runLighthouseOpenCommand(
+        "open-tty-111",
+        { env: { TERM: "xterm-256color" } },
+        {
+          isStderrTTY: false,
+          isStdoutTTY: true,
+          getDb: () => db,
+          fileExists: () => false,
+          error: (msg) => stderrRedirected.push(msg),
+          exit: () => {},
+        },
+      );
+      expect(stderrRedirected.join("\n").includes("\x1b[")).toBe(false);
+
+      // Case 3: NO_COLOR disables stdout color even when isStdoutTTY is true
+      const stdoutNoColor: string[] = [];
+      await runLighthouseOpenCommand(
+        "open-tty-111",
+        { env: { TERM: "xterm-256color", NO_COLOR: "1" } },
+        {
+          isStdoutTTY: true,
+          getDb: () => db,
+          fileExists: () => true,
+          isHeadless: () => false,
+          spawnOpener: () => {},
+          log: (msg) => stdoutNoColor.push(msg),
+        },
+      );
+      expect(stdoutNoColor.join("\n").includes("\x1b[")).toBe(false);
+
+      // Case 4: isTTY fallback & omitted-deps default on createLighthouseCliContext
+      const ctxFallbackTrue = createLighthouseCliContext(
+        { env: { TERM: "xterm-256color" } },
+        { isTTY: true },
+      );
+      expect(ctxFallbackTrue.pcStdout.green("ok").includes("\x1b[")).toBe(true);
+
+      const ctxFallbackFalse = createLighthouseCliContext(
+        { env: { TERM: "xterm-256color" } },
+        { isTTY: false },
+      );
+      expect(ctxFallbackFalse.pcStdout.green("ok").includes("\x1b[")).toBe(
+        false,
+      );
+
+      const ctxDefault = createLighthouseCliContext({
+        env: { TERM: "xterm-256color" },
+      });
+      expect(ctxDefault.pcStdout.green("ok").includes("\x1b[")).toBe(
+        Boolean(process.stdout.isTTY),
+      );
+    });
+
     test("fallback process.exit across audit, diff, and list commands", async () => {
       const exitSpy = spyOn(process, "exit").mockImplementation(
         (() => {}) as never,
