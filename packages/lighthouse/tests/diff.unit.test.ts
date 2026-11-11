@@ -105,8 +105,8 @@ describe("Lighthouse Shared Diff & Summary Helpers", () => {
           },
           {
             ...insightBase,
-            id: "informative-null",
-            title: "Null Score Informative",
+            id: "informative-null-s1",
+            title: "Null Score Informative S1",
             score: null,
             metricSavings: {},
           },
@@ -143,8 +143,8 @@ describe("Lighthouse Shared Diff & Summary Helpers", () => {
           },
           {
             ...insightBase,
-            id: "informative-null",
-            title: "Null Score Informative",
+            id: "informative-null-s2",
+            title: "Null Score Informative S2",
             score: null,
             metricSavings: {},
           },
@@ -208,6 +208,50 @@ describe("Lighthouse Shared Diff & Summary Helpers", () => {
         resolved: [],
         regressed: [],
         clsCulpritDelta: 0,
+      });
+    });
+
+    it("returns null deltas when comparison fields are null while baseline fields are numeric", () => {
+      const baseline = makeRunRow({
+        performanceScore: 80,
+        accessibilityScore: 90,
+        bestPracticesScore: 95,
+        seoScore: 85,
+        lcpMs: 2000,
+        cls: 0.05,
+        tbtMs: 120,
+        fcpMs: 900,
+        siMs: 1600,
+        ttfbMs: 150,
+      });
+      const comparison = makeRunRow({
+        id: "run-null-comparison",
+        performanceScore: null,
+        accessibilityScore: null,
+        bestPracticesScore: null,
+        seoScore: null,
+        lcpMs: null,
+        cls: null,
+        tbtMs: null,
+        fcpMs: null,
+        siMs: null,
+        ttfbMs: null,
+      });
+
+      const deltas = computeRunDeltas(baseline, comparison);
+      expect(deltas.scores).toEqual({
+        performanceScore: null,
+        accessibilityScore: null,
+        bestPracticesScore: null,
+        seoScore: null,
+      });
+      expect(deltas.metrics).toEqual({
+        lcpMs: null,
+        cls: null,
+        tbtMs: null,
+        fcpMs: null,
+        siMs: null,
+        ttfbMs: null,
       });
     });
 
