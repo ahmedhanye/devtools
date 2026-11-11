@@ -9,15 +9,17 @@ Architecture, isolated worker process execution, representative run selection, a
 ```text
 packages/lighthouse/
 ├── src/
-│   ├── config.ts              # Artifacts directory resolution & env seams
+│   ├── config.ts              # Artifacts directory resolution, path confinement, & env seams
+│   ├── diff.ts                # Pairwise score, CWV, and insight audit diffing
 │   ├── errors.ts              # Actionable domain error classes
 │   ├── index.ts               # Public package entrypoint
+│   ├── iteration.ts           # Headless Chrome iteration execution & Lighthouse lifecycle
 │   ├── median.ts              # Representative run selection via Euclidean distance
 │   ├── normalizer.ts          # LHR extraction, TTFB fallback, & trace insights
-│   ├── repository.ts          # Drizzle SQLite persistence & queries
-│   ├── runner.ts              # Multi-run orchestrator & worker lifecycle
-│   ├── types.ts               # Zod schemas, domain models, & summary types
-│   └── worker.ts              # Headless Chrome iteration execution & Lighthouse lifecycle
+│   ├── runner.ts              # Multi-run orchestrator & batch normalization
+│   ├── runs.ts                # Drizzle SQLite persistence, queries, & short-ID lookup
+│   ├── schemas.ts             # Browser-safe Zod DTO & SSE contract schemas
+│   └── types.ts               # Domain models, runner options, & summary types
 └── tests/                     # Unit & headless Chromium integration test suites
 ```
 
@@ -29,7 +31,7 @@ packages/lighthouse/
 sequenceDiagram
     participant App as Application (CLI / API Daemon)
     participant Runner as Audit Runner (runner.ts)
-    participant Iter as Iteration Executor (worker.ts)
+    participant Iter as Iteration Executor (iteration.ts)
     participant Chrome as Headless Chrome (port: 0)
     participant Disk as Artifact Storage
     participant DB as SQLite (packages/db)
