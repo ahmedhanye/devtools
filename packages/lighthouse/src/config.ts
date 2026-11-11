@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, realpathSync, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, resolve, sep } from "node:path";
 import type { EnvMap } from "@devtools/core";
 import { findWorkspaceRoot } from "@devtools/db";
 
@@ -142,4 +142,36 @@ export function resolveChromeSandboxDisabled(
   }
   const getuid = options.getuid ?? process.getuid;
   return getuid?.() === 0;
+}
+
+/**
+ * Resolves and verifies that an HTML report path exists as a regular file strictly
+ * inside `artifactsDir` after canonical symlink resolution.
+ *
+ * @param htmlReportPath - Stored `html_report_path` value from SQLite.
+ * @param artifactsDir - Canonical artifacts root directory.
+ * @returns Canonical filesystem path if confined and readable as a file, or `null` otherwise.
+ */
+export function resolveSafeHtmlReportPath(
+  htmlReportPath: string,
+  artifactsDir: string,
+): string | null {
+  if (!htmlReportPath) {
+    return null;
+  }
+  let canonicalBase: string;
+  try {
+    canonicalBase = realpathSync(resolve(artifactsDir));
+  } catch {
+    return null;
+  }
+  try {
+    const canonicalTarget = realpathSync(resolve(htmlReportPath));
+    if (!canonicalTarget.startsWith(canonicalBase + sep)) {
+      return null;
+    }
+    return statSync(canonicalTarget).isFile() ? canonicalTarget : null;
+  } catch {
+    return null;
+  }
 }

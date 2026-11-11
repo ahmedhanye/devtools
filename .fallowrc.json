@@ -1,13 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
-  "entry": [
-    "apps/frontend/steiger.config.js",
-    "packages/browser/src/index.ts",
-    "packages/core/src/index.ts",
-    "packages/db/src/index.ts",
-    "packages/lighthouse/src/index.ts",
-    "packages/lighthouse/src/worker.ts"
-  ],
+  "entry": ["apps/frontend/steiger.config.js"],
   "ignoreDependencies": ["prettier-plugin-tailwindcss"],
   "ignoreUnresolvedImports": [
     "./.next/**",
@@ -55,8 +48,15 @@
         "patterns": ["packages/browser/src/**"]
       },
       {
+        "name": "lighthouse-schemas",
+        "patterns": ["packages/lighthouse/src/schemas.ts"]
+      },
+      {
         "name": "lighthouse",
-        "patterns": ["packages/lighthouse/src/**"]
+        "patterns": [
+          "packages/lighthouse/src/**",
+          "!packages/lighthouse/src/schemas.ts"
+        ]
       },
       {
         "name": "api",
@@ -93,28 +93,44 @@
         "allow": ["core"]
       },
       {
+        "from": "lighthouse-schemas",
+        "allow": []
+      },
+      {
         "from": "lighthouse",
-        "allow": ["core", "db", "browser"]
+        "allow": ["core", "db", "browser", "lighthouse-schemas"]
       },
       {
         "from": "api",
-        "allow": ["core", "db", "browser", "lighthouse"]
+        "allow": ["core", "db", "browser", "lighthouse", "lighthouse-schemas"]
       },
       {
         "from": "cli",
-        "allow": ["core", "db", "browser", "lighthouse", "api"]
+        "allow": [
+          "core",
+          "db",
+          "browser",
+          "lighthouse",
+          "lighthouse-schemas",
+          "api"
+        ]
       },
       {
         "from": "frontend-app",
-        "allow": ["frontend-pages", "frontend-shared", "core"]
+        "allow": [
+          "frontend-pages",
+          "frontend-shared",
+          "core",
+          "lighthouse-schemas"
+        ]
       },
       {
         "from": "frontend-pages",
-        "allow": ["frontend-shared", "core"]
+        "allow": ["frontend-shared", "core", "lighthouse-schemas"]
       },
       {
         "from": "frontend-shared",
-        "allow": ["core"]
+        "allow": ["core", "lighthouse-schemas"]
       }
     ]
   },
