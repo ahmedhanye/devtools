@@ -108,43 +108,49 @@ function makeBatchResult(
   };
 }
 
+const DEFAULT_SAMPLE_ROW: Omit<
+  NewLighthouseRunRow,
+  "jsonReportPath" | "htmlReportPath"
+> = {
+  id: "11111111-1111-4111-8111-111111111111",
+  url: "https://example.com/",
+  finalUrl: "https://example.com/",
+  formFactor: "mobile",
+  throttlingMethod: "simulate",
+  performanceScore: 85,
+  accessibilityScore: 95,
+  bestPracticesScore: 92,
+  seoScore: 98,
+  lcpMs: 1900,
+  cls: 0.05,
+  tbtMs: 120,
+  fcpMs: 900,
+  siMs: 1500,
+  ttfbMs: 140,
+  summaryJson: {
+    lcpElement: null,
+    lcpPhases: null,
+    clsCulprits: [],
+    insights: [],
+    failedAudits: [],
+    runWarnings: [],
+    runtimeError: null,
+    medianMetadata: null,
+  },
+  durationMs: 2500,
+  createdAt: new Date("2026-11-10T10:00:00Z"),
+};
+
 function makeSampleRow(
   artifactsDir: string,
   overrides: Partial<NewLighthouseRunRow> = {},
 ): NewLighthouseRunRow {
-  const id = overrides.id ?? "11111111-1111-4111-8111-111111111111";
+  const id = overrides.id ?? DEFAULT_SAMPLE_ROW.id;
   return {
-    id,
-    url: overrides.url ?? "https://example.com/",
-    finalUrl: overrides.finalUrl ?? "https://example.com/",
-    formFactor: overrides.formFactor ?? "mobile",
-    throttlingMethod: overrides.throttlingMethod ?? "simulate",
-    performanceScore: overrides.performanceScore ?? 85,
-    accessibilityScore: overrides.accessibilityScore ?? 95,
-    bestPracticesScore: overrides.bestPracticesScore ?? 92,
-    seoScore: overrides.seoScore ?? 98,
-    lcpMs: overrides.lcpMs ?? 1900,
-    cls: overrides.cls ?? 0.05,
-    tbtMs: overrides.tbtMs ?? 120,
-    fcpMs: overrides.fcpMs ?? 900,
-    siMs: overrides.siMs ?? 1500,
-    ttfbMs: overrides.ttfbMs ?? 140,
-    summaryJson: overrides.summaryJson ?? {
-      lcpElement: null,
-      lcpPhases: null,
-      clsCulprits: [],
-      insights: [],
-      failedAudits: [],
-      runWarnings: [],
-      runtimeError: null,
-      medianMetadata: null,
-    },
-    jsonReportPath:
-      overrides.jsonReportPath ?? join(artifactsDir, id, "report.json"),
-    htmlReportPath:
-      overrides.htmlReportPath ?? join(artifactsDir, id, "report.html"),
-    durationMs: overrides.durationMs ?? 2500,
-    createdAt: overrides.createdAt ?? new Date("2026-11-10T10:00:00Z"),
+    ...DEFAULT_SAMPLE_ROW,
+    jsonReportPath: join(artifactsDir, id, "report.json"),
+    htmlReportPath: join(artifactsDir, id, "report.html"),
+    ...overrides,
   };
 }
 
