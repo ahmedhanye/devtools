@@ -10,6 +10,6 @@ export * from "./config";
 export * from "./diff";
 export * from "./normalizer";
 export * from "./median";
-export * from "./repository";
+export * from "./runs";
 export * from "./runner";
 export * from "./virtual-fs";

@@ -111,17 +111,7 @@ export interface RawLighthouseResult {
 }
 
 /**
- * Raw report strings emitted by the worker subprocess over IPC before parent LHR hydration.
- */
-export interface WorkerResultPayload {
-  /** Raw serialized JSON report string. */
-  reportJson: string;
-  /** Raw standalone HTML report string. */
-  reportHtml: string;
-}
-
-/**
- * Output of a single Lighthouse iteration executed by the worker or injected executor seam.
+ * Output of a single Lighthouse iteration executed by {@link executeIteration} or an injected executor seam.
  */
 export interface SingleIterationResult {
   /** Parsed Lighthouse Result (LHR) object. */
@@ -133,9 +123,9 @@ export interface SingleIterationResult {
 }
 
 /**
- * Serializable payload passed to the isolated Lighthouse worker script (`worker.ts`).
+ * Input parameters passed to the single-iteration executor (`executeIteration`).
  */
-export interface WorkerPayload {
+export interface ExecuteIterationParams {
   url: string;
   formFactor: LighthouseFormFactor;
   throttlingMethod: LighthouseThrottlingMethod;
@@ -145,12 +135,6 @@ export interface WorkerPayload {
   env?: EnvMap;
   runIndex: number;
   totalRuns: number;
-}
-
-/**
- * Input parameters passed to the single-iteration executor seam or child worker.
- */
-export interface ExecuteIterationParams extends WorkerPayload {
   onProgress?: (event: LighthouseProgressEvent) => void;
 }
 

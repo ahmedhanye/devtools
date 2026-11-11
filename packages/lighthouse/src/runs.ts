@@ -1,5 +1,3 @@
-import { realpathSync, statSync } from "node:fs";
-import { resolve, sep } from "node:path";
 import {
   and,
   desc,
@@ -11,25 +9,8 @@ import {
   type LighthouseRunRow,
   type NewLighthouseRunRow,
 } from "@devtools/db";
-import { parseRunSummary } from "./diff";
 import { AmbiguousRunIdError, LighthouseRunNotFoundError } from "./errors";
-import type {
-  LighthouseFormFactor,
-  LighthouseRunDetail,
-  LighthouseRunListItem,
-  LighthouseRunSummary,
-} from "./schemas";
-
-const EMPTY_SUMMARY: LighthouseRunSummary = {
-  lcpElement: null,
-  lcpPhases: null,
-  clsCulprits: [],
-  insights: [],
-  failedAudits: [],
-  runWarnings: [],
-  runtimeError: null,
-  medianMetadata: null,
-};
+import type { LighthouseFormFactor } from "./schemas";
 
 /**
  * Filter and pagination options for {@link listLighthouseRuns} and {@link listLighthouseRunsWithTotal}.
@@ -232,13 +213,11 @@ export function resolveLighthouseRun(
 ): LighthouseRunRow {
   const query = idOrPrefix.trim();
 
-  // Try exact lookup first
   const exact = getLighthouseRunById(db, query);
   if (exact) {
     return exact;
   }
 
-  // Enforce prefix length for non-exact matches
   if (query.length < MIN_PREFIX_LENGTH) {
     throw new LighthouseRunNotFoundError(
       `Run ID prefix "${query}" is too short. Minimum ${MIN_PREFIX_LENGTH} characters required for prefix lookup.`,
@@ -289,89 +268,4 @@ export function getLatestLighthouseRun(db: DevtoolsDb): LighthouseRunRow {
   }
 
   return row;
-}
-
-/**
- * Resolves and verifies that an HTML report path exists as a regular file strictly
- * inside `artifactsDir` after canonical symlink resolution.
- *
- * @param htmlReportPath - Stored `html_report_path` value from SQLite.
- * @param artifactsDir - Canonical artifacts root directory.
- * @returns Canonical filesystem path if confined and readable as a file, or `null` otherwise.
- */
-export function resolveSafeHtmlReportPath(
-  htmlReportPath: string,
-  artifactsDir: string,
-): string | null {
-  if (!htmlReportPath) {
-    return null;
-  }
-  let canonicalBase: string;
-  try {
-    canonicalBase = realpathSync(resolve(artifactsDir));
-  } catch {
-    return null;
-  }
-  try {
-    const canonicalTarget = realpathSync(resolve(htmlReportPath));
-    if (!canonicalTarget.startsWith(canonicalBase + sep)) {
-      return null;
-    }
-    return statSync(canonicalTarget).isFile() ? canonicalTarget : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Projects a database {@link LighthouseRunRow} into a sanitized {@link LighthouseRunListItem}
- * omitting heavy `summaryJson` and internal filesystem disk paths.
- *
- * @param row - Persisted SQLite row.
- * @param artifactsDir - Artifacts root directory used to check `hasHtmlReport`.
- * @returns Sanitized API list item DTO.
- */
-export function serializeLighthouseRunListItem(
-  row: LighthouseRunRow,
-  artifactsDir: string,
-): LighthouseRunListItem {
-  return {
-    id: row.id,
-    url: row.url,
-    finalUrl: row.finalUrl,
-    formFactor: row.formFactor,
-    throttlingMethod: row.throttlingMethod,
-    performanceScore: row.performanceScore,
-    accessibilityScore: row.accessibilityScore,
-    bestPracticesScore: row.bestPracticesScore,
-    seoScore: row.seoScore,
-    lcpMs: row.lcpMs,
-    cls: row.cls,
-    tbtMs: row.tbtMs,
-    fcpMs: row.fcpMs,
-    siMs: row.siMs,
-    ttfbMs: row.ttfbMs,
-    durationMs: row.durationMs,
-    createdAt: new Date(row.createdAt).toISOString(),
-    hasHtmlReport:
-      resolveSafeHtmlReportPath(row.htmlReportPath, artifactsDir) !== null,
-  };
-}
-
-/**
- * Projects a database {@link LighthouseRunRow} into a {@link LighthouseRunDetail} DTO
- * including parsed `summary` while omitting internal filesystem paths.
- *
- * @param row - Persisted SQLite row.
- * @param artifactsDir - Artifacts root directory used to check `hasHtmlReport`.
- * @returns Sanitized API detail DTO.
- */
-export function serializeLighthouseRunDetail(
-  row: LighthouseRunRow,
-  artifactsDir: string,
-): LighthouseRunDetail {
-  return {
-    ...serializeLighthouseRunListItem(row, artifactsDir),
-    summary: parseRunSummary(row.summaryJson) ?? EMPTY_SUMMARY,
-  };
 }

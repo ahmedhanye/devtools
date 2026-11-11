@@ -66,6 +66,19 @@ function collectFailingInsights(
   return failing;
 }
 
+function collectMissingInsights(
+  source: Map<string, { id: string; title: string }>,
+  other: Map<string, { id: string; title: string }>,
+): Array<{ id: string; title: string }> {
+  const items: Array<{ id: string; title: string }> = [];
+  for (const [id, meta] of source) {
+    if (!other.has(id)) {
+      items.push(meta);
+    }
+  }
+  return items;
+}
+
 /**
  * Computes status transitions for Lighthouse Insight audits and CLS culprits between two runs.
  *
@@ -84,25 +97,45 @@ export function computeInsightDiff(
   const fail1 = collectFailingInsights(s1);
   const fail2 = collectFailingInsights(s2);
 
-  const resolved: Array<{ id: string; title: string }> = [];
-  for (const [id, meta] of fail1) {
-    if (!fail2.has(id)) {
-      resolved.push(meta);
-    }
-  }
-
-  const regressed: Array<{ id: string; title: string }> = [];
-  for (const [id, meta] of fail2) {
-    if (!fail1.has(id)) {
-      regressed.push(meta);
-    }
-  }
+  const resolved = collectMissingInsights(fail1, fail2);
+  const regressed = collectMissingInsights(fail2, fail1);
 
   const culprit1 = s1.clsCulprits?.length ?? 0;
   const culprit2 = s2.clsCulprits?.length ?? 0;
   const clsCulpritDelta = culprit2 - culprit1;
 
   return { resolved, regressed, clsCulpritDelta };
+}
+
+const SCORE_KEYS = [
+  "performanceScore",
+  "accessibilityScore",
+  "bestPracticesScore",
+  "seoScore",
+] as const;
+
+const METRIC_KEYS = [
+  "lcpMs",
+  "cls",
+  "tbtMs",
+  "fcpMs",
+  "siMs",
+  "ttfbMs",
+] as const;
+
+function computeDeltaGroup<K extends keyof LighthouseRunRow>(
+  baseline: LighthouseRunRow,
+  comparison: LighthouseRunRow,
+  keys: readonly K[],
+): Record<K, number | null> {
+  const result = {} as Record<K, number | null>;
+  for (const key of keys) {
+    result[key] = computeNumericDelta(
+      baseline[key] as number | null,
+      comparison[key] as number | null,
+    );
+  }
+  return result;
 }
 
 /**
@@ -121,29 +154,8 @@ export function computeRunDeltas(
   const comparisonSummary = parseRunSummary(comparison.summaryJson);
 
   return {
-    scores: {
-      performanceScore: computeNumericDelta(
-        baseline.performanceScore,
-        comparison.performanceScore,
-      ),
-      accessibilityScore: computeNumericDelta(
-        baseline.accessibilityScore,
-        comparison.accessibilityScore,
-      ),
-      bestPracticesScore: computeNumericDelta(
-        baseline.bestPracticesScore,
-        comparison.bestPracticesScore,
-      ),
-      seoScore: computeNumericDelta(baseline.seoScore, comparison.seoScore),
-    },
-    metrics: {
-      lcpMs: computeNumericDelta(baseline.lcpMs, comparison.lcpMs),
-      cls: computeNumericDelta(baseline.cls, comparison.cls),
-      tbtMs: computeNumericDelta(baseline.tbtMs, comparison.tbtMs),
-      fcpMs: computeNumericDelta(baseline.fcpMs, comparison.fcpMs),
-      siMs: computeNumericDelta(baseline.siMs, comparison.siMs),
-      ttfbMs: computeNumericDelta(baseline.ttfbMs, comparison.ttfbMs),
-    },
+    scores: computeDeltaGroup(baseline, comparison, SCORE_KEYS),
+    metrics: computeDeltaGroup(baseline, comparison, METRIC_KEYS),
     insights: computeInsightDiff(baselineSummary, comparisonSummary),
   };
 }

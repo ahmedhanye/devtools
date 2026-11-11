@@ -7,7 +7,7 @@ import { resolveArtifactsDir } from "./config";
 import { InvalidAuditOptionsError } from "./errors";
 import { computeRepresentativeRun } from "./median";
 import { normalizeLhr } from "./normalizer";
-import { insertLighthouseRun } from "./repository";
+import { insertLighthouseRun } from "./runs";
 import {
   normalizeLighthouseAuditRequest,
   TriggerLighthouseAuditRequestSchema,
@@ -22,7 +22,7 @@ import type {
   RunLighthouseAuditOptions,
   SingleIterationResult,
 } from "./types";
-import type { WorkerIterationDependencies } from "./worker";
+import type { IterationDependencies } from "./iteration";
 
 /**
  * Executes a single isolated Lighthouse iteration directly in-process:
@@ -34,9 +34,9 @@ import type { WorkerIterationDependencies } from "./worker";
  */
 export async function executeIteration(
   params: ExecuteIterationParams,
-  deps?: WorkerIterationDependencies,
+  deps?: IterationDependencies,
 ): Promise<SingleIterationResult> {
-  const { executeIteration: exec } = await import("./worker");
+  const { executeIteration: exec } = await import("./iteration");
   return exec(params, deps);
 }
 
@@ -89,6 +89,16 @@ export interface LighthouseAuditExecutionResult {
   representativeRunIndex: number;
 }
 
+function compactDefined<T extends Record<string, unknown>>(obj: T): Partial<T> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      result[key] = value;
+    }
+  }
+  return result as Partial<T>;
+}
+
 /**
  * Validates and normalizes audit execution options via {@link TriggerLighthouseAuditRequestSchema},
  * throwing {@link InvalidAuditOptionsError} on schema violation.
@@ -100,22 +110,20 @@ function validateAuditOptions(options: ExecuteLighthouseBatchOptions): {
   runs: number;
   categories: LighthouseCategoryId[];
 } {
-  const rawCategories =
+  const categories =
     options.categories && options.categories.length > 0
       ? options.categories
       : undefined;
 
-  const parsed = TriggerLighthouseAuditRequestSchema.safeParse({
-    url: options.url,
-    ...(options.formFactor !== undefined
-      ? { formFactor: options.formFactor }
-      : {}),
-    ...(options.throttlingMethod !== undefined
-      ? { throttlingMethod: options.throttlingMethod }
-      : {}),
-    ...(options.runs !== undefined ? { runs: options.runs } : {}),
-    ...(rawCategories !== undefined ? { categories: rawCategories } : {}),
-  });
+  const parsed = TriggerLighthouseAuditRequestSchema.safeParse(
+    compactDefined({
+      url: options.url,
+      formFactor: options.formFactor,
+      throttlingMethod: options.throttlingMethod,
+      runs: options.runs,
+      categories,
+    }),
+  );
 
   if (!parsed.success) {
     const firstIssue = parsed.error.issues[0];
