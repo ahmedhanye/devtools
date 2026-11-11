@@ -16,6 +16,10 @@ export const API_ERROR_CODES = {
   NOT_FOUND: "NOT_FOUND",
   /** The request media format is unsupported (e.g. missing JSON content-type). */
   UNSUPPORTED_MEDIA_TYPE: "UNSUPPORTED_MEDIA_TYPE",
+  /** Request conflicts with the current state of the resource (e.g. concurrent audit or ambiguous run ID). */
+  CONFLICT: "CONFLICT",
+  /** Request fields or query parameters failed Zod schema validation. */
+  VALIDATION_ERROR: "VALIDATION_ERROR",
   /** An unhandled exception occurred while processing the request. */
   INTERNAL_ERROR: "INTERNAL_ERROR",
   /** A required subsystem or backing dependency is temporarily unavailable. */

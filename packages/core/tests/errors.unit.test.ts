@@ -19,7 +19,7 @@ describe("API_ERROR_CODES", () => {
 });
 
 describe("ApiErrorResponseSchema", () => {
-  it("accepts valid error response without details", () => {
+  it("accepts valid error response without details including CONFLICT and VALIDATION_ERROR codes", () => {
     const errorPayload: ApiErrorResponse = {
       error: {
         code: API_ERROR_CODES.BAD_REQUEST,
@@ -28,6 +28,25 @@ describe("ApiErrorResponseSchema", () => {
     };
     const parsed = ApiErrorResponseSchema.parse(errorPayload);
     expect(parsed).toEqual(errorPayload);
+
+    expect(
+      ApiErrorResponseSchema.parse({
+        error: {
+          code: API_ERROR_CODES.CONFLICT,
+          message: "Audit job already running",
+          details: { activeJobId: "job-1" },
+        },
+      }).error.code,
+    ).toBe("CONFLICT");
+
+    expect(
+      ApiErrorResponseSchema.parse({
+        error: {
+          code: API_ERROR_CODES.VALIDATION_ERROR,
+          message: "Invalid field",
+        },
+      }).error.code,
+    ).toBe("VALIDATION_ERROR");
   });
 
   it("accepts valid error response with details of any shape", () => {
