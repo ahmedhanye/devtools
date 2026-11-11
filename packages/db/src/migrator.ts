@@ -1,5 +1,10 @@
+import "./declarations.d.ts";
+import { createHash } from "node:crypto";
+import { sql } from "drizzle-orm";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
-import { join } from "node:path";
+import migration0000 from "../drizzle/0000_init.sql" with { type: "text" };
+import migration0001 from "../drizzle/0001_brave_lilandra.sql" with { type: "text" };
+import journal from "../drizzle/meta/_journal.json" with { type: "json" };
 import type { DevtoolsDb } from "./client";
 
 /**
@@ -8,7 +13,7 @@ import type { DevtoolsDb } from "./client";
 export interface MigrationOptions {
   /**
    * Custom directory path containing Drizzle SQL migration files and `meta/_journal.json`.
-   * @defaultValue `join(import.meta.dir, "../drizzle")`
+   * When omitted, uses the embedded SQL migrations bundled into `@devtools/db`.
    */
   migrationsFolder?: string;
   /**
@@ -16,6 +21,59 @@ export interface MigrationOptions {
    * @defaultValue `"__devtools_migrations"`
    */
   migrationsTable?: string;
+}
+
+interface EmbeddedMigration {
+  readonly statements: readonly string[];
+  readonly folderMillis: number;
+  readonly hash: string;
+}
+
+const EMBEDDED_SQL_BY_TAG: Record<string, string> = {
+  "0000_init": migration0000,
+  "0001_brave_lilandra": migration0001,
+};
+
+const EMBEDDED_MIGRATIONS: readonly EmbeddedMigration[] = journal.entries.map(
+  (entry) => {
+    const rawSql = EMBEDDED_SQL_BY_TAG[entry.tag] ?? "";
+    return {
+      statements: rawSql.split("--> statement-breakpoint"),
+      folderMillis: entry.when,
+      hash: createHash("sha256").update(rawSql).digest("hex"),
+    };
+  },
+);
+
+function runEmbeddedMigrations(db: DevtoolsDb, migrationsTable: string): void {
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS ${sql.identifier(migrationsTable)} (
+      id SERIAL PRIMARY KEY,
+      hash text NOT NULL,
+      created_at numeric
+    )
+  `);
+
+  const appliedRows = db.values<[unknown, unknown, number | string]>(
+    sql`SELECT id, hash, created_at FROM ${sql.identifier(migrationsTable)} ORDER BY created_at DESC LIMIT 1`,
+  );
+  const lastAppliedMillis = appliedRows[0] ? Number(appliedRows[0][2]) : null;
+
+  db.transaction((tx) => {
+    for (const migration of EMBEDDED_MIGRATIONS) {
+      if (
+        lastAppliedMillis === null ||
+        lastAppliedMillis < migration.folderMillis
+      ) {
+        for (const statement of migration.statements) {
+          tx.run(sql.raw(statement));
+        }
+        tx.run(
+          sql`INSERT INTO ${sql.identifier(migrationsTable)} ("hash", "created_at") VALUES(${migration.hash}, ${migration.folderMillis})`,
+        );
+      }
+    }
+  });
 }
 
 /**
@@ -28,11 +86,15 @@ export function runMigrations(
   db: DevtoolsDb,
   options?: MigrationOptions,
 ): void {
-  const migrationsFolder =
-    options?.migrationsFolder ?? join(import.meta.dir, "../drizzle");
+  const migrationsTable = options?.migrationsTable ?? "__devtools_migrations";
 
-  migrate(db, {
-    migrationsFolder,
-    migrationsTable: options?.migrationsTable ?? "__devtools_migrations",
-  });
+  if (options?.migrationsFolder) {
+    migrate(db, {
+      migrationsFolder: options.migrationsFolder,
+      migrationsTable,
+    });
+    return;
+  }
+
+  runEmbeddedMigrations(db, migrationsTable);
 }
