@@ -165,6 +165,9 @@ jobs:
       - name: Build frontend static assets
         run: bun --filter @devtools/frontend build
 
+      - name: Compile standalone CLI binary for compiled E2E checks
+        run: bun run build:bin
+
       - name: Execute test suites with coverage aggregation
         run: bun run test:coverage
 

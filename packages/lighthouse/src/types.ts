@@ -136,6 +136,7 @@ export interface ExecuteIterationParams {
   runIndex: number;
   totalRuns: number;
   onProgress?: (event: LighthouseProgressEvent) => void;
+  signal?: AbortSignal;
 }
 
 /**
@@ -171,6 +172,8 @@ export interface RunLighthouseAuditOptions {
   db?: DevtoolsDb;
   /** Optional progress callback invoked across audit stages and multi-run iterations. */
   onProgress?: (event: LighthouseProgressEvent) => void;
+  /** Optional cancellation signal aborting Chrome launch and multi-run iteration loops. */
+  signal?: AbortSignal;
   /** Optional injectable single-iteration executor seam for hermetic unit testing. */
   executor?: LighthouseIterationExecutor;
 }

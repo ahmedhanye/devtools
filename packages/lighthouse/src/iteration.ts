@@ -3,6 +3,7 @@ import {
   type BrowserResolution,
   type ResolveBrowserOptions,
 } from "@devtools/browser";
+import { throwIfAborted } from "./abort";
 import { resolveChromeSandboxDisabled } from "./config";
 import { WorkerExecutionError } from "./errors";
 import { ensureLighthouseVirtualFs } from "./virtual-fs";
@@ -161,6 +162,8 @@ export async function executeIteration(
   params: ExecuteIterationParams,
   deps: IterationDependencies = {},
 ): Promise<SingleIterationResult> {
+  throwIfAborted(params.signal);
+
   const resolveBrowser = deps.resolveBrowser ?? resolveBrowserPath;
   const launchChrome =
     deps.launchChrome ??
@@ -196,6 +199,7 @@ export async function executeIteration(
     chromePath: params.chromePath,
     env: params.env,
   });
+  throwIfAborted(params.signal);
 
   emitStage(
     "launching_browser",
@@ -220,11 +224,24 @@ export async function executeIteration(
     logLevel: "silent",
   });
 
+  if (params.signal?.aborted) {
+    await launchedChrome.kill();
+    throwIfAborted(params.signal);
+  }
+
   const cleanupSignal = async (): Promise<void> => {
     await launchedChrome.kill();
   };
+  const onAbort = (): void => {
+    try {
+      void Promise.resolve(launchedChrome.kill()).catch(() => {});
+    } catch {
+      // finally block retries kill()
+    }
+  };
   process.once("SIGTERM", cleanupSignal);
   process.once("SIGINT", cleanupSignal);
+  params.signal?.addEventListener("abort", onAbort, { once: true });
 
   try {
     emitStage(
@@ -249,6 +266,7 @@ export async function executeIteration(
       },
       config,
     );
+    throwIfAborted(params.signal);
 
     if (!runnerResult || !runnerResult.lhr) {
       throw new WorkerExecutionError(
@@ -269,7 +287,11 @@ export async function executeIteration(
       reportJson,
       reportHtml,
     };
+  } catch (err: unknown) {
+    throwIfAborted(params.signal);
+    throw err;
   } finally {
+    params.signal?.removeEventListener("abort", onAbort);
     process.off("SIGTERM", cleanupSignal);
     process.off("SIGINT", cleanupSignal);
     await launchedChrome.kill();
