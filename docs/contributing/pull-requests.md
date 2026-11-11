@@ -29,6 +29,7 @@ When inspecting pull requests:
    - If a PR deliverable is CI workflow automation, use `chore(ci): <description>`.
    - If a PR deliverable is internal scripts/tooling, use `chore(scripts): <description>`.
    - Avoid comma-separated or combined scopes (e.g., do not use `feat(frontend,site)`; choose the primary deliverable scope or stack into separate PRs).
+   - Keep pull request titles to 65 characters or fewer so GitHub's squash-merge ` (#NNN)` suffix still fits within the 72-character commit header limit on `main`.
    - Keep issue references (`#123`) out of the PR title; place them in the description body instead.
    - **Pre-validate title locally:** Verify the title against commitlint rules before submission:
      ```bash

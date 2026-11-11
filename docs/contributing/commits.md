@@ -45,7 +45,9 @@ Use single-noun lowercase scopes that map to physical repository directories. Ne
 
 ### Clean commit subjects
 
-Keep commit subjects focused on the change by placing issue references (such as `Closes #123`) in pull request descriptions. Commitlint rules reject issue references in commit subjects to keep git logs concise.
+Keep commit headers to 72 characters or fewer, including `<type>(<scope>): `. Commitlint rejects longer headers, and the `<type>(<scope>): ` prefix uses 10 to 22 characters, leaving 50 to 62 characters for the description.
+
+Place issue references such as `Closes #123` in pull request descriptions rather than commit subjects. Commitlint rejects issue references in commit subjects to keep git logs concise.
 
 Examples:
 
@@ -55,14 +57,30 @@ Examples:
 - `chore: bump root toolchain dependencies`
 - `chore(ci): update workflow actions`
 
+### Commit bodies
+
+Include a commit body, separated from the header by one blank line, for every multi-file commit and every non-trivial rule or logic change. Single-line headers without a body are acceptable only for self-explanatory single-file edits. Use the header to state what changed, and use the body to explain why you made the change and summarize key details for reviewers.
+
+Wrap body lines at 72 characters or fewer so logs read cleanly in terminals, and use hyphenated bullet points (`- ...`) when listing multiple changes instead of comma-separated prose. Commitlint rejects body lines longer than 100 characters, except lines containing URLs.
+
+Example:
+
+```text
+fix(cli): return exit code 2 on missing config path
+
+Prevent silent fallback to default settings when the user passes an
+explicit --config path that does not exist on disk.
+```
+
 ## Atomic commits
 
-Every branch commit represents a single logical domain change. Never mix documentation, internal rules, and runtime code into one commit. Never stage an entire dirty working tree with `git add .` or `git commit -a`.
+Every branch commit represents one logical change within a single domain. Directory and scope isolation is only the minimum requirement, so split unrelated tasks into separate commits even when every changed file shares the same scope. Never mix documentation, internal rules, and runtime code into one commit, and never stage an entire dirty working tree with `git add .` or `git commit -a`.
 
 ### Dividing changes
 
 When work touches multiple directories or concerns, divide changes into separate atomic commits before pushing:
 
+- **Single logical change.** Keep each commit focused on one task, even when every changed file shares the same scope. If a commit header needs "and" or a comma list to summarize unrelated updates, split those files into separate commits.
 - **Single-domain isolation.** Stage only files belonging to the mapped scope of the commit. For instance, stage `packages/core/**` under `feat(core): ...`, and stage related `docs/**` in a separate `docs(architecture): ...` commit.
 - **Strict test isolation.** All test files (`*.test.ts`, `*.test.tsx`, or files under `tests/`) must be committed separately under the `test` commit type (for example, `test(<scope>): ...`). Never mix test files into `feat`, `fix`, `chore`, or `refactor` commits.
 - **Revertability.** A change that may need to be rolled back on its own belongs in its own commit.
