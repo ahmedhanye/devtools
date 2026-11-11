@@ -1,15 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { API_ERROR_CODES } from "@devtools/core";
 import { createDb, runMigrations, type DevtoolsDb } from "@devtools/db";
-import type { LighthouseBatchExecutionResult } from "@devtools/lighthouse";
+import {
+  AuditCancelledError,
+  listLighthouseRuns,
+  type LighthouseBatchExecutionResult,
+} from "@devtools/lighthouse";
 import {
   AuditJobManager,
   type AuditJobStreamEvent,
 } from "../src/lighthouse/job-manager";
-import { AuditWorkerError } from "../src/lighthouse/worker-runner";
 
 function makeBatchResult(url: string): LighthouseBatchExecutionResult {
   return {
@@ -251,7 +254,9 @@ describe("AuditJobManager (Unit)", () => {
       resolveArtifactsDir: () => artifactsDir,
       auditRunner: async (params) => {
         if (mode === "worker-error") {
-          throw new AuditWorkerError("BROWSER_NOT_FOUND", "Chrome missing");
+          throw Object.assign(new Error("Chrome missing"), {
+            code: "BROWSER_NOT_FOUND",
+          });
         }
         return makeBatchResult(params.url);
       },
@@ -309,5 +314,121 @@ describe("AuditJobManager (Unit)", () => {
     expect(recovered.started).toBe(true);
     await new Promise((r) => setTimeout(r, 15));
     expect(manager.getActiveJob()).toBeNull();
+  });
+
+  it("shutdown aborts active runner signal, awaits settlement, skips persistence, notifies subscribers, and rejects new jobs", async () => {
+    let resolveDbCalls = 0;
+    let runnerSettled = false;
+    let capturedSignal: AbortSignal | undefined;
+    let notifyStarted!: () => void;
+    const startedPromise = new Promise<void>((resolve) => {
+      notifyStarted = resolve;
+    });
+    let releaseRunner!: () => void;
+    const runnerGate = new Promise<void>((resolve) => {
+      releaseRunner = resolve;
+    });
+
+    const manager = new AuditJobManager({
+      resolveDb: () => {
+        resolveDbCalls += 1;
+        return db;
+      },
+      resolveArtifactsDir: () => artifactsDir,
+      auditRunner: async (params) => {
+        capturedSignal = params.signal;
+        notifyStarted();
+        await runnerGate;
+        // Simulate a runner that ignores abort and returns a batch anyway
+        runnerSettled = true;
+        return makeBatchResult(params.url);
+      },
+    });
+
+    const started = manager.startJob(DEFAULT_REQUEST);
+    expect(started.started).toBe(true);
+    if (!started.started) return;
+
+    await startedPromise;
+    expect(capturedSignal).toBeDefined();
+    expect(capturedSignal?.aborted).toBe(false);
+
+    const events: AuditJobStreamEvent[] = [];
+    manager.subscribe(started.job.id, (ev) => events.push(ev));
+
+    let shutdownCompleted = false;
+    const shutdownPromise = (async () => {
+      await manager.shutdown();
+      shutdownCompleted = true;
+    })();
+
+    expect(capturedSignal?.aborted).toBe(true);
+    // Late progress events after abort/shutdown are ignored
+    expect(shutdownCompleted).toBe(false);
+
+    await new Promise((r) => setTimeout(r, 10));
+    expect(shutdownCompleted).toBe(false);
+    expect(runnerSettled).toBe(false);
+
+    releaseRunner();
+    await shutdownPromise;
+
+    expect(shutdownCompleted).toBe(true);
+    expect(runnerSettled).toBe(true);
+    expect(resolveDbCalls).toBe(0);
+    expect(listLighthouseRuns(db)).toHaveLength(0);
+    expect(readdirSync(artifactsDir)).toHaveLength(0);
+    expect(manager.getActiveJob()).toBeNull();
+    expect(manager.hasJob(started.job.id)).toBe(false);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.type).toBe("error");
+    if (events[0]?.type === "error") {
+      expect(events[0].data.error.code).toBe(
+        new AuditCancelledError("cancelled").code,
+      );
+    }
+
+    expect(() => manager.startJob(DEFAULT_REQUEST)).toThrow(/shutting down/i);
+
+    // Calling shutdown again when idle resolves cleanly
+    await expect(manager.shutdown()).resolves.toBeUndefined();
+  });
+
+  it("ignores late progress emissions once shutdown begins", async () => {
+    let emitLateProgress!: () => void;
+    let releaseRunner!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseRunner = resolve;
+    });
+
+    const manager = new AuditJobManager({
+      resolveDb: () => db,
+      resolveArtifactsDir: () => artifactsDir,
+      auditRunner: async (params) => {
+        emitLateProgress = () =>
+          params.onProgress?.({
+            stage: "analyzing",
+            message: "Late progress",
+          });
+        await gate;
+        throw new AuditCancelledError("aborted");
+      },
+    });
+
+    const started = manager.startJob(DEFAULT_REQUEST);
+    expect(started.started).toBe(true);
+    if (!started.started) return;
+
+    const events: AuditJobStreamEvent[] = [];
+    manager.subscribe(started.job.id, (ev) => events.push(ev));
+
+    const shutdownPromise = manager.shutdown();
+    emitLateProgress();
+    expect(events).toHaveLength(0);
+
+    releaseRunner();
+    await shutdownPromise;
+    expect(events).toHaveLength(1);
+    expect(events[0]?.type).toBe("error");
   });
 });

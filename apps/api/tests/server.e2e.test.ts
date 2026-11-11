@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
-import { resetDb } from "@devtools/db";
-import { ListLighthouseRunsResponseSchema } from "@devtools/lighthouse/schemas";
+import { HealthResponseSchema } from "@devtools/core";
+import { ActiveAuditJobResponseSchema } from "@devtools/lighthouse/schemas";
 import { startServer } from "../src/server";
 
 const serverPath = resolve(__dirname, "../src/server.ts");
@@ -54,13 +54,19 @@ describe("Standalone Server CLI Subprocess Lifecycle", () => {
       }
       expect(ready).toBe(true);
 
-      const runsRes = await fetch(
-        `http://127.0.0.1:${freePort}/api/lighthouse/runs`,
+      const healthRes = await fetch(`http://127.0.0.1:${freePort}/api/health`);
+      expect(healthRes.status).toBe(200);
+      expect(HealthResponseSchema.parse(await healthRes.json()).status).toBe(
+        "ok",
       );
-      expect(runsRes.status).toBe(200);
+
+      const activeRes = await fetch(
+        `http://127.0.0.1:${freePort}/api/lighthouse/audits/active`,
+      );
+      expect(activeRes.status).toBe(200);
       expect(
-        ListLighthouseRunsResponseSchema.parse(await runsRes.json()).total,
-      ).toBe(0);
+        ActiveAuditJobResponseSchema.parse(await activeRes.json()).active,
+      ).toBe(false);
 
       proc.kill("SIGTERM");
       const exitCode = await proc.exited;
@@ -105,7 +111,6 @@ describe("Standalone Server CLI Subprocess Lifecycle", () => {
       }
     } finally {
       await activeInstance.stop();
-      resetDb();
     }
   });
 

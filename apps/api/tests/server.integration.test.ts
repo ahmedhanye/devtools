@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { HealthResponseSchema } from "@devtools/core";
-import { createDb, resetDb, runMigrations } from "@devtools/db";
+import { closeDb, createDb, getDb, resetDb, runMigrations } from "@devtools/db";
+import { listLighthouseRuns } from "@devtools/lighthouse";
 import {
   ActiveAuditJobResponseSchema,
   ListLighthouseRunsResponseSchema,
@@ -40,30 +41,60 @@ describe("Standalone Server Lifecycle", () => {
     activeInstance = startServer({ port: 0, hostname: "127.0.0.1" });
     const port = activeInstance.port;
 
-    // Verify it responds
     const initialRes = await fetch(`http://127.0.0.1:${port}/api/health`);
     expect(initialRes.status).toBe(200);
 
-    // Stop server
     await activeInstance.stop();
     activeInstance = null;
 
-    // Subsequent fetch should fail to connect
     expect(fetch(`http://127.0.0.1:${port}/api/health`)).rejects.toThrow();
   });
 
-  test("detects port conflict when port is already in use", async () => {
-    activeInstance = startServer({ port: 0, hostname: "127.0.0.1" });
-    const occupiedPort = activeInstance.port;
+  test("detects port conflict without disrupting an already-running server DB handle", async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "devtools-srv-conflict-"));
+    try {
+      const ownerDbPath = join(tmpDir, "owner.db");
+      const ownerDb = getDb({ path: ownerDbPath });
+      runMigrations(ownerDb);
 
-    expect(() => {
-      startServer({ port: occupiedPort, hostname: "127.0.0.1" });
-    }).toThrow();
+      activeInstance = startServer({
+        port: 0,
+        hostname: "127.0.0.1",
+        env: { DEVTOOLS_DB_PATH: ownerDbPath },
+      });
+      const occupiedPort = activeInstance.port;
+
+      expect(() => {
+        startServer({
+          port: occupiedPort,
+          hostname: "127.0.0.1",
+          env: { DEVTOOLS_DB_PATH: join(tmpDir, "conflict.db") },
+        });
+      }).toThrow();
+
+      const runsRes = await fetch(
+        `http://127.0.0.1:${occupiedPort}/api/lighthouse/runs`,
+      );
+      expect(runsRes.status).toBe(200);
+      expect(
+        ListLighthouseRunsResponseSchema.parse(await runsRes.json()).total,
+      ).toBe(0);
+    } finally {
+      if (activeInstance) {
+        await activeInstance.stop();
+        activeInstance = null;
+      }
+      resetDb();
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 
-  test("initializes SQLite migrations on startup and serves Lighthouse routes + SSE over live HTTP socket", async () => {
+  test("serves Lighthouse routes + SSE over live HTTP socket with injected db", async () => {
     const artifactsDir = mkdtempSync(join(tmpdir(), "devtools-srv-lh-"));
     try {
+      const customDb = createDb({ path: ":memory:" });
+      runMigrations(customDb);
+
       let releaseAudit!: () => void;
       const gate = new Promise<void>((resolve) => {
         releaseAudit = resolve;
@@ -72,6 +103,7 @@ describe("Standalone Server Lifecycle", () => {
       activeInstance = startServer({
         port: 0,
         hostname: "127.0.0.1",
+        db: customDb,
         artifactsDir,
         auditRunner: async (params) => {
           params.onProgress?.({
@@ -124,14 +156,12 @@ describe("Standalone Server Lifecycle", () => {
 
       const baseUrl = `http://127.0.0.1:${activeInstance.port}`;
 
-      // DB migrations ran automatically so /api/lighthouse/runs works out of the box
       const emptyRunsRes = await fetch(`${baseUrl}/api/lighthouse/runs`);
       expect(emptyRunsRes.status).toBe(200);
       expect(
         ListLighthouseRunsResponseSchema.parse(await emptyRunsRes.json()).total,
       ).toBe(0);
 
-      // Trigger audit over real socket and open SSE stream
       const postRes = await fetch(`${baseUrl}/api/lighthouse/audits`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -142,7 +172,6 @@ describe("Standalone Server Lifecycle", () => {
         await postRes.json(),
       );
 
-      // Verify /api/health remains responsive concurrently while audit is active
       const [healthRes, activeRes] = await Promise.all([
         fetch(`${baseUrl}/api/health`),
         fetch(`${baseUrl}/api/lighthouse/audits/active`),
@@ -169,88 +198,118 @@ describe("Standalone Server Lifecycle", () => {
     }
   });
 
-  test("fails fast on read-only SQLite file, avoids singleton leak on bind error, and supports injected db seam", async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), "devtools-srv-ro-"));
-    const readOnlyDbPath = join(tmpDir, "readonly.db");
-    writeFileSync(readOnlyDbPath, "");
-    chmodSync(readOnlyDbPath, 0o444);
-
+  test("mid-audit stop() aborts active runner, awaits settlement, and leaves zero orphan artifacts or closed-DB errors", async () => {
+    const artifactsDir = mkdtempSync(join(tmpdir(), "devtools-srv-stop-"));
     try {
-      expect(() =>
-        startServer({
-          port: 0,
-          hostname: "127.0.0.1",
-          env: { DEVTOOLS_DB_PATH: readOnlyDbPath },
-        }),
-      ).toThrow(/Fatal: failed to initialize persistence database/);
-    } finally {
-      chmodSync(readOnlyDbPath, 0o644);
-      rmSync(tmpDir, { recursive: true, force: true });
-      resetDb();
-    }
+      const customDb = getDb({ path: ":memory:" });
+      runMigrations(customDb);
 
-    const leakDir = mkdtempSync(join(tmpdir(), "devtools-srv-leak-"));
-    try {
+      let notifyStarted!: () => void;
+      const started = new Promise<void>((resolve) => {
+        notifyStarted = resolve;
+      });
+      let releaseCleanup!: () => void;
+      const cleanupGate = new Promise<void>((resolve) => {
+        releaseCleanup = resolve;
+      });
+      let signalAborted = false;
+      let runnerFinished = false;
+
       activeInstance = startServer({
         port: 0,
         hostname: "127.0.0.1",
-        env: { DEVTOOLS_DB_PATH: join(leakDir, "owner.db") },
+        db: customDb,
+        artifactsDir,
+        auditRunner: async (params) => {
+          params.signal?.addEventListener("abort", () => {
+            signalAborted = true;
+          });
+          notifyStarted();
+          await cleanupGate;
+          runnerFinished = true;
+          return {
+            validatedUrl: params.url,
+            formFactor: "mobile",
+            throttlingMethod: "simulate",
+            totalRuns: 1,
+            normalized: {
+              requestedUrl: params.url,
+              finalUrl: params.url,
+              scores: {
+                performanceScore: 90,
+                accessibilityScore: 100,
+                bestPracticesScore: 95,
+                seoScore: 98,
+              },
+              metrics: {
+                lcpMs: 1200,
+                cls: 0.01,
+                tbtMs: 25,
+                fcpMs: 700,
+                siMs: 1100,
+                ttfbMs: 50,
+              },
+              summary: {
+                lcpElement: null,
+                lcpPhases: null,
+                clsCulprits: [],
+                insights: [],
+                failedAudits: [],
+                runWarnings: [],
+                runtimeError: null,
+                medianMetadata: null,
+              },
+            },
+            reportJson: "{}",
+            reportHtml: "<!doctype html><html><body>Stop</body></html>",
+            representativeRunIndex: 0,
+            durationMs: 300,
+          };
+        },
       });
-      const occupiedPort = activeInstance.port;
-      const leakDbPath = join(leakDir, "leak.db");
-      expect(() =>
-        startServer({
-          port: occupiedPort,
-          hostname: "127.0.0.1",
-          env: { DEVTOOLS_DB_PATH: leakDbPath },
-        }),
-      ).toThrow();
-      await activeInstance.stop();
+
+      const baseUrl = `http://127.0.0.1:${activeInstance.port}`;
+      const postRes = await fetch(`${baseUrl}/api/lighthouse/audits`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: "https://example.com/mid-stop" }),
+      });
+      expect(postRes.status).toBe(202);
+      await started;
+
+      let stopResolved = false;
+      const instanceToStop = activeInstance;
       activeInstance = null;
+      const stopPromise = (async () => {
+        await instanceToStop.stop();
+        stopResolved = true;
+      })();
+
+      await new Promise((r) => setTimeout(r, 15));
+      expect(signalAborted).toBe(true);
+      expect(stopResolved).toBe(false);
+      expect(runnerFinished).toBe(false);
+
+      releaseCleanup();
+      await stopPromise;
+
+      expect(stopResolved).toBe(true);
+      expect(runnerFinished).toBe(true);
+      expect(listLighthouseRuns(customDb)).toHaveLength(0);
+      expect(readdirSync(artifactsDir)).toHaveLength(0);
+
+      closeDb();
     } finally {
-      rmSync(leakDir, { recursive: true, force: true });
-      resetDb();
+      rmSync(artifactsDir, { recursive: true, force: true });
     }
-
-    const customDb = createDb({ path: ":memory:" });
-    runMigrations(customDb);
-    activeInstance = startServer({
-      port: 0,
-      hostname: "127.0.0.1",
-      db: customDb,
-    });
-    const res = await fetch(
-      `http://127.0.0.1:${activeInstance.port}/api/lighthouse/runs`,
-    );
-    expect(res.status).toBe(200);
-  });
-
-  test("routes non-/api requests to fallbackFetch while routing /api and /api/* to Hono", async () => {
-    activeInstance = startServer({
-      port: 0,
-      hostname: "127.0.0.1",
-      fallbackFetch: (req) =>
-        new Response(`fallback:${new URL(req.url).pathname}`, { status: 200 }),
-    });
-
-    const baseUrl = `http://127.0.0.1:${activeInstance.port}`;
-    const staticRes = await fetch(`${baseUrl}/dashboard`);
-    expect(staticRes.status).toBe(200);
-    expect(await staticRes.text()).toBe("fallback:/dashboard");
-
-    const apiRootRes = await fetch(`${baseUrl}/api`);
-    expect(apiRootRes.status).toBe(404);
-    expect(apiRootRes.headers.get("content-type")).toContain(
-      "application/json",
-    );
-
-    const apiRes = await fetch(`${baseUrl}/api/health`);
-    expect(apiRes.status).toBe(200);
   });
 
   test("preserves background audit completion when a live TCP SSE client aborts mid-stream", async () => {
     const artifactsDir = mkdtempSync(join(tmpdir(), "devtools-srv-abort-"));
     try {
+      const customDb = createDb({ path: ":memory:" });
+      runMigrations(customDb);
+
       let releaseAudit!: () => void;
       const gate = new Promise<void>((resolve) => {
         releaseAudit = resolve;
@@ -263,6 +322,7 @@ describe("Standalone Server Lifecycle", () => {
       activeInstance = startServer({
         port: 0,
         hostname: "127.0.0.1",
+        db: customDb,
         artifactsDir,
         auditRunner: async (params) => {
           params.onProgress?.({

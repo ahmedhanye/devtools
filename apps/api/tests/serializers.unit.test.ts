@@ -2,8 +2,11 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { API_ERROR_CODES } from "@devtools/core";
 import type { LighthouseRunRow } from "@devtools/db";
+import { InvalidAuditOptionsError } from "@devtools/lighthouse";
 import {
+  serializeAuditError,
   serializeLighthouseRunDetail,
   serializeLighthouseRunListItem,
 } from "../src/lighthouse/serializers";
@@ -82,5 +85,55 @@ describe("Lighthouse API Run DTO Serializers", () => {
     );
     expect(corruptedDetail.hasHtmlReport).toBe(false);
     expect(corruptedDetail.summary.insights).toEqual([]);
+  });
+
+  it("serializeAuditError preserves domain error codes and falls back to INTERNAL_ERROR", () => {
+    const domainErr = new InvalidAuditOptionsError("Invalid URL");
+    expect(serializeAuditError(domainErr)).toEqual({
+      code: "INVALID_AUDIT_OPTIONS",
+      message: "Invalid URL",
+    });
+
+    const genericErr = new Error("Something crashed");
+    expect(serializeAuditError(genericErr)).toEqual({
+      code: API_ERROR_CODES.INTERNAL_ERROR,
+      message: "Something crashed",
+    });
+
+    expect(serializeAuditError("plain failure")).toEqual({
+      code: API_ERROR_CODES.INTERNAL_ERROR,
+      message: "plain failure",
+    });
+
+    expect(serializeAuditError(new Error(""))).toEqual({
+      code: API_ERROR_CODES.INTERNAL_ERROR,
+      message: "Lighthouse audit execution failed",
+    });
+
+    const emptyCodeErr = Object.assign(new Error("Empty code err"), {
+      code: "",
+    });
+    expect(serializeAuditError(emptyCodeErr)).toEqual({
+      code: API_ERROR_CODES.INTERNAL_ERROR,
+      message: "Empty code err",
+    });
+
+    const numericCodeErr = Object.assign(new Error("Numeric code err"), {
+      code: 123,
+    });
+    expect(serializeAuditError(numericCodeErr)).toEqual({
+      code: API_ERROR_CODES.INTERNAL_ERROR,
+      message: "Numeric code err",
+    });
+
+    expect(serializeAuditError("")).toEqual({
+      code: API_ERROR_CODES.INTERNAL_ERROR,
+      message: "Lighthouse audit execution failed",
+    });
+
+    expect(serializeAuditError(null)).toEqual({
+      code: API_ERROR_CODES.INTERNAL_ERROR,
+      message: "Lighthouse audit execution failed",
+    });
   });
 });

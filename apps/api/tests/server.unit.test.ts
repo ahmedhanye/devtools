@@ -195,4 +195,42 @@ describe("runServerCli", () => {
       process.on = origOn;
     }
   });
+
+  test("awaits async instance.stop() before exiting and ignores duplicate shutdown signals", async () => {
+    let stopCalls = 0;
+    let releaseStop!: () => void;
+    const stopGate = new Promise<void>((resolve) => {
+      releaseStop = resolve;
+    });
+    const exitCodes: Array<number | undefined> = [];
+    const signals: Record<string, () => void> = {};
+
+    runServerCli({
+      resolveConfig: () => ({ host: "127.0.0.1", port: 4000 }),
+      start: () => ({
+        server: { hostname: "127.0.0.1" } as any,
+        port: 4000,
+        stop: async () => {
+          stopCalls += 1;
+          await stopGate;
+        },
+      }),
+      log: () => {},
+      exit: (code) => {
+        exitCodes.push(code);
+      },
+      onSignal: (evt, handler) => {
+        signals[evt] = handler;
+      },
+    });
+
+    signals.SIGINT?.();
+    signals.SIGTERM?.();
+    expect(stopCalls).toBe(1);
+    expect(exitCodes).toEqual([]);
+
+    releaseStop();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(exitCodes).toEqual([0]);
+  });
 });

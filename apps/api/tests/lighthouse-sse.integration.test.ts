@@ -15,7 +15,6 @@ import {
   TriggerLighthouseAuditResponseSchema,
 } from "@devtools/lighthouse/schemas";
 import { createApp } from "../src/index";
-import { AuditWorkerError } from "../src/lighthouse/worker-runner";
 
 interface ParsedSseFrame {
   event?: string;
@@ -296,10 +295,9 @@ describe("Lighthouse Audit Job SSE Streaming (/api/lighthouse/audits/:jobId/stre
       artifactsDir,
       jobRetentionMs: 5000,
       auditRunner: async () => {
-        throw new AuditWorkerError(
-          "BROWSER_NOT_FOUND",
-          "Chromium executable not found",
-        );
+        throw Object.assign(new Error("Chromium executable not found"), {
+          code: "BROWSER_NOT_FOUND",
+        });
       },
     });
 
@@ -374,5 +372,48 @@ describe("Lighthouse Audit Job SSE Streaming (/api/lighthouse/audits/:jobId/stre
 
     const activeRes = await app.request("/api/lighthouse/audits/active");
     expect((await activeRes.json()).active).toBe(false);
+  });
+
+  it("cancels active audit and settles stream cleanly when app.shutdown() is called", async () => {
+    const started = createDeferred<void>();
+    const gate = createDeferred<void>();
+    let signalAborted = false;
+
+    const app = createApp({
+      db,
+      artifactsDir,
+      auditRunner: async (params) => {
+        params.signal?.addEventListener("abort", () => {
+          signalAborted = true;
+          gate.reject(new Error("aborted"));
+        });
+        started.resolve();
+        await gate.promise;
+        return makeBatchResult(params.url);
+      },
+    });
+
+    const triggerRes = await app.request("/api/lighthouse/audits", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: "https://example.com/shutdown-sse" }),
+    });
+    expect(triggerRes.status).toBe(202);
+    const { job } = TriggerLighthouseAuditResponseSchema.parse(
+      await triggerRes.json(),
+    );
+
+    await started.promise;
+    const streamPromise = app.request(
+      `/api/lighthouse/audits/${job.id}/stream`,
+    );
+    await app.shutdown();
+    const streamRes = await streamPromise;
+
+    expect(signalAborted).toBe(true);
+    expect(streamRes.status).toBe(200);
+    const frames = parseSseFrames(await streamRes.text());
+    expect(frames.some((f) => f.event === "error")).toBe(true);
+    expect(listLighthouseRuns(db)).toHaveLength(0);
   });
 });

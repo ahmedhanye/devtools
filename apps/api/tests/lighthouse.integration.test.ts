@@ -26,7 +26,8 @@ import {
   ListLighthouseRunsResponseSchema,
   TriggerLighthouseAuditResponseSchema,
 } from "@devtools/lighthouse/schemas";
-import { createApp } from "../src/index";
+import { hc } from "hono/client";
+import { createApp, type AppType } from "../src/index";
 
 function createDeferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -616,6 +617,20 @@ describe("Lighthouse HTTP API Routes (/api/lighthouse)", () => {
         "/api/lighthouse/diff?baseline=abcdef&comparison=abcdef11",
       );
       expect(ambiguous.status).toBe(409);
+    });
+
+    it("preserves AppType Hono RPC inference alongside app.shutdown()", async () => {
+      const app = createApp({ db, artifactsDir });
+      const client = hc<AppType>("http://127.0.0.1", {
+        fetch: app.request as typeof fetch,
+      });
+      const [healthRes, runsRes] = await Promise.all([
+        client.api.health.$get(),
+        client.api.lighthouse.runs.$get(),
+      ]);
+      expect(healthRes.status).toBe(200);
+      expect(runsRes.status).toBe(200);
+      await app.shutdown();
     });
   });
 });
