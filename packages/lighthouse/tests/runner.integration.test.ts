@@ -872,4 +872,55 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
     expect(listLighthouseRuns(db)).toHaveLength(0);
     expect(readdirSync(tempArtifactsDir)).toHaveLength(0);
   });
+
+  it("executeIteration handles rejected and synchronously throwing kill() inside abort listener and retries in finally", async () => {
+    for (const failureMode of ["reject", "throw"] as const) {
+      const controller = new AbortController();
+      let killCalls = 0;
+      let rejectRun!: (err: Error) => void;
+
+      const promise = executeIteration(
+        {
+          url: "https://example.com",
+          formFactor: "mobile",
+          throttlingMethod: "simulate",
+          categories: ["performance"],
+          runIndex: 0,
+          totalRuns: 1,
+          signal: controller.signal,
+        },
+        {
+          resolveBrowser: async () => ({
+            executablePath: "/mock/chrome",
+            version: "Chrome 136",
+            source: "explicit",
+          }),
+          launchChrome: async () => ({
+            port: 44444,
+            kill: () => {
+              killCalls += 1;
+              if (killCalls === 1) {
+                if (failureMode === "reject") {
+                  return Promise.reject(new Error("async kill failed"));
+                }
+                throw new Error("sync kill failed");
+              }
+              return Promise.resolve();
+            },
+          }),
+          runLighthouse: async () =>
+            new Promise((_, rej) => {
+              rejectRun = rej;
+              queueMicrotask(() => {
+                controller.abort();
+                setTimeout(() => rejectRun(new Error("aborted")), 5);
+              });
+            }),
+        },
+      );
+
+      await expect(promise).rejects.toBeInstanceOf(AuditCancelledError);
+      expect(killCalls).toBe(2);
+    }
+  });
 });
