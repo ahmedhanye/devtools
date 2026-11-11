@@ -1,4 +1,6 @@
 import { describe, expect, it } from "bun:test";
+import { AuditCancelledError } from "../src";
+import { throwIfAborted } from "../src/abort";
 import {
   buildLighthouseConfig,
   DESKTOP_THROTTLING,
@@ -62,5 +64,31 @@ describe("Lighthouse Iteration Pure Configuration & Report Helpers", () => {
     expect(nonStringFallback.reportHtml).toBe(
       "<html>rendered-undefined</html>",
     );
+  });
+
+  it("AuditCancelledError and throwIfAborted enforce structured cancellation metadata", () => {
+    const reason = new Error("shutdown requested");
+    const err = new AuditCancelledError("Audit stopped", { cause: reason });
+    expect(err).toBeInstanceOf(Error);
+    expect(err.name).toBe("AuditCancelledError");
+    expect(err.code).toBe("AUDIT_CANCELLED");
+    expect(err.exitCode).toBe(1);
+    expect(err.cause).toBe(reason);
+
+    expect(() => throwIfAborted(undefined)).not.toThrow();
+
+    const controller = new AbortController();
+    expect(() => throwIfAborted(controller.signal)).not.toThrow();
+
+    controller.abort(reason);
+    let caught: unknown;
+    try {
+      throwIfAborted(controller.signal);
+    } catch (thrown) {
+      caught = thrown;
+    }
+    expect(caught).toBeInstanceOf(AuditCancelledError);
+    expect((caught as AuditCancelledError).code).toBe("AUDIT_CANCELLED");
+    expect((caught as AuditCancelledError).cause).toBe(reason);
   });
 });

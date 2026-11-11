@@ -4,7 +4,7 @@ import {
   ApiErrorResponseSchema,
   HealthResponseSchema,
 } from "@devtools/core";
-import { app, createApp, formatError, isLoopbackOrigin } from "../src/index";
+import { app, createApp } from "../src/index";
 
 describe("Health API Endpoint (/api/health) & Security Boundaries", () => {
   test("GET /api/health returns 200 and matches HealthResponseSchema", async () => {
@@ -110,8 +110,6 @@ describe("Health API Endpoint (/api/health) & Security Boundaries", () => {
       },
     });
     expect(resExternal.headers.get("access-control-allow-origin")).toBeNull();
-    expect(isLoopbackOrigin("not-a-valid-url")).toBe(false);
-    expect(isLoopbackOrigin("ftp://localhost:21")).toBe(false);
   });
 
   test("enforces CSRF and loopback origin verification on mutating verbs", async () => {
@@ -228,19 +226,76 @@ describe("Health API Endpoint (/api/health) & Security Boundaries", () => {
     expect(parsed.error.code).toBe(API_ERROR_CODES.FORBIDDEN);
     expect(parsed.error.message).toBe("Non-loopback Host header is forbidden");
 
-    // Accepts valid loopback Host header
+    // Accepts valid loopback Host headers including canonicalized IPv4-mapped IPv6
     const validRes = await app.request("/api/health", {
       headers: {
         Host: "127.0.0.1:4000",
       },
     });
     expect(validRes.status).toBe(200);
+
+    const mappedHostRes = await app.request("/api/health", {
+      headers: {
+        Host: "[::ffff:7f00:1]:4000",
+      },
+    });
+    expect(mappedHostRes.status).toBe(200);
   });
 
-  test("formatError includes optional details when provided", () => {
-    const err = formatError(API_ERROR_CODES.BAD_REQUEST, "Invalid field", {
-      field: "port",
+  test("enforces cross-site, Origin, and server.requestIP loopback checks on GET routes", async () => {
+    const crossSiteGet = await app.request("/api/health", {
+      headers: { "Sec-Fetch-Site": "cross-site" },
     });
-    expect(err.error.details).toEqual({ field: "port" });
+    expect(crossSiteGet.status).toBe(403);
+    expect(
+      ApiErrorResponseSchema.parse(await crossSiteGet.json()).error.code,
+    ).toBe(API_ERROR_CODES.FORBIDDEN);
+
+    const uppercaseCrossSite = await app.request("/api/health", {
+      headers: { "Sec-Fetch-Site": " CROSS-SITE " },
+    });
+    expect(uppercaseCrossSite.status).toBe(403);
+
+    const badOriginGet = await app.request("/api/health", {
+      headers: { Origin: "https://attacker.example.com" },
+    });
+    expect(badOriginGet.status).toBe(403);
+
+    const opaqueOriginGet = await app.request("/api/health", {
+      headers: { Origin: "null" },
+    });
+    expect(opaqueOriginGet.status).toBe(403);
+
+    const remoteIpRes = await app.fetch(
+      new Request("http://127.0.0.1:4000/api/health"),
+      {
+        server: {
+          hostname: "127.0.0.1",
+          requestIP: () => ({
+            address: "192.168.1.42",
+            family: "IPv4",
+            port: 51234,
+          }),
+        },
+      } as never,
+    );
+    expect(remoteIpRes.status).toBe(403);
+    expect(
+      ApiErrorResponseSchema.parse(await remoteIpRes.json()).error.code,
+    ).toBe(API_ERROR_CODES.FORBIDDEN);
+
+    const mappedLoopbackRes = await app.fetch(
+      new Request("http://127.0.0.1:4000/api/health"),
+      {
+        server: {
+          requestIP: () => ({
+            address: "::ffff:127.0.0.1",
+            family: "IPv6",
+            port: 51235,
+          }),
+        },
+      } as never,
+    );
+    expect(mappedLoopbackRes.status).toBe(200);
   });
 });

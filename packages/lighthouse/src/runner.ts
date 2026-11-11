@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { EnvMap } from "@devtools/core";
 import { getDb, type DevtoolsDb, type LighthouseRunRow } from "@devtools/db";
+import { throwIfAborted } from "./abort";
 import { resolveArtifactsDir } from "./config";
 import { InvalidAuditOptionsError } from "./errors";
 import { computeRepresentativeRun } from "./median";
@@ -149,6 +150,7 @@ export async function executeLighthouseBatch(
   options: ExecuteLighthouseBatchOptions,
 ): Promise<LighthouseBatchExecutionResult> {
   const startTime = performance.now();
+  throwIfAborted(options.signal);
   const validated = validateAuditOptions(options);
   const executor = options.executor ?? executeIteration;
 
@@ -165,7 +167,9 @@ export async function executeLighthouseBatch(
       runIndex: i,
       totalRuns: validated.runs,
       onProgress: options.onProgress,
+      signal: options.signal,
     });
+    throwIfAborted(options.signal);
     iterations.push(iterationResult);
   }
 

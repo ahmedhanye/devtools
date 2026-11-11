@@ -126,3 +126,24 @@ export class AmbiguousRunIdError extends Error {
     this.name = "AmbiguousRunIdError";
   }
 }
+
+/**
+ * Error thrown when an active Lighthouse audit is cancelled via an `AbortSignal`.
+ */
+export class AuditCancelledError extends Error {
+  /** Suggested CLI exit code (`1`) when this error terminates a command. */
+  readonly exitCode = 1;
+  /** Machine-readable error code (`"AUDIT_CANCELLED"`). */
+  readonly code = "AUDIT_CANCELLED" as const;
+
+  /**
+   * Creates a new {@link AuditCancelledError}.
+   *
+   * @param message - Diagnostic explanation of the cancellation.
+   * @param options - Optional native error options including cancellation `cause`.
+   */
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "AuditCancelledError";
+  }
+}

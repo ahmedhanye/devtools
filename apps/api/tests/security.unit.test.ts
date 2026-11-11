@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
   formatError,
+  isLoopbackAddress,
   isLoopbackHostHeader,
   isLoopbackOrigin,
+  isTrustedLoopbackPeer,
 } from "../src/middleware/security";
 
 describe("Security Middleware Helpers (Unit)", () => {
@@ -26,10 +28,16 @@ describe("Security Middleware Helpers (Unit)", () => {
       expect(isLoopbackHostHeader("[::1")).toBe(false);
       expect(isLoopbackHostHeader("[::1]extra")).toBe(false);
       expect(isLoopbackHostHeader("[2001:db8::1]:4000")).toBe(false);
+      expect(isLoopbackHostHeader("[::ffff:127.0.0.1]:4000")).toBe(true);
+      expect(isLoopbackHostHeader("[::FFFF:127.0.0.1]:4000")).toBe(true);
+      expect(isLoopbackHostHeader("[::ffff:7f00:1]:4000")).toBe(true);
+      expect(isLoopbackHostHeader("[::ffff:127.0.0.1]")).toBe(true);
     });
 
     test("validates IPv4 and localhost hostnames with and without ports", () => {
       expect(isLoopbackHostHeader("localhost:4000")).toBe(true);
+      expect(isLoopbackHostHeader("LOCALHOST:4000")).toBe(true);
+      expect(isLoopbackHostHeader(" 127.0.0.1:4000 ")).toBe(true);
       expect(isLoopbackHostHeader("localhost")).toBe(true);
       expect(isLoopbackHostHeader("localhost:1")).toBe(true);
       expect(isLoopbackHostHeader("localhost:65535")).toBe(true);
@@ -43,6 +51,9 @@ describe("Security Middleware Helpers (Unit)", () => {
       expect(isLoopbackHostHeader("127.0.0.1:0")).toBe(false);
       expect(isLoopbackHostHeader("127.0.0.1:65536")).toBe(false);
       expect(isLoopbackHostHeader("::1")).toBe(true);
+      expect(isLoopbackHostHeader("::ffff:127.0.0.1")).toBe(true);
+      expect(isLoopbackHostHeader("::FFFF:127.0.0.1")).toBe(true);
+      expect(isLoopbackHostHeader("::ffff:7f00:1")).toBe(true);
       expect(isLoopbackHostHeader("::1:4000")).toBe(false);
       expect(isLoopbackHostHeader("evil.example.com:4000")).toBe(false);
       expect(isLoopbackHostHeader("192.168.1.100")).toBe(false);
@@ -54,13 +65,82 @@ describe("Security Middleware Helpers (Unit)", () => {
       expect(isLoopbackOrigin("http://localhost:4000")).toBe(true);
       expect(isLoopbackOrigin("http://127.0.0.1:3000")).toBe(true);
       expect(isLoopbackOrigin("http://[::1]:5000")).toBe(true);
+      expect(isLoopbackOrigin("http://[::ffff:127.0.0.1]:4000")).toBe(true);
       expect(isLoopbackOrigin("https://localhost:4000")).toBe(true);
     });
 
     test("rejects non-loopback origins and malformed URLs", () => {
       expect(isLoopbackOrigin("http://evil.com")).toBe(false);
       expect(isLoopbackOrigin("ftp://localhost")).toBe(false);
+      expect(isLoopbackOrigin("null")).toBe(false);
       expect(isLoopbackOrigin("not-a-url")).toBe(false);
+    });
+  });
+
+  describe("isLoopbackAddress", () => {
+    test("recognizes IPv4, IPv6, and IPv4-mapped IPv6 loopback peer addresses", () => {
+      expect(isLoopbackAddress("127.0.0.1")).toBe(true);
+      expect(isLoopbackAddress(" 127.0.0.1 ")).toBe(true);
+      expect(isLoopbackAddress("::1")).toBe(true);
+      expect(isLoopbackAddress("::ffff:127.0.0.1")).toBe(true);
+      expect(isLoopbackAddress("::FFFF:127.0.0.1")).toBe(true);
+      expect(isLoopbackAddress("::ffff:7f00:1")).toBe(true);
+      expect(isLoopbackAddress("::FFFF:7F00:1")).toBe(true);
+      expect(isLoopbackAddress("192.168.1.50")).toBe(false);
+      expect(isLoopbackAddress("::ffff:192.168.1.50")).toBe(false);
+      expect(isLoopbackAddress("")).toBe(false);
+    });
+  });
+
+  describe("isTrustedLoopbackPeer", () => {
+    test("allows loopback peers and local host interface peers while rejecting remote addresses", () => {
+      expect(isTrustedLoopbackPeer("127.0.0.1")).toBe(true);
+      expect(isTrustedLoopbackPeer("203.0.113.99")).toBe(false);
+      expect(isTrustedLoopbackPeer("192.168.1.50", {})).toBe(false);
+      expect(
+        isTrustedLoopbackPeer(" 172.17.0.1 ", {
+          eth0: [
+            {
+              address: "172.17.0.1",
+              netmask: "255.255.255.0",
+              family: "IPv4",
+              mac: "00:00:00:00:00:00",
+              internal: false,
+              cidr: "172.17.0.1/24",
+            },
+          ],
+          empty: undefined,
+        }),
+      ).toBe(true);
+      expect(
+        isTrustedLoopbackPeer("FE80::1", {
+          eth0: [
+            {
+              address: "fe80::1",
+              netmask: "ffff:ffff:ffff:ffff::",
+              family: "IPv6",
+              mac: "00:00:00:00:00:00",
+              internal: false,
+              cidr: "fe80::1/64",
+              scopeid: 2,
+            },
+          ],
+        }),
+      ).toBe(true);
+      expect(
+        isTrustedLoopbackPeer("203.0.113.99", {
+          eth0: [
+            {
+              address: "172.17.0.1",
+              netmask: "255.255.255.0",
+              family: "IPv4",
+              mac: "00:00:00:00:00:00",
+              internal: false,
+              cidr: "172.17.0.1/24",
+            },
+          ],
+        }),
+      ).toBe(false);
     });
   });
 

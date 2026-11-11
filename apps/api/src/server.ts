@@ -3,9 +3,12 @@ import {
   RuntimeConfigSchema,
   parsePortFromEnv,
 } from "@devtools/core";
+import type { DevtoolsDb } from "@devtools/db";
 import type { Server } from "bun";
 import type { Hono } from "hono";
-import { createApp } from "./index";
+import { createApp } from "./app";
+import type { LighthouseAuditRunner } from "./lighthouse/job-manager";
+import type { ApiBindings } from "./middleware/security";
 
 /**
  * Options for configuring and booting the standalone `@devtools/api` HTTP server.
@@ -23,7 +26,13 @@ export interface StartServerOptions {
    * Optional pre-configured Hono application instance.
    * Defaults to creating an isolated instance via {@link createApp}.
    */
-  app?: Hono;
+  app?: Hono | Hono<{ Bindings: ApiBindings }> | ReturnType<typeof createApp>;
+  /** Optional injected SQLite client forwarded to {@link createApp}. */
+  db?: DevtoolsDb;
+  /** Optional explicit Lighthouse artifacts root directory override. */
+  artifactsDir?: string;
+  /** Optional audit runner seam passed through to {@link createApp}. */
+  auditRunner?: LighthouseAuditRunner;
 }
 
 /**
@@ -34,7 +43,7 @@ export interface ServerInstance {
   server: Server<unknown>;
   /** Bound TCP port number. */
   port: number;
-  /** Stops the HTTP listener and closes active connections. */
+  /** Stops the HTTP listener and cancels any active audit jobs before resolving. */
   stop: () => Promise<void> | void;
 }
 
@@ -66,23 +75,42 @@ export function resolveServerConfig(options: StartServerOptions = {}): {
 }
 
 /**
- * Boots the standalone Bun HTTP server hosting the `@devtools/api` Hono application.
+ * Boots the standalone Bun HTTP server hosting the `@devtools/api` Hono application
+ * and forwards `{ server }` bindings for socket peer verification and SSE timeout control.
  *
- * @param options - Optional port, host, and environment seam overrides.
+ * @param options - Optional port, host, database, and test seams.
  * @returns Active {@link ServerInstance} handle.
+ * @throws {@link Error} When configuration validation or port binding fails.
  */
 export function startServer(options: StartServerOptions = {}): ServerInstance {
   const config = resolveServerConfig(options);
-  const activeApp = options.app ?? createApp();
+
+  const activeApp =
+    options.app ??
+    createApp({
+      basePath: "/api",
+      db: options.db,
+      env: options.env,
+      artifactsDir: options.artifactsDir,
+      auditRunner: options.auditRunner,
+    });
 
   const server = Bun.serve({
-    fetch: activeApp.fetch,
     port: config.port,
     hostname: config.host,
+    fetch(req, bunServer) {
+      return activeApp.fetch(req, { server: bunServer });
+    },
   });
 
-  const stop = () => {
-    server.stop(true);
+  const stop = async () => {
+    const shutdownApp = (activeApp as { shutdown?: () => Promise<void> })
+      .shutdown;
+    try {
+      await server.stop(true);
+    } finally {
+      await shutdownApp?.();
+    }
   };
 
   return {
@@ -108,6 +136,44 @@ export interface ServerCliDeps {
   exit?: (code?: number) => void;
   /** Override signal listener registration. */
   onSignal?: (event: "SIGINT" | "SIGTERM", handler: () => void) => void;
+}
+
+interface StartupErrorShape {
+  issues?: Array<{ message?: string }>;
+  code?: string;
+  message?: unknown;
+}
+
+function formatConfigValidationError(record: StartupErrorShape): string | null {
+  if (!Array.isArray(record.issues)) {
+    return null;
+  }
+  const messages = record.issues
+    .map((i) => i.message)
+    .filter(Boolean)
+    .join(", ");
+  return `Invalid server configuration: ${messages}`;
+}
+
+function formatServerStartupError(
+  err: unknown,
+  port?: number,
+): { message: string; raw?: unknown } {
+  const record =
+    err && typeof err === "object" ? (err as StartupErrorShape) : {};
+  const configError = formatConfigValidationError(record);
+  if (configError) {
+    return { message: configError };
+  }
+  if (
+    record.code === "EADDRINUSE" ||
+    String(record.message ?? "").includes("in use")
+  ) {
+    return {
+      message: `Port ${port ?? "unknown"} is already in use. Set PORT=<port> to use an alternate port.`,
+    };
+  }
+  return { message: "Failed to start server:", raw: err };
 }
 
 /**
@@ -136,10 +202,35 @@ export function runServerCli(deps?: ServerCliDeps): ServerInstance | undefined {
       `Server listening on http://${instance.server.hostname}:${instance.port}`,
     );
 
+    let shuttingDown = false;
+    const handleShutdownError = (err: unknown): void => {
+      error("Failed to shut down server cleanly:", err);
+      exit(1);
+    };
     const shutdown = () => {
+      if (shuttingDown) return;
+      shuttingDown = true;
       log("Shutting down server...");
-      instance.stop();
-      exit(0);
+      try {
+        const stopResult = instance.stop();
+        if (
+          stopResult &&
+          typeof (stopResult as Promise<void>).then === "function"
+        ) {
+          void (async () => {
+            try {
+              await stopResult;
+              exit(0);
+            } catch (err: unknown) {
+              handleShutdownError(err);
+            }
+          })();
+          return;
+        }
+        exit(0);
+      } catch (err: unknown) {
+        handleShutdownError(err);
+      }
     };
 
     onSignal("SIGINT", shutdown);
@@ -147,29 +238,11 @@ export function runServerCli(deps?: ServerCliDeps): ServerInstance | undefined {
 
     return instance;
   } catch (err: unknown) {
-    if (
-      err &&
-      typeof err === "object" &&
-      "issues" in err &&
-      Array.isArray((err as { issues: unknown }).issues)
-    ) {
-      const messages = (err as { issues: Array<{ message?: string }> }).issues
-        .map((i) => i.message)
-        .filter(Boolean)
-        .join(", ");
-      error(`Invalid server configuration: ${messages}`);
-    } else if (
-      err &&
-      typeof err === "object" &&
-      (("code" in err && (err as { code?: string }).code === "EADDRINUSE") ||
-        ("message" in err &&
-          String((err as { message?: string }).message).includes("in use")))
-    ) {
-      error(
-        `Port ${config?.port ?? "unknown"} is already in use. Set PORT=<port> to use an alternate port.`,
-      );
+    const formatted = formatServerStartupError(err, config?.port);
+    if ("raw" in formatted) {
+      error(formatted.message, formatted.raw);
     } else {
-      error("Failed to start server:", err);
+      error(formatted.message);
     }
     exit(1);
     return undefined;
