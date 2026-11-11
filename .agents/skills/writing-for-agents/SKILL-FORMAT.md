@@ -1,6 +1,6 @@
-# Skill mechanics
+# Skill format
 
-Skill-specific rules for [`writing-for-agents`](SKILL.md), covering `SKILL.md` frontmatter, invocation modes, skill splitting, bundled scripts, and two-tier lockfile management.
+Skill-specific rules for [`writing-for-agents`](SKILL.md), covering `SKILL.md` frontmatter, invocation modes, skill splitting, and bundled scripts.
 
 ## Frontmatter requirements
 
@@ -30,8 +30,3 @@ Place deterministic validation, lookup, or transformation logic in `.agents/skil
 - **Executable permissions.** Include a shebang such as `#!/usr/bin/env bun` or `#!/usr/bin/env bash` and mark the file executable with `chmod +x`.
 - **Non-interactive CLI.** Accept explicit file or flag arguments and exit `0` on success or non-zero with actionable error messages on failure. Never prompt for interactive TTY input.
 - **Documented invocation.** Show the exact command line and exit-code completion criterion inside `SKILL.md`.
-
-## Two-tier skill management
-
-- **Vendor skills in `skills-lock.json`.** Skills declared in root `skills-lock.json` are read-only upstream assets updated with `bunx skills`. [`scripts/verify-agents-governance/verify-agents-governance.ts`](../../../scripts/verify-agents-governance/verify-agents-governance.ts) exempts vendor skills from directory-name mismatch, machine-path, local link, and unslop checks.
-- **Customized skills in `.agents/skills-override.json`.** Before editing a vendor skill, eject it by removing its entry from `skills-lock.json` and registering its upstream `source`, `path`, and `commit` SHA in `.agents/skills-override.json`. Ejected skills must pass all governance checks and reconcile upstream changes with [`/update-custom-skills`](../update-custom-skills/SKILL.md).

@@ -7,7 +7,7 @@ description: Write and maintain agent instructions, rules, and skills. Use when 
 
 Reference and workflow for authoring any document an agent reads in this repository, including `.agents/AGENTS.md`, `.agents/rules/*.md`, `.agents/skills/<name>/SKILL.md`, and linked reference files.
 
-Apply [`/unslop`](../unslop/SKILL.md) to all prose for sentence-level clarity and formatting rules. When creating or editing a skill, also read [`SKILL-MECHANICS.md`](SKILL-MECHANICS.md) for frontmatter, invocation modes, bundled scripts, and lockfile management.
+Apply [`/unslop`](../unslop/SKILL.md) to all prose for sentence-level clarity and formatting rules. When creating or editing a skill, also read [`SKILL-FORMAT.md`](SKILL-FORMAT.md) for frontmatter, invocation modes, and bundled scripts.
 
 ## Budgets and three-tier progressive disclosure
 
@@ -59,19 +59,3 @@ End every procedural step or workflow with a checkable, exhaustive **completion 
 - **No-op and stale line removal.** Delete instructions that the model already obeys by default or that reference obsolete files and workflows.
 - **Repository-relative paths.** Reference tracked files with repository-relative paths. Never commit absolute filesystem paths or `file://` URIs in `.agents/` documents.
 - **Agent-agnostic instructions.** Author instructions to be general across any coding agent platform. Do not hardcode harness-specific tool names (such as `invoke_subagent`, `write_file`, `ArtifactMetadata`, or `Call the Skill tool`). Keep session artifacts native to the platform.
-
-## Verification workflow
-
-Run these steps whenever creating or modifying `.agents/AGENTS.md`, `.agents/rules/*.md`, `.agents/skills/**/*.md`, or `skills-lock.json`.
-
-1. **Run governance verification.** Execute the bundled validator to check YAML frontmatter, code fences, path portability, local Markdown links, and unslop punctuation rules.
-   ```bash
-   bun scripts/verify-agents-governance/verify-agents-governance.ts
-   ```
-   Pass specific file paths during iterative edits, or run `bun run lint:agents` to validate all `.agents/` Markdown files.
-2. **Check formatting.** Verify Markdown and JSON formatting with Prettier.
-   ```bash
-   bunx prettier --check .agents/
-   ```
-
-Completion criterion: All modified `.agents/` files pass unslop prose review, `bun scripts/verify-agents-governance/verify-agents-governance.ts` exits `0`, and `bunx prettier --check .agents/` exits `0`.
