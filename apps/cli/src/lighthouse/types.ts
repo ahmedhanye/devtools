@@ -161,6 +161,7 @@ export interface LighthouseOpenCommandDeps {
   error?: (chunk: string) => void;
   exit?: (code?: number) => void;
   isStderrTTY?: boolean;
+  isStdoutTTY?: boolean;
   isTTY?: boolean;
   spawnOpener?: (path: string) => void | Promise<void>;
   fileExists?: (path: string) => boolean;

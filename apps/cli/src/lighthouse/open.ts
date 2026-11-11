@@ -99,7 +99,7 @@ export async function runLighthouseOpenCommand(
   deps?: LighthouseOpenCommandDeps,
 ): Promise<void> {
   const ctx = createLighthouseCliContext(options, deps);
-  const { pc, log, error, exit } = ctx;
+  const { pc, pcStdout, log, error, exit } = ctx;
   const fileExists = deps?.fileExists ?? fs.existsSync;
   const isHeadless = deps?.isHeadless ?? defaultIsHeadless;
   const spawnOpener = deps?.spawnOpener ?? defaultSpawnOpener;
@@ -141,7 +141,9 @@ export async function runLighthouseOpenCommand(
   try {
     await spawnOpener(run.htmlReportPath);
     log(
-      pc.green(`Opening Lighthouse HTML report at:\n  ${run.htmlReportPath}`),
+      pcStdout.green(
+        `Opening Lighthouse HTML report at:\n  ${run.htmlReportPath}`,
+      ),
     );
   } catch (err: unknown) {
     const cause = err instanceof Error ? err : undefined;

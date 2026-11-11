@@ -3,7 +3,7 @@ import type { DevtoolsDb } from "@devtools/db";
 import { getColors } from "../colors";
 
 /**
- * Shared dependency injection seams across Lighthouse CLI commands (`audit`, `diff`, `list`).
+ * Shared dependency injection seams across Lighthouse CLI commands (`audit`, `diff`, `list`, `open`).
  */
 export interface LighthouseCliContextDeps {
   getDb?: (options?: { env?: EnvMap }) => DevtoolsDb;
@@ -12,6 +12,7 @@ export interface LighthouseCliContextDeps {
   writeStderr?: (chunk: string) => void;
   exit?: (code?: number) => void;
   isStderrTTY?: boolean;
+  isStdoutTTY?: boolean;
   isTTY?: boolean;
 }
 
@@ -20,6 +21,7 @@ export interface LighthouseCliContextDeps {
  */
 export interface LighthouseCliContext {
   pc: ReturnType<typeof getColors>;
+  pcStdout: ReturnType<typeof getColors>;
   log: (chunk: string) => void;
   error: (chunk: string) => void;
   writeStderr: (chunk: string) => void;
@@ -41,9 +43,15 @@ export function createLighthouseCliContext(
 ): LighthouseCliContext {
   const isStderrTTY =
     deps?.isStderrTTY ?? deps?.isTTY ?? Boolean(process.stderr.isTTY);
+  const isStdoutTTY =
+    deps?.isStdoutTTY ?? deps?.isTTY ?? Boolean(process.stdout.isTTY);
   const pc = getColors({
     env: options.env as NodeJS.ProcessEnv,
     isTTY: isStderrTTY,
+  });
+  const pcStdout = getColors({
+    env: options.env as NodeJS.ProcessEnv,
+    isTTY: isStdoutTTY,
   });
   const exit = (code = 1) => {
     if (deps?.exit) {
@@ -55,6 +63,7 @@ export function createLighthouseCliContext(
 
   return {
     pc,
+    pcStdout,
     log: deps?.log ?? console.log,
     error: deps?.error ?? console.error,
     writeStderr:
