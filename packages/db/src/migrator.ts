@@ -23,9 +23,25 @@ export interface MigrationOptions {
   migrationsTable?: string;
 }
 
-interface EmbeddedMigration {
+/**
+ * Minimal Drizzle journal entry metadata required to resolve an embedded SQL migration.
+ */
+export interface EmbeddedJournalEntry {
+  /** Migration file tag matching the key in the bundled SQL lookup map. */
+  readonly tag: string;
+  /** Epoch millisecond timestamp recorded in Drizzle's `_journal.json`. */
+  readonly when: number;
+}
+
+/**
+ * Parsed embedded migration ready for transactional execution by {@link runMigrations}.
+ */
+export interface EmbeddedMigration {
+  /** Individual SQL statements split on Drizzle's statement breakpoint marker. */
   readonly statements: readonly string[];
+  /** Epoch millisecond timestamp matching Drizzle's `created_at` migration watermark. */
   readonly folderMillis: number;
+  /** SHA-256 hex digest of the raw SQL file matching Drizzle's folder migrator. */
   readonly hash: string;
 }
 
@@ -34,16 +50,37 @@ const EMBEDDED_SQL_BY_TAG: Record<string, string> = {
   "0001_brave_lilandra": migration0001,
 };
 
-const EMBEDDED_MIGRATIONS: readonly EmbeddedMigration[] = journal.entries.map(
-  (entry) => {
-    const rawSql = EMBEDDED_SQL_BY_TAG[entry.tag] ?? "";
+/**
+ * Builds ordered embedded migration descriptors from Drizzle journal entries and bundled SQL strings.
+ *
+ * @param entries - Journal entries defining migration tags and timestamps.
+ * @param sqlByTag - Map from migration tag to raw SQL file contents.
+ * @returns Ordered array of {@link EmbeddedMigration} descriptors.
+ * @throws {@link Error} When any journal entry tag is absent from `sqlByTag`.
+ */
+export function buildEmbeddedMigrations(
+  entries: readonly EmbeddedJournalEntry[],
+  sqlByTag: Readonly<Record<string, string>>,
+): readonly EmbeddedMigration[] {
+  return entries.map((entry) => {
+    const rawSql = Object.hasOwn(sqlByTag, entry.tag)
+      ? sqlByTag[entry.tag]
+      : undefined;
+    if (rawSql === undefined) {
+      throw new Error(`Missing embedded migration SQL for ${entry.tag}`);
+    }
     return {
-      statements: rawSql.split("--> statement-breakpoint"),
+      statements: rawSql
+        .split("--> statement-breakpoint")
+        .filter((statement) => statement.trim().length > 0),
       folderMillis: entry.when,
       hash: createHash("sha256").update(rawSql).digest("hex"),
     };
-  },
-);
+  });
+}
+
+const EMBEDDED_MIGRATIONS: readonly EmbeddedMigration[] =
+  buildEmbeddedMigrations(journal.entries, EMBEDDED_SQL_BY_TAG);
 
 function runEmbeddedMigrations(db: DevtoolsDb, migrationsTable: string): void {
   db.run(sql`
@@ -81,6 +118,7 @@ function runEmbeddedMigrations(db: DevtoolsDb, migrationsTable: string): void {
  *
  * @param db - Target {@link DevtoolsDb} instance to migrate.
  * @param options - Optional migration folder and tracking table overrides.
+ * @throws {@link Error} When `options.migrationsFolder` is empty or whitespace-only, or when migration execution fails.
  */
 export function runMigrations(
   db: DevtoolsDb,
@@ -88,7 +126,10 @@ export function runMigrations(
 ): void {
   const migrationsTable = options?.migrationsTable ?? "__devtools_migrations";
 
-  if (options?.migrationsFolder) {
+  if (options?.migrationsFolder !== undefined) {
+    if (options.migrationsFolder.trim().length === 0) {
+      throw new Error("migrationsFolder must be a non-empty directory path");
+    }
     migrate(db, {
       migrationsFolder: options.migrationsFolder,
       migrationsTable,
