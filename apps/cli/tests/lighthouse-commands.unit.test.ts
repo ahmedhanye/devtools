@@ -1,7 +1,11 @@
 import * as cp from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { beforeEach, describe, expect, spyOn, test } from "bun:test";
 import {
   createDb,
+  resetDb,
   runMigrations,
   type DevtoolsDb,
   type LighthouseRunRow,
@@ -13,6 +17,7 @@ import {
 } from "@devtools/lighthouse";
 import { createProgram } from "../src/cli";
 import { runLighthouseAuditCommand } from "../src/lighthouse/audit";
+import { createLighthouseCliContext } from "../src/lighthouse/context";
 import { runLighthouseDiffCommand } from "../src/lighthouse/diff";
 import { stripAnsi } from "../src/lighthouse/formatters/agent";
 import { runLighthouseListCommand } from "../src/lighthouse/list";
@@ -1223,14 +1228,9 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
       expect(defaultIsHeadless({}, "win32")).toBe(false);
 
       // Verify default arguments without explicitly passing parameters
-      const origCi = process.env.CI;
-      try {
-        process.env.CI = "true";
-        expect(defaultIsHeadless()).toBe(true);
-      } finally {
-        if (origCi !== undefined) process.env.CI = origCi;
-        else delete process.env.CI;
-      }
+      expect(defaultIsHeadless()).toBe(
+        defaultIsHeadless(process.env, process.platform),
+      );
     });
 
     test("defaultSpawnOpener spawns appropriate command per platform", async () => {
@@ -1389,7 +1389,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
       }
     });
 
-    test("runLighthouseOpenCommand executes defaultIsHeadless when isHeadless is omitted", async () => {
+    test("runLighthouseOpenCommand executes defaultIsHeadless with options.env when isHeadless is omitted", async () => {
       insertLighthouseRun(
         db,
         makeSampleRow({
@@ -1400,28 +1400,89 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
       let exitCode: number | undefined;
       const stdout: string[] = [];
 
-      const origCi = process.env.CI;
-      process.env.CI = "true";
+      await runLighthouseOpenCommand(
+        "888888",
+        { env: { CI: "true" } },
+        {
+          getDb: () => db,
+          fileExists: () => true,
+          log: (msg) => stdout.push(msg),
+          exit: (code) => {
+            exitCode = code;
+          },
+        },
+      );
 
+      expect(exitCode).toBe(0);
+      expect(stdout.join("\n")).toContain("file:///tmp/report.html");
+    });
+
+    test("forwards options.env to getDb across createLighthouseCliContext and runLighthouseOpenCommand", async () => {
+      const customEnv = { DEVTOOLS_DB_PATH: "/tmp/custom-env.sqlite" };
+      let contextCapturedEnv: Record<string, string | undefined> | undefined;
+      const ctx = createLighthouseCliContext(
+        { env: customEnv },
+        {
+          getDb: (opts?: { env?: Record<string, string | undefined> }) => {
+            contextCapturedEnv = opts?.env;
+            return db;
+          },
+        },
+      );
+      await ctx.getDb();
+      expect(contextCapturedEnv).toEqual(customEnv);
+
+      let openCapturedEnv: Record<string, string | undefined> | undefined;
+      await runLighthouseOpenCommand(
+        "non-existent-id",
+        { env: customEnv },
+        {
+          getDb: (opts?: { env?: Record<string, string | undefined> }) => {
+            openCapturedEnv = opts?.env;
+            return db;
+          },
+          error: () => {},
+          exit: () => {},
+        },
+      );
+      expect(openCapturedEnv).toEqual(customEnv);
+
+      // Default @devtools/db getDb path honors options.env without deps.getDb
+      const tempDir = mkdtempSync(join(tmpdir(), "devtools-cli-env-db-"));
+      const customDbPath = join(tempDir, "isolated.db");
+      resetDb();
       try {
+        const seededDb = createDb({ path: customDbPath });
+        runMigrations(seededDb);
+        insertLighthouseRun(
+          seededDb,
+          makeSampleRow({
+            id: "env-seed-111",
+            htmlReportPath: "/tmp/env-seeded-report.html",
+          }),
+        );
+        const stdout: string[] = [];
+        let openExitCode: number | undefined;
+
         await runLighthouseOpenCommand(
-          "888888",
-          {},
+          "env-seed-111",
+          { env: { DEVTOOLS_DB_PATH: customDbPath, CI: "true" } },
           {
-            getDb: () => db,
             fileExists: () => true,
             log: (msg) => stdout.push(msg),
             exit: (code) => {
-              exitCode = code;
+              openExitCode = code;
             },
           },
         );
 
-        expect(exitCode).toBe(0);
-        expect(stdout.join("\n")).toContain("file:///tmp/report.html");
+        expect(openExitCode).toBe(0);
+        expect(stdout.join("\n")).toContain(
+          "file:///tmp/env-seeded-report.html",
+        );
       } finally {
-        if (origCi !== undefined) process.env.CI = origCi;
-        else delete process.env.CI;
+        resetDb();
+        rmSync(tempDir, { recursive: true, force: true });
       }
     });
 
