@@ -1,13 +1,16 @@
-import type { DevtoolsDb, LighthouseRunRow } from "@devtools/db";
+import type { LighthouseRunRow } from "@devtools/db";
 import {
   computeInsightDiff,
   computeRunDeltas,
   parseRunSummary,
+  resolveLighthouseRun,
 } from "@devtools/lighthouse";
-import { getColors } from "../colors";
+import {
+  connectRequiredLighthouseDb,
+  createLighthouseCliContext,
+} from "./context";
 import { formatJson } from "./formatters/json";
 import { formatTerminalDiff } from "./formatters/terminal";
-import { resolveRunId } from "./resolvers";
 import type {
   LighthouseDiffCommandDeps,
   LighthouseDiffCommandOptions,
@@ -28,31 +31,11 @@ export async function runLighthouseDiffCommand(
   options: LighthouseDiffCommandOptions = {},
   deps?: LighthouseDiffCommandDeps,
 ): Promise<void> {
-  const isStderrTTY =
-    deps?.isStderrTTY ?? deps?.isTTY ?? Boolean(process.stderr.isTTY);
-  const pc = getColors({
-    env: options.env as NodeJS.ProcessEnv,
-    isTTY: isStderrTTY,
-  });
-  const exit = (code = 1) => {
-    if (deps?.exit) {
-      deps.exit(code);
-      return;
-    }
-    process.exit(code);
-  };
+  const ctx = createLighthouseCliContext(options, deps);
+  const { pc, log, error, exit } = ctx;
 
-  const log = deps?.log ?? console.log;
-  const error = deps?.error ?? console.error;
-  const getDb = deps?.getDb ?? (await import("@devtools/db")).getDb;
-
-  let db: DevtoolsDb;
-  try {
-    db = getDb();
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    error(pc.red(`Error connecting to database: ${message}`));
-    exit(1);
+  const db = await connectRequiredLighthouseDb(ctx);
+  if (!db) {
     return;
   }
 
@@ -60,8 +43,8 @@ export async function runLighthouseDiffCommand(
   let run2: LighthouseRunRow;
 
   try {
-    run1 = resolveRunId(db, id1);
-    run2 = resolveRunId(db, id2);
+    run1 = resolveLighthouseRun(db, id1);
+    run2 = resolveLighthouseRun(db, id2);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     error(pc.red(`Error resolving audit runs: ${message}`));

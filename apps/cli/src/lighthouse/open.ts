@@ -1,9 +1,12 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import type { DevtoolsDb, LighthouseRunRow } from "@devtools/db";
+import {
+  getLatestLighthouseRun,
+  resolveLighthouseRun,
+} from "@devtools/lighthouse";
 import { getColors } from "../colors";
 import { LighthouseOpenerError } from "./errors";
-import { resolveLatestRun, resolveRunId } from "./resolvers";
 import type {
   LighthouseOpenCommandDeps,
   LighthouseOpenCommandOptions,
@@ -120,7 +123,10 @@ export async function runLighthouseOpenCommand(
 
   let run: LighthouseRunRow;
   try {
-    run = id !== undefined ? resolveRunId(db, id) : resolveLatestRun(db);
+    run =
+      id !== undefined
+        ? resolveLighthouseRun(db, id)
+        : getLatestLighthouseRun(db);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     error(pc.red(message));
