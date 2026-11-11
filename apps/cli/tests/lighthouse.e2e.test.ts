@@ -292,10 +292,9 @@ describe("Lighthouse CLI Subprocess Tests (E2E)", () => {
 
   test("compiled standalone binary executes --help, list --json, and upfront validation", async () => {
     if (!existsSync(compiledBinPath)) {
-      console.warn(
-        "Compiled binary dist/devtools not found, skipping binary assertions",
+      throw new Error(
+        `Compiled binary not found at ${compiledBinPath}. Run 'bun run build:bin' first.`,
       );
-      return;
     }
 
     // Binary --help

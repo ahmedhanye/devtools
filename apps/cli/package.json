@@ -7,11 +7,11 @@
     "devtools": "./bin/devtools.js"
   },
   "scripts": {
-    "test": "bun test",
+    "test": "bun run --cwd ../.. build:bin && bun test",
     "test:unit": "bun test tests/*.unit.test.ts",
     "test:integration": "bun test tests/*.integration.test.ts",
-    "test:e2e": "bun test tests/*.e2e.test.ts",
-    "test:coverage": "bun test --coverage",
+    "test:e2e": "bun run --cwd ../.. build:bin && bun test tests/*.e2e.test.ts",
+    "test:coverage": "bun run --cwd ../.. build:bin && bun test --coverage",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

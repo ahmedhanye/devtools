@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { LighthouseRunRow } from "@devtools/db";
 import type { NormalizedLighthouseRun } from "@devtools/lighthouse";
-import { computeInsightDiff } from "../src/lighthouse/diff";
+import { computeInsightDiff } from "@devtools/lighthouse";
 import {
   formatAgentMarkdown,
   stripAnsi,

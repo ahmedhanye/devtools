@@ -52,6 +52,12 @@ describe("Daemon Configuration & Static Directory Resolution", () => {
     expect(() => resolveDaemonConfig({ env: { PORT: "70000" } })).toThrow(
       'Invalid environment variable PORT="70000": must be an integer between 0 and 65535',
     );
+    expect(() => resolveDaemonConfig({ port: -1, env: {} })).toThrow(
+      'Invalid port number "-1": must be an integer between 0 and 65535',
+    );
+    expect(() => resolveDaemonConfig({ port: 65536, env: {} })).toThrow(
+      'Invalid port number "65536": must be an integer between 0 and 65535',
+    );
   });
 
   test("resolveDaemonConfig supports ephemeral port 0", () => {

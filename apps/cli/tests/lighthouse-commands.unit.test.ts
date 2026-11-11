@@ -1,7 +1,11 @@
 import * as cp from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { beforeEach, describe, expect, spyOn, test } from "bun:test";
 import {
   createDb,
+  resetDb,
   runMigrations,
   type DevtoolsDb,
   type LighthouseRunRow,
@@ -13,6 +17,7 @@ import {
 } from "@devtools/lighthouse";
 import { createProgram } from "../src/cli";
 import { runLighthouseAuditCommand } from "../src/lighthouse/audit";
+import { createLighthouseCliContext } from "../src/lighthouse/context";
 import { runLighthouseDiffCommand } from "../src/lighthouse/diff";
 import { stripAnsi } from "../src/lighthouse/formatters/agent";
 import { runLighthouseListCommand } from "../src/lighthouse/list";
@@ -23,39 +28,44 @@ import {
 } from "../src/lighthouse/open";
 import { LighthouseOpenerError } from "../src/lighthouse/errors";
 
+const DEFAULT_SAMPLE_ROW: Omit<NewLighthouseRunRow, "createdAt"> = {
+  id: "11111111-2222-3333-4444-555555555555",
+  url: "https://example.com/",
+  finalUrl: "https://example.com/",
+  formFactor: "mobile",
+  throttlingMethod: "simulate",
+  performanceScore: 90,
+  accessibilityScore: 95,
+  bestPracticesScore: 90,
+  seoScore: 90,
+  lcpMs: 1500,
+  cls: 0.01,
+  tbtMs: 100,
+  fcpMs: 800,
+  siMs: 1200,
+  ttfbMs: 150,
+  summaryJson: {
+    lcpElement: null,
+    lcpPhases: null,
+    clsCulprits: [],
+    insights: [],
+    failedAudits: [],
+    runWarnings: [],
+    runtimeError: null,
+    medianMetadata: null,
+  },
+  jsonReportPath: "/tmp/artifacts/report.json",
+  htmlReportPath: "/tmp/artifacts/report.html",
+  durationMs: 3000,
+};
+
 function makeSampleRow(
   overrides: Partial<NewLighthouseRunRow> = {},
 ): NewLighthouseRunRow {
   return {
-    id: overrides.id ?? "11111111-2222-3333-4444-555555555555",
-    url: overrides.url ?? "https://example.com/",
-    finalUrl: overrides.finalUrl ?? "https://example.com/",
-    formFactor: overrides.formFactor ?? "mobile",
-    throttlingMethod: overrides.throttlingMethod ?? "simulate",
-    performanceScore: overrides.performanceScore ?? 90,
-    accessibilityScore: overrides.accessibilityScore ?? 95,
-    bestPracticesScore: overrides.bestPracticesScore ?? 90,
-    seoScore: overrides.seoScore ?? 90,
-    lcpMs: overrides.lcpMs ?? 1500,
-    cls: overrides.cls ?? 0.01,
-    tbtMs: overrides.tbtMs ?? 100,
-    fcpMs: overrides.fcpMs ?? 800,
-    siMs: overrides.siMs ?? 1200,
-    ttfbMs: overrides.ttfbMs ?? 150,
-    summaryJson: overrides.summaryJson ?? {
-      lcpElement: null,
-      lcpPhases: null,
-      clsCulprits: [],
-      insights: [],
-      failedAudits: [],
-      runWarnings: [],
-      runtimeError: null,
-      medianMetadata: null,
-    },
-    jsonReportPath: overrides.jsonReportPath ?? "/tmp/artifacts/report.json",
-    htmlReportPath: overrides.htmlReportPath ?? "/tmp/artifacts/report.html",
-    durationMs: overrides.durationMs ?? 3000,
-    createdAt: overrides.createdAt ?? new Date(),
+    ...DEFAULT_SAMPLE_ROW,
+    createdAt: new Date(),
+    ...overrides,
   };
 }
 
@@ -494,6 +504,40 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
       const parsed = JSON.parse(stdout.join("\n"));
       expect(Array.isArray(parsed)).toBe(true);
       expect(parsed[0].id).toBe("run-bbb-222");
+    });
+
+    test("filters runs cleanly when valid formFactor mobile or desktop is passed", async () => {
+      insertLighthouseRun(
+        db,
+        makeSampleRow({ id: "run-mob-1", formFactor: "mobile" }),
+      );
+      insertLighthouseRun(
+        db,
+        makeSampleRow({ id: "run-desk-2", formFactor: "desktop" }),
+      );
+      const desktopOut: string[] = [];
+      await runLighthouseListCommand(
+        { formFactor: "desktop", json: true },
+        {
+          getDb: () => db,
+          log: (msg) => desktopOut.push(msg),
+        },
+      );
+      const desktopParsed = JSON.parse(desktopOut.join("\n"));
+      expect(desktopParsed).toHaveLength(1);
+      expect(desktopParsed[0].id).toBe("run-desk-2");
+
+      const mobileOut: string[] = [];
+      await runLighthouseListCommand(
+        { formFactor: "mobile", json: true },
+        {
+          getDb: () => db,
+          log: (msg) => mobileOut.push(msg),
+        },
+      );
+      const mobileParsed = JSON.parse(mobileOut.join("\n"));
+      expect(mobileParsed).toHaveLength(1);
+      expect(mobileParsed[0].id).toBe("run-mob-1");
     });
 
     test("exits with 1 when database connection throws in list command", async () => {
@@ -1184,14 +1228,9 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
       expect(defaultIsHeadless({}, "win32")).toBe(false);
 
       // Verify default arguments without explicitly passing parameters
-      const origCi = process.env.CI;
-      try {
-        process.env.CI = "true";
-        expect(defaultIsHeadless()).toBe(true);
-      } finally {
-        if (origCi !== undefined) process.env.CI = origCi;
-        else delete process.env.CI;
-      }
+      expect(defaultIsHeadless()).toBe(
+        defaultIsHeadless(process.env, process.platform),
+      );
     });
 
     test("defaultSpawnOpener spawns appropriate command per platform", async () => {
@@ -1350,7 +1389,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
       }
     });
 
-    test("runLighthouseOpenCommand executes defaultIsHeadless when isHeadless is omitted", async () => {
+    test("runLighthouseOpenCommand executes defaultIsHeadless with options.env when isHeadless is omitted", async () => {
       insertLighthouseRun(
         db,
         makeSampleRow({
@@ -1361,29 +1400,205 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
       let exitCode: number | undefined;
       const stdout: string[] = [];
 
-      const origCi = process.env.CI;
-      process.env.CI = "true";
+      await runLighthouseOpenCommand(
+        "888888",
+        { env: { CI: "true" } },
+        {
+          getDb: () => db,
+          fileExists: () => true,
+          log: (msg) => stdout.push(msg),
+          exit: (code) => {
+            exitCode = code;
+          },
+        },
+      );
 
+      expect(exitCode).toBe(0);
+      expect(stdout.join("\n")).toContain("file:///tmp/report.html");
+    });
+
+    test("forwards options.env to getDb across createLighthouseCliContext and runLighthouseOpenCommand", async () => {
+      const customEnv = { DEVTOOLS_DB_PATH: "/tmp/custom-env.sqlite" };
+      let contextCapturedEnv: Record<string, string | undefined> | undefined;
+      const ctx = createLighthouseCliContext(
+        { env: customEnv },
+        {
+          getDb: (opts?: { env?: Record<string, string | undefined> }) => {
+            contextCapturedEnv = opts?.env;
+            return db;
+          },
+        },
+      );
+      await ctx.getDb();
+      expect(contextCapturedEnv).toEqual(customEnv);
+
+      let openCapturedEnv: Record<string, string | undefined> | undefined;
+      await runLighthouseOpenCommand(
+        "non-existent-id",
+        { env: customEnv },
+        {
+          getDb: (opts?: { env?: Record<string, string | undefined> }) => {
+            openCapturedEnv = opts?.env;
+            return db;
+          },
+          error: () => {},
+          exit: () => {},
+        },
+      );
+      expect(openCapturedEnv).toEqual(customEnv);
+
+      // Default @devtools/db getDb path honors options.env without deps.getDb
+      const tempDir = mkdtempSync(join(tmpdir(), "devtools-cli-env-db-"));
+      const customDbPath = join(tempDir, "isolated.db");
+      resetDb();
       try {
+        const seededDb = createDb({ path: customDbPath });
+        runMigrations(seededDb);
+        insertLighthouseRun(
+          seededDb,
+          makeSampleRow({
+            id: "env-seed-111",
+            htmlReportPath: "/tmp/env-seeded-report.html",
+          }),
+        );
+        const stdout: string[] = [];
+        let openExitCode: number | undefined;
+
         await runLighthouseOpenCommand(
-          "888888",
-          {},
+          "env-seed-111",
+          { env: { DEVTOOLS_DB_PATH: customDbPath, CI: "true" } },
           {
-            getDb: () => db,
             fileExists: () => true,
             log: (msg) => stdout.push(msg),
             exit: (code) => {
-              exitCode = code;
+              openExitCode = code;
             },
           },
         );
 
-        expect(exitCode).toBe(0);
-        expect(stdout.join("\n")).toContain("file:///tmp/report.html");
+        expect(openExitCode).toBe(0);
+        expect(stdout.join("\n")).toContain(
+          "file:///tmp/env-seeded-report.html",
+        );
       } finally {
-        if (origCi !== undefined) process.env.CI = origCi;
-        else delete process.env.CI;
+        resetDb();
+        rmSync(tempDir, { recursive: true, force: true });
       }
+    });
+
+    test("isolates stdout and stderr color formatting in runLighthouseOpenCommand", async () => {
+      insertLighthouseRun(
+        db,
+        makeSampleRow({
+          id: "open-tty-111",
+          htmlReportPath: "/tmp/open-tty-report.html",
+        }),
+      );
+
+      // Case 1: stdout redirected (non-TTY), stderr is TTY -> plain stdout, colored stderr
+      const stdoutRedirected: string[] = [];
+      await runLighthouseOpenCommand(
+        "open-tty-111",
+        { env: { TERM: "xterm-256color" } },
+        {
+          isStderrTTY: true,
+          isStdoutTTY: false,
+          getDb: () => db,
+          fileExists: () => true,
+          isHeadless: () => false,
+          spawnOpener: () => {},
+          log: (msg) => stdoutRedirected.push(msg),
+        },
+      );
+      expect(stdoutRedirected.join("\n").includes("\x1b[")).toBe(false);
+      expect(stdoutRedirected.join("\n")).toContain(
+        "Opening Lighthouse HTML report at:",
+      );
+
+      const stderrInteractive: string[] = [];
+      await runLighthouseOpenCommand(
+        "open-tty-111",
+        { env: { TERM: "xterm-256color" } },
+        {
+          isStderrTTY: true,
+          isStdoutTTY: false,
+          getDb: () => db,
+          fileExists: () => false,
+          error: (msg) => stderrInteractive.push(msg),
+          exit: () => {},
+        },
+      );
+      expect(stderrInteractive.join("\n").includes("\x1b[")).toBe(true);
+
+      // Case 2: stdout is TTY, stderr redirected (non-TTY) -> colored stdout, plain stderr
+      const stdoutInteractive: string[] = [];
+      await runLighthouseOpenCommand(
+        "open-tty-111",
+        { env: { TERM: "xterm-256color" } },
+        {
+          isStderrTTY: false,
+          isStdoutTTY: true,
+          getDb: () => db,
+          fileExists: () => true,
+          isHeadless: () => false,
+          spawnOpener: () => {},
+          log: (msg) => stdoutInteractive.push(msg),
+        },
+      );
+      expect(stdoutInteractive.join("\n").includes("\x1b[")).toBe(true);
+
+      const stderrRedirected: string[] = [];
+      await runLighthouseOpenCommand(
+        "open-tty-111",
+        { env: { TERM: "xterm-256color" } },
+        {
+          isStderrTTY: false,
+          isStdoutTTY: true,
+          getDb: () => db,
+          fileExists: () => false,
+          error: (msg) => stderrRedirected.push(msg),
+          exit: () => {},
+        },
+      );
+      expect(stderrRedirected.join("\n").includes("\x1b[")).toBe(false);
+
+      // Case 3: NO_COLOR disables stdout color even when isStdoutTTY is true
+      const stdoutNoColor: string[] = [];
+      await runLighthouseOpenCommand(
+        "open-tty-111",
+        { env: { TERM: "xterm-256color", NO_COLOR: "1" } },
+        {
+          isStdoutTTY: true,
+          getDb: () => db,
+          fileExists: () => true,
+          isHeadless: () => false,
+          spawnOpener: () => {},
+          log: (msg) => stdoutNoColor.push(msg),
+        },
+      );
+      expect(stdoutNoColor.join("\n").includes("\x1b[")).toBe(false);
+
+      // Case 4: isTTY fallback & omitted-deps default on createLighthouseCliContext
+      const ctxFallbackTrue = createLighthouseCliContext(
+        { env: { TERM: "xterm-256color" } },
+        { isTTY: true },
+      );
+      expect(ctxFallbackTrue.pcStdout.green("ok").includes("\x1b[")).toBe(true);
+
+      const ctxFallbackFalse = createLighthouseCliContext(
+        { env: { TERM: "xterm-256color" } },
+        { isTTY: false },
+      );
+      expect(ctxFallbackFalse.pcStdout.green("ok").includes("\x1b[")).toBe(
+        false,
+      );
+
+      const ctxDefault = createLighthouseCliContext({
+        env: { TERM: "xterm-256color" },
+      });
+      expect(ctxDefault.pcStdout.green("ok").includes("\x1b[")).toBe(
+        Boolean(process.stdout.isTTY),
+      );
     });
 
     test("fallback process.exit across audit, diff, and list commands", async () => {

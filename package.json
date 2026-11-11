@@ -25,7 +25,7 @@
     "test:unit": "bun --filter '*' test:unit && bun test scripts/**/*.unit.test.ts",
     "test:integration": "bun --filter '*' test:integration",
     "test:e2e": "bun --filter '*' test:e2e",
-    "test:coverage": "bun scripts/collect-coverage/collect-coverage.ts",
+    "test:coverage": "bun run build:bin && bun scripts/collect-coverage/collect-coverage.ts",
     "build": "bun --filter '*' build",
     "build:bin": "bun build apps/cli/bin/devtools.js --compile --outfile dist/devtools",
     "build:smoke": "bun run build:bin && ./dist/devtools --help && ./dist/devtools --version",

@@ -1,10 +1,6 @@
 /**
- * Domain errors re-exported from `@devtools/lighthouse` and CLI-specific command errors.
+ * CLI-specific command errors for the Lighthouse subcommand suite.
  */
-export {
-  AmbiguousRunIdError,
-  LighthouseRunNotFoundError,
-} from "@devtools/lighthouse";
 
 /**
  * Error thrown when a performance budget rule fails parsing or validation.
