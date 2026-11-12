@@ -29,13 +29,13 @@ Inspect changed files (`git status -s` or `git diff --name-only origin/main`) an
 
 ## Deduplication and overlap prevention
 
-1. **Test runner deduplication.** When `bun run test:coverage` is executed, never run standalone unit tests (`bun test` or `bun run test:unit`) because the coverage runner already executes all unit test suites.
+1. **Test runner deduplication.** `bun run test:coverage` builds `./dist/devtools` (`bun run build:bin`) and executes all Bun workspace suites (`unit`, `integration`, `e2e`) alongside `@devtools/frontend` Vitest coverage. Omit redundant `bun test`, `bun run test:unit`, and workspace-wide integration or E2E sweeps when running `test:coverage`, and avoid concurrent `bun run build:smoke` runs that overwrite `./dist/devtools`.
 2. **Scope isolation.** For doc-only, rule-only, or workflow-only edits, halt after the matching completion check exits `0`. Do not run `bun run verify`, `bun run verify:fast`, or full test suites when no executable application code changed.
 3. **Diff coverage gate.** Single-workspace code changes require 100% diff coverage on modified executable lines via `bun run test:coverage && bun run verify:diff-coverage` before handoff or PR creation per [TESTING.md](TESTING.md#core-testing-philosophy-and-invariants). The verifier accounts for tracked modifications and untracked new source files against the merge base.
-4. **Compound QA execution.** When running quality assurance via QA skills or subagents:
-   - The coordinator must capture baseline metadata and inspect manifests in one non-interactive command invocation.
-   - Subagents must launch assigned static analyzers, test runners, and delta probes in compound or batched commands rather than executing individual checks piecemeal.
-   - White-box subagent exclusively owns coverage and unit testing; Gray-box owns integration; Black-box owns E2E and build smoke. No suite runs twice.
+4. **Compound QA execution.** Each QA axis subagent selectively reads [TESTING.md](TESTING.md#test-level-separation-and-file-naming) and workspace manifests for its own axis rather than relying on coordinator pre-mapping, launching static analyzers and test runners in compound commands (separating diagnostic-exit analyzers such as `fallow health` so downstream diff or test checks still run):
+   - **White-box.** Static analyzers, unit suites, and `test:coverage && verify:diff-coverage`.
+   - **Gray-box.** File-scoped `*.integration.test.ts` targets, `fallow:arch`, `fallow:security`, and `lint:fsd`.
+   - **Black-box.** `*.e2e.test.ts`, `*.stories.tsx`, and `build:smoke` without overwriting `./dist/devtools` concurrently with `test:coverage`.
 
 ## Pre-commit and staged gate
 
