@@ -47,11 +47,9 @@ When inspecting pull requests:
    ```
    If maintaining tracking status on a GitHub Project, update the ticket item to `<in_review_option_id>` using the commands in [Issue tracking: Project board status lifecycle](issues.md#project-board-status-lifecycle).
 
-## Review thread resolution
+## Review comment handling
 
-Branch protection enforces required review thread resolution. All comment threads opened by reviewers or automated review bots (such as CodeRabbit) must be resolved before merge eligibility.
-
-Review thread resolution is performed **post-push** so that the remote pull request on GitHub reflects the committed fixes before threads are resolved. Follow the inspection, investigation, and resolution actions in [Pull request comments and thread resolution](pr-comments.md).
+Branch protection requires review threads to be resolved before merge eligibility. Post replies to open comments **after** pushing fixes (or with technical refutations), and leave thread resolution to the human or AI reviewer so automated reviewers can verify changes and follow up if issues remain. Follow the inspection, investigation, and reply actions in [Pull request comments](pr-comments.md).
 
 ## Merging pull requests
 

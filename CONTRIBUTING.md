@@ -64,7 +64,7 @@ Run checks across the monorepo during development:
    gh pr create --assignee "@me" --fill
    ```
    Follow [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md) and ensure the description includes `Closes #<ticket_number>`. Inspect the linked issue and parent Spec descriptions (`gh issue view <ticket_number> --json number,title,body,state,labels` and `gh api repos/{owner}/{repo}/issues/<ticket_number>/parent`), updating any completed checklist tasks (`- [ ]` to `- [x]`) using `gh issue edit`.
-5. **Push changes and resolve review comments:** Follow [Pushing changes and review synchronization](docs/contributing/push.md) to verify readiness, push commits, and resolve review threads post-push.
+5. **Push changes and reply to review comments:** Follow [Pushing changes and review synchronization](docs/contributing/push.md) to verify readiness, push commits, and reply to review comments post-push.
 6. **Merge via squash merge:**
    ```bash
    gh pr merge <pr_number> --squash --body "" --delete-branch

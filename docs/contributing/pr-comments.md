@@ -1,16 +1,18 @@
-# Pull request comments and thread resolution
+# Pull request comments
 
-Guidelines for inspecting, investigating, and resolving pull request review comments.
+Guidelines for inspecting, investigating, and replying to pull request review comments.
 
-## Branch protection requirements
+## Reply-only policy
 
-Branch protection requires all review threads opened by reviewers or automated review bots (such as CodeRabbit) to be resolved before merge eligibility.
+Branch protection requires review threads to be resolved before merge, but thread resolution belongs to the reviewer (human or AI reviewer bot).
 
-Never mark a thread as resolved or state that an issue is fixed unless the suggestion is intentionally declined or the commit containing the fix has already been pushed to the remote branch. Resolving threads prematurely conceals unresolved feedback and leaves the remote pull request diff out of sync with reviewer comments.
+Only post comment replies; never resolve review threads yourself. AI reviewers (such as CodeRabbit or Greptile) evaluate pushed commits and replies on their own and either resolve the thread or post a follow-up comment if the problem persists. Resolving a thread manually bypasses that check and hides unresolved feedback.
+
+Never state that an issue is fixed until the commit containing the fix has already been pushed to the remote branch.
 
 ## Investigation and classification
 
-Evaluate each review comment to determine whether the suggested change is valid or whether it introduces regressions:
+Evaluate each open thread, including all follow-up replies and commits pushed since the last comment:
 
 1. **Investigate code context.** Trace cited lines, surrounding logic, and all callers or dependencies across the repository.
 2. **Verify against standards and domain rules.** Confirm whether the suggestion matches documented idioms, architectural patterns, and domain terms.
@@ -24,7 +26,7 @@ Evaluate each review comment to determine whether the suggested change is valid 
 
 ### 1. Query unresolved review threads
 
-Query open review threads, modified paths, line numbers, thread IDs, and comment database IDs:
+Query open review threads, modified paths, line numbers, and comment database IDs:
 
 ```bash
 gh api graphql --paginate -F owner='{owner}' -F repo='{repo}' -F pr=<pr_number> -f query='
@@ -37,13 +39,11 @@ gh api graphql --paginate -F owner='{owner}' -F repo='{repo}' -F pr=<pr_number> 
             endCursor
           }
           nodes {
-            id
             isResolved
             path
             line
             comments(first: 50) {
               nodes {
-                id
                 databaseId
                 author { login }
                 body
@@ -57,24 +57,19 @@ gh api graphql --paginate -F owner='{owner}' -F repo='{repo}' -F pr=<pr_number> 
   }' --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)'
 ```
 
-### 2. Reply and resolve threads
+### 2. Reply to comments
 
-Reply to the specific comment using its numeric database ID, then resolve the thread using its GraphQL node ID.
+Post a reply to the specific comment using its numeric `databaseId`, and leave the thread open so the reviewer can resolve it or follow up:
+
+```bash
+gh api repos/{owner}/{repo}/pulls/<pr_number>/comments/<comment_database_id>/replies -f body="<reply_body>"
+```
 
 > [!IMPORTANT]
-> Never claim a comment is fixed or resolve a thread unless the suggestion is intentionally declined or the commit fixing it has already been pushed to the remote branch.
-
-- **Replying to a comment:**
-  ```bash
-  gh api repos/{owner}/{repo}/pulls/<pr_number>/comments/<comment_database_id>/replies -f body="<reply_body>"
-  ```
-- **Resolving a review thread:**
-  ```bash
-  gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "<thread_node_id>"}) { clientMutationId } }'
-  ```
+> Never claim a comment is fixed until the commit fixing it has already been pushed to the remote branch, and never resolve the thread.
 
 Provide an informative reply depending on how the comment was handled:
 
 - For fixes, cite the pushed commit SHA (for example, `Addressed in <commit_sha>`).
-- For false positives or suggestions declined, provide the technical rationale or citation.
+- For false positives or declined suggestions, provide the technical rationale or citation.
 - For design decisions or trade-offs, state the consensus or direction chosen.

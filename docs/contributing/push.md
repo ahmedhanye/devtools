@@ -1,6 +1,6 @@
 # Pushing changes and review synchronization
 
-Guidelines for verifying branch readiness, executing remote pushes, correlating pull requests, and resolving review comments after pushing.
+Guidelines for verifying branch readiness, executing remote pushes, correlating pull requests, and replying to review comments after pushing.
 
 ## Pre-push quality gate
 
@@ -40,8 +40,8 @@ gh pr list --head $(git branch --show-current) --json number,title,state,url
 
 If no pull request exists yet, follow [Pull requests and code review](pull-requests.md) to open one when ready.
 
-## Post-push review thread resolution
+## Post-push review comment replies
 
-Branch protection requires all review comment threads to be resolved before merge eligibility. Review threads must only be resolved **after** the corresponding code fix has been committed and successfully pushed to GitHub. This ensures the pull request diff on GitHub displays the updated code.
+Reply to open review comments only **after** the corresponding code fix has been committed and successfully pushed to GitHub so the remote pull request diff displays the updated code. Leave thread resolution to the human or AI reviewer.
 
-Follow the inspection, investigation, and resolution actions in [Pull request comments and thread resolution](pr-comments.md).
+Follow the inspection, investigation, and reply actions in [Pull request comments](pr-comments.md).
