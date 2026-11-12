@@ -1,38 +1,28 @@
 ---
 name: comments-review
-description: Review pull request comments against repository truth and author a review report. Use when reviewing PR comments, inspecting review feedback, or auditing open PR threads.
+description: Review open pull request comments against repository truth and write a scannable action report. Use when reviewing PR comments, triaging reviewer feedback, or auditing unresolved PR threads.
 ---
 
 # Review pull request comments
 
-Review pull request comments against repository truth directly in the main agent session without dispatching a dedicated subagent. This skill is read-only: do not edit codebase files, stage git commits, push branches, or resolve review threads. Follow the investigation rules and thread query in [docs/contributing/pr-comments.md](../../../docs/contributing/pr-comments.md).
+Audit open pull request review threads against repository truth and write an action report for user approval. Leave repository files, git state, and GitHub threads untouched during the review.
 
 ## Workflow
 
-### 1. Fetch unresolved threads
+1. **Fetch open threads.** Query unresolved threads for the target PR or active branch PR. Read every comment and follow-up reply in each thread alongside commits pushed after the comment. Stop and report if zero threads are open.
+2. **Research and verify.** Trace cited lines, callers, types, tests, coding standards, ADRs, and glossaries, and verify all claims and recommendations against primary sources using [`../research/SKILL.md`](../research/SKILL.md). Check for regressions and broken contracts, then classify each thread as a valid defect, architectural trade-off, or false positive.
+3. **Write the report.** Save `pr_<number>_comments_review.md` in the session artifact directory using the format below, then present the link and summary table in chat.
 
-Query open review threads for the target pull request using the GraphQL query from the contributing documentation. If no threads remain open, report that all threads are resolved and stop.
+## Report format
 
-### 2. Research all findings
+Keep the report short, scannable, and action-first. Cite each location once as `path:line` rather than repeating inline links on every symbol, omit GraphQL thread IDs, and skip large code blocks unless a short snippet prevents ambiguity.
 
-Investigate all comments and recommended changes across repository truth and external sources:
+- **Header.** Include the PR link, branch, and one-line verdict counts (for example, `2 open: 1 valid defect, 1 false positive`).
+- **Summary table.** Use columns `| # | File | Issue | Author | Verdict | Next step |`.
+- **Findings.** Group by `Valid defects`, `Architectural trade-offs`, then `False positives`, omitting empty groups. Format each thread with:
+  - Heading `### <N>. <Short title> (<Verdict>)` and metadata line `<path>:<line> | <author>`.
+  - **Reviewer claim.** State what the reviewer flagged, including any follow-up reply, in one or two sentences.
+  - **Verification.** List short bullets with load-bearing facts, root cause or refutation, and exact citations or reproduction results.
+  - **Next step.** State the fix and test target for a defect, competing options with a recommendation for a trade-off, or the reason to decline a false positive.
 
-1. **Monorepo context.** Trace cited lines, surrounding logic, types, and all callers or dependents across packages.
-2. **Repository documentation.** Verify recommendations against monorepo coding standards, testing guides, domain glossaries, and architecture decision records.
-3. **External best practices.** For recommended patterns, alternative APIs, or library choices, conduct web research for primary specifications, release notes, and community consensus per [`../research/SKILL.md`](../research/SKILL.md).
-4. **Counter-evidence and future breakages.** Check whether applying recommendations would cause subtle regressions, break public contracts, or create maintenance hazards.
-5. **Classify findings:**
-   - **Valid defect:** A verified bug, regression, or standard breach with proposed fix and test strategy.
-   - **False positive:** An invalid claim contradicted by codebase implementation, tests, ADRs, or external specifications.
-   - **Architectural trade-off:** Multiple valid approaches or scope questions requiring maintainer guidance.
-
-### 3. Author report artifact
-
-Author a markdown report artifact named `pr_<number>_comments_review.md` in the session artifact directory containing:
-- Overview of inspected threads, authors, and files.
-- Grouped findings by disposition with file citations, line numbers, and research proof.
-- Technical refutations for false positives and exact proposed solutions for valid defects.
-
-Present the artifact link and a summary table to the user.
-
-Completion criterion: The review report artifact is written to the session artifact directory and presented to the user without modifying repository code or mutating GitHub threads.
+Completion criterion: `pr_<number>_comments_review.md` is written to the session artifact directory, its summary table is shown in chat, and repository files and GitHub threads remain untouched.
