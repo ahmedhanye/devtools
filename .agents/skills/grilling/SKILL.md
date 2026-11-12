@@ -1,49 +1,58 @@
 ---
 name: grilling
-description: Grill the user relentlessly about a plan, decision, or idea. Use when the user wants to stress-test their thinking, or uses any 'grill' trigger phrases.
+description: Interview the user in rounds along a design tree to settle every open decision in a plan, design, or idea. Use when stress-testing thinking, resolving design trade-offs, or asked to grill an idea.
 ---
 
-Grilling runs at the end. When called alongside other tasks, commands, file reads, tool calls, or background investigations, complete and await all of them first. Begin grilling only after all prerequisite tasks, investigations, and subagents finish.
+Interview the user in rounds along a design tree until every open decision has an explicit answer. During the interview, write only session artifacts and never edit repository files.
 
-Interview the user relentlessly until you reach a shared understanding. Map this as a **design tree**: every decision branches into the decisions that hang off it.
+## Workflow
 
-Work the tree in **rounds**. The **frontier** is every decision whose prerequisites are already settled: the questions you can ask _now_ without guessing at answers you haven't heard yet. Ask the whole frontier in one round: number each question and give your recommended answer. Then wait for the user's answers before the next round.
+1. **Await prerequisites and gather facts.** Complete all pending tasks, file reads, tool calls, and background investigations before thinking about questions and decisions. Gather every discoverable fact from the codebase or tools so no question asks for a fact or relies on a guess.
+2. **Compute the round frontier.** Model the problem as a design tree where each decision unlocks dependent decisions. Select every unsettled decision whose prerequisites are already answered as the frontier for this round. Settle who uses it, core actions, inputs, and outputs in initial rounds before asking about storage, architecture, or internals in later rounds, and defer any question that depends on another question open in this round. When an answer adds a new surface such as a UI, API, or package, follow that branch until its user-facing behavior and edge cases are settled.
+3. **Author the round artifact.** Write the round to `grilling_round_<N>_<topic>.md` in the session artifact directory using the visual round format below.
+4. **Point to the round in chat.** Link the round artifact in chat with a brief, easy-to-scan overview of what this round covers so the user knows what is inside before opening it, ask for replies in normal chat text, and end your turn. Never ask grilling questions through interactive multiple-choice prompt tools, dialogs, or popup widgets.
+5. **Iterate until settled, then confirm.** Update the design tree from each reply and repeat steps 1 to 4 until the frontier is empty. Summarize the agreed decisions and wait for explicit user confirmation before implementing.
 
-## Execution boundaries
+## Plain language and question rules
 
-Do not write files to `.scratch/`, mutate codebase files, edit repository documents, or run mutative commands during grilling rounds. Confine all writing during the interview exclusively to session artifacts (`grilling_round_<N>_<topic>.md` and the final summary). Never attempt to implement or stage changes while grilling is in progress. Require explicit user confirmation after the final summary before applying settled agreements.
+- **Ask one decision per question.** Split multi-part choices into separate numbered questions.
+- **Explain behavior, not internals.** Write short, simple sentences that describe what changes for the user or system. Replace low-level flags, library APIs, and protocol jargon with plain words.
+- **Keep code details out of question text.** Omit file paths, symbol names, and line numbers from the main question unless the decision is about naming or moving that file. Place optional file references on a separate `Code refs:` line at the bottom.
+- **Show neutral choices and grounded reasons.** State each option's practical upside and downside without leading wording. Pair every recommendation with why it wins, what cost or risk it adds, and an observed source such as an ADR, repo file, tool check, or user rule. If no repo source backs it, state "General practice (not verified in repo)".
 
-## Round structure and progression
+## Round format
 
-- **Initial rounds (problem definition)**: Map the problem space, clarify boundaries, and challenge assumptions. Do not propose technical solutions, code architectures, or speculative implementation choices before the problem boundaries are fully settled.
-- **Subsequent rounds (solution design)**: Once the problem frontier is agreed upon, evaluate solutions, trade-offs, and implementation strategies.
+````markdown
+# Grilling Round <N>: <Topic>
 
-## Round presentation
+## Context and terms
 
-Author each interview round into a session artifact (`grilling_round_<N>_<topic>.md`). Keep the chat response to a brief pointer to the session artifact. Ask only for answers to that round.
+- **Goal:** <2 to 3 short plain sentences on the problem, what changed since last round, and what this round decides.>
+- **Big picture:**
 
-## Question format
-
-Format each round inside the session artifact like so:
-
+```text
+<simple visual arrow flow or diagram showing how the pieces connect, never a prose paragraph>
 ```
-❓ **Q1** - **<question title>**: <question body, might be multiple paragraphs, including multiple choices>
 
-➡️ <your recommended answer>
+- **Terms used below:**
+  - **<term>:** <1-line plain-English definition>
 
 ---
 
-❓ **Q2** - **<question title>**: <question body, might be multiple paragraphs, including multiple choices>
+### ❓ Q1: <short question title>
 
-➡️ <your recommended answer>
-```
+<1 to 2 short plain sentences framing the single decision.>
 
-Word each question so "yes" accepts your recommended answer.
+- **Option A: <short option name>**
+  - *What happens:* <1 short sentence on user-visible behavior>
+  - *Trade-off:* <main upside vs. main downside>
+- **Option B: <short option name>**
+  - *What happens:* <1 short sentence on user-visible behavior>
+  - *Trade-off:* <main upside vs. main downside>
 
-## Frontier progression
-
-Each round the user answers reshapes the tree: settled decisions push the frontier outward and unblock questions that depended on them. Recompute the frontier and ask the next round. A question whose answer depends on another question still open in this round belongs to a _later_ round, not this one.
-
-Finding _facts_ is your job, never the user's. When a frontier question needs a fact from the environment (filesystem, tools, etc.), find it or dispatch a sub-agent with a fresh context window to find it, and await its completion before formulating the question. Never ask questions with speculative recommendations while fact-finding or sub-agents are in flight. The _decisions_ are the user's: put each to the user and wait.
-
-The session concludes when the frontier is empty: every branch of the design tree visited, nothing left silently assumed. Present a summary of all agreed decisions and wait for user confirmation before implementing.
+> ➡️ **Recommended:** Option A (reply "yes" to accept)
+>
+> - **Why:** <key reason and cost/risk, without repeating Option A verbatim>
+> - **Based on:** <specific ADR, repo file, tool check, user constraint, or "General practice (not verified in repo)">
+> - **Code refs:** <optional file links; omit when not needed>
+````

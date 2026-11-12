@@ -25,12 +25,6 @@
       "skillPath": "feature-sliced-design/SKILL.md",
       "computedHash": "1e0cac31c1e579545f055b6585ada1a3d75ee5ed91052addc6e9a49ec63d674b"
     },
-    "grill-me": {
-      "source": "mattpocock/skills",
-      "sourceType": "github",
-      "skillPath": "skills/productivity/grill-me/SKILL.md",
-      "computedHash": "ab1acb9fbd9eaee03da254abb8a8de228d1e7a07475fe959da4a5eefa34ea4b9"
-    },
     "grill-with-docs": {
       "source": "mattpocock/skills",
       "sourceType": "github",
