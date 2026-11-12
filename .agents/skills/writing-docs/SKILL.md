@@ -12,6 +12,7 @@ Apply [`/unslop`](../unslop/SKILL.md) to all prose.
 ## Core authoring principles
 
 - **Lead with a summary.** Open with one or two sentences stating what the document covers and when it applies.
+- **Write for every reader.** Author root `*.md` and `docs/**` files uniformly so humans and coding agents follow the exact same procedures. Omit agent-specific mechanics such as `subagent`, `coordinator`, `prompt`, `token`, or `turn` outside `.agents/`.
 - **Keep one source of truth.** Record each contract, procedure, or table in one canonical file and link to it elsewhere instead of duplicating text.
 - **Point to code instead of copying it.** Reference repository-relative paths such as `path/to/file.ext#L10-L25` and symbol names such as `ClassName.method`. Keep inline code to short syntax or usage examples.
 - **Format structured data in tables.** Put CLI flags, configuration fields, environment variables, schemas, and error codes in Markdown tables instead of prose lists.
