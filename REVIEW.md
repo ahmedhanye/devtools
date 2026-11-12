@@ -4,10 +4,10 @@ Run the narrowest verification commands that prove modified files work. Skip unr
 
 ## Compound execution protocol
 
-To minimize token usage and turn latency:
+Run related checks together using `&&` to catch errors early and keep feedback fast:
 
-1. **Always chain checks with `&&` in a single command invocation.** Never run individual formatters, linters, and test runners across separate sequential turns.
-2. **Fail fast.** Chaining with `&&` halts execution at the first failing check, immediately highlighting the error without wasting turns on downstream checks.
+1. **Always chain checks with `&&` in a single command invocation.** Run formatters, linters, typechecks, and test runners together rather than running checks one by one.
+2. **Fail fast.** Chaining with `&&` halts execution at the first failing check, surfacing the error immediately without waiting on downstream checks.
 3. **Batch file paths.** Pass all modified files together as arguments rather than running a tool per file.
 
 ## Scope and verification matrix
@@ -32,10 +32,10 @@ Inspect changed files (`git status -s` or `git diff --name-only origin/main`) an
 1. **Test runner deduplication.** `bun run test:coverage` builds `./dist/devtools` (`bun run build:bin`) and executes all Bun workspace suites (`unit`, `integration`, `e2e`) alongside `@devtools/frontend` Vitest coverage. Omit redundant `bun test`, `bun run test:unit`, and workspace-wide integration or E2E sweeps when running `test:coverage`, and avoid concurrent `bun run build:smoke` runs that overwrite `./dist/devtools`.
 2. **Scope isolation.** For doc-only, rule-only, or workflow-only edits, halt after the matching completion check exits `0`. Do not run `bun run verify`, `bun run verify:fast`, or full test suites when no executable application code changed.
 3. **Diff coverage gate.** Single-workspace code changes require 100% diff coverage on modified executable lines via `bun run test:coverage && bun run verify:diff-coverage` before handoff or PR creation per [TESTING.md](TESTING.md#core-testing-philosophy-and-invariants). The verifier accounts for tracked modifications and untracked new source files against the merge base.
-4. **Compound QA execution.** Each QA axis subagent selectively reads [TESTING.md](TESTING.md#test-level-separation-and-file-naming) and workspace manifests for its own axis rather than relying on coordinator pre-mapping, launching static analyzers and test runners in compound commands (separating diagnostic-exit analyzers such as `fallow health` so downstream diff or test checks still run):
-   - **White-box.** Static analyzers, unit suites, and `test:coverage && verify:diff-coverage`.
-   - **Gray-box.** File-scoped `*.integration.test.ts` targets, `fallow:arch`, `fallow:security`, and `lint:fsd`.
-   - **Black-box.** `*.e2e.test.ts`, `*.stories.tsx`, and `build:smoke` without overwriting `./dist/devtools` concurrently with `test:coverage`.
+4. **Three-axis QA separation.** When running three-axis quality assurance across this repository, follow the command boundaries in [TESTING.md](TESTING.md#test-level-separation-and-file-naming) and workspace manifests, separating diagnostic-exit analyzers such as `fallow health` from required test or diff checks so downstream commands still run:
+   - **White-box.** Static analyzers, unit suites, and `bun run test:coverage && bun run verify:diff-coverage`.
+   - **Gray-box.** File-scoped `*.integration.test.ts` targets, `bun run fallow:arch`, `bun run fallow:security`, and `bun run lint:fsd`.
+   - **Black-box.** `*.e2e.test.ts`, `*.stories.tsx`, and `bun run build:smoke` run without overwriting `./dist/devtools` concurrently with `test:coverage`.
 
 ## Pre-commit and staged gate
 
