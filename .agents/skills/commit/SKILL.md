@@ -1,8 +1,8 @@
 ---
 name: commit
-description: Prepare and confirm commits. Use when committing changes.
+description: Stage and commit changes following repository conventions. Use when committing changes.
 ---
 
-Read `CONTRIBUTING.md` and any linked commit guide if they exist to follow commit message, body, and atomic splitting rules.
+Read any repository commit rules (such as `CONTRIBUTING.md`, commit guides, or hook/commitlint configs) if present, inspect all staged, unstaged, and untracked changes, and commit them all directly according to those rules without asking for confirmation.
 
-Group all staged, unstaged, and untracked changes into commits. For each commit, show `commit:` commit content, list `changes related:`, and wait for confirmation before committing.
+Never bypass hooks (`--no-verify`) or revert user changes to pass a check; fix formatting, staging, or commit messages automatically, and only stop on real secrets or unresolvable failures.
