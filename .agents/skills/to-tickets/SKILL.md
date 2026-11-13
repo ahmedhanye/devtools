@@ -27,7 +27,7 @@ Break a plan, spec, or conversation into vertical tracer-bullet tickets with exp
      1. **Expand.** Add the new form alongside the old so existing callers stay green.
      2. **Migrate.** Convert callers in bounded batches (by package or directory), each as a ticket blocked by the expand ticket.
      3. **Contract.** Remove the old form in a final ticket blocked by every migration batch.
-   - Frame each slice around observable behavior, public interfaces, and external seams; keep internal file paths, helper function names, and implementation details out of ticket contracts unless a public route, command, or export path is the contract itself. Inline a short snippet only when a prototype produced a decision-rich shape such as a state machine, reducer, schema, or type.
+   - Frame each slice around the problem and observable expected outcome across public interfaces and external seams. Keep internal file paths, helper names, internal mechanics, unrequested technical solutions, and rules already documented in `CODING_STANDARDS.md` or `TESTING.md` out of ticket contracts; cite a specific route, CLI command, or status code only when that external interface is itself the contract. Inline a short snippet only when a prototype produced a decision-rich shape such as a state machine, reducer, schema, or type.
 
    Completion criterion: Every requirement covered by standalone, context-sized slices (or expand-contract batches) with minimal accurate blocking edges.
 

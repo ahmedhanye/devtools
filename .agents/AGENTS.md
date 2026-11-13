@@ -2,7 +2,7 @@
 
 ## Context
 
-- **Documentation.** Always read the relevant guide before acting: `TESTING.md` for tests, `CODING_STANDARDS.md` for code and APIs, `REVIEW.md` for verification and diffs, `ARCHITECTURE.md` for system design, `CONTRIBUTING.md` for git and PR workflows, and `GLOSSARY-MAP.md` and `docs/adr/` for domain terms and architecture decisions.
+- **Documentation.** Always read the relevant guide before acting: `TESTING.md` for tests, `CODING_STANDARDS.md` for code and APIs, `REVIEW.md` for verification and diffs, `ARCHITECTURE.md` for system design, `CONTRIBUTING.md` for git, issue, and PR workflows, and `GLOSSARY-MAP.md` and `docs/adr/` for domain terms and architecture decisions.
 
 ## Execution boundaries
 
