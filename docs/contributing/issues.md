@@ -17,6 +17,14 @@ GitHub shares one number space across issues and pull requests. When inspecting 
 - **Comment on an issue:** `gh issue comment <number> --body "..."`
 - **Edit labels:** `gh issue edit <number> --add-label "..."` or `--remove-label "..."`
 
+### Issue templates
+
+Match the issue body sections defined in `.github/ISSUE_TEMPLATE/` when creating issues from the CLI:
+
+- **Specs (`type:spec`):** Follow [spec.yml](../../.github/ISSUE_TEMPLATE/spec.yml) (adding user stories, scope boundaries, and testing decisions when relevant), omitting the interactive `Governance Check` acknowledgments.
+- **Tickets (`type:feat`):** Follow [feature_slice.yml](../../.github/ISSUE_TEMPLATE/feature_slice.yml), omitting the interactive `Ticket Invariants` acknowledgments.
+- **Bug reports (`type:bug`):** Follow [bug_report.yml](../../.github/ISSUE_TEMPLATE/bug_report.yml), omitting the interactive `Prerequisites` acknowledgments.
+
 ## Hierarchy and dependencies
 
 The project organizes work into Specs and Tickets:
