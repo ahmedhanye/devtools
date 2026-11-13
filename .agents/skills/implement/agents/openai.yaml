@@ -1,5 +1,5 @@
 interface:
   display_name: "Implement"
-  short_description: "Implement requirements with TDD and scoped verification"
+  short_description: "Implement requirements with TDD, verification, and doc updates"
 policy:
   allow_implicit_invocation: false
