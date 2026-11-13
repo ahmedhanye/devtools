@@ -43,12 +43,6 @@
       "skillPath": "skills/react-doctor/SKILL.md",
       "computedHash": "c67a5188fbfee848cbd358a570d946e4612e440dd1f15715cc57c73d1acadd5a"
     },
-    "show-me": {
-      "source": "humanlayer/skills",
-      "sourceType": "github",
-      "skillPath": "plugins/show-me/skills/show-me/SKILL.md",
-      "computedHash": "0904362ca0f13fc69d88822bb1e7a72f27fd80b992b57ef89ef8a12c3fecce35"
-    },
     "tdd": {
       "source": "mattpocock/skills",
       "sourceType": "github",
