@@ -1,70 +1,58 @@
 ---
 name: to-spec
-description: Synthesize the current conversation and codebase understanding into a published capability specification.
+description: Synthesize the current conversation and codebase context into a specification and publish it to GitHub.
 disable-model-invocation: true
 ---
 
 # To spec
 
-Synthesize conversation context and codebase understanding into a spec, confirming testing seams before publishing. Follow Git and GitHub CLI workflows in `CONTRIBUTING.md`.
+Synthesize decisions already made in the conversation and the current codebase into a spec rather than running a fresh requirements interview; write the proposal to a session Markdown artifact for confirmation before publishing to GitHub.
 
 ## Process
 
-1. Explore the repository to understand the current state of the codebase, if you have not already. Use vocabulary from `GLOSSARY-MAP.md` (and context glossaries under `docs/glossary/`) throughout the spec, and respect any ADRs in `docs/adr/`.
+1. **Load repository docs, metadata, and code.** Read every present repository issue guide and template (such as `CONTRIBUTING.md`, `docs/contributing/issues.md`, and `.github/ISSUE_TEMPLATE/`), plus any architecture, testing, glossary, and ADR docs (such as `ARCHITECTURE.md`, `TESTING.md`, `GLOSSARY-MAP.md`, `GLOSSARY.md`, `docs/glossary/`, and `docs/adr/`). Check live GitHub labels and milestones when applicable, and explore affected code so the spec uses canonical domain terms and respects existing decisions.
 
-Completion criterion: Target packages identified, glossary vocabulary cross-referenced, and relevant ADRs checked.
+   Completion criterion: All present issue rules, templates, architecture and testing docs, glossaries, and ADRs read, live GitHub metadata checked, and affected areas explored.
 
-2. Sketch the seams for testing the feature. Prefer existing seams to new ones. Use the highest seam possible. The fewer seams across the codebase, the better. The ideal number is one.
+2. **Sketch testing seams.** Propose the testing seams for the feature. Favor existing seams over new ones, pick the highest public boundary possible, and minimize the seam count (ideally one). When more than one seam is needed, note why a single higher seam is insufficient.
 
-Confirm with the user that these seams match expectations.
+   Completion criterion: Testing seams selected and justified for the spec proposal.
 
-Completion criterion: Testing seams identified and user confirmation recorded in context.
+3. **Propose via artifact, confirm, and publish to GitHub.** Draft the spec following repository issue templates, labels, title rules, and milestone conventions when present, or the template below otherwise. Write the full proposal to a Markdown artifact in the session artifact directory (such as `spec_proposal_<slug>.md`) instead of pasting it in chat, including planned GitHub metadata (title, labels, and milestone), proposed testing seams, any unconfirmed assumptions from a cold start, and a diagram or table when it clarifies architecture. Link the artifact in chat, highlight only open questions or assumptions needing input, and wait for user confirmation before publishing. Once confirmed, create the GitHub issue and return its URL.
 
-3. Write the spec using the template below and publish it as an issue with a clean descriptive title (no bracketed or type prefixes), label `type:spec`, and the assigned capability milestone.
+   Completion criterion: Proposal artifact linked in chat, confirmed by the user, published to GitHub following repository conventions, and issue URL returned.
 
-Completion criterion: Spec issue published with clean title, labeled `type:spec`, assigned to active milestone, and issue URL returned.
+## Spec template
 
-<spec-template>
+Include only sections that add concrete value for the feature. Treat `User stories`, `In and out of scope`, `Architecture and design decisions`, and `Testing decisions` (along with any optional repository template fields) as optional, omitting any unnecessary section completely instead of writing boilerplate or "N/A".
 
-### Primary affected area
+```markdown
+### Overview and problem statement
 
-Select the primary workspace app or package from `apps/*` or `packages/*`, or `toolchain / infra`.
-
-### Capability overview and problem statement
-
-What capability this spec introduces, and what concrete technical problem or user need it solves.
+What capability this introduces and what concrete problem or user need it solves.
 
 ### User stories
 
-Numbered list of user stories covering personas, core paths, edge cases, and failure modes:
-1. As an <actor>, I want <capability>, so that <benefit>.
+Numbered list covering personas, core paths, edge cases, and failure modes:
 
-Example:
-1. As a CLI user running in CI, I want the command to return non-zero exit codes on lint failures, so that broken builds are halted.
+1. As an <actor>, I want <capability>, so that <benefit>.
 
 ### In and out of scope
 
-- **In scope.** Concrete boundaries delivered under this capability.
-- **Out of scope.** Related capabilities, premature optimizations, or deferred integrations.
+- **In scope.** Concrete boundaries delivered under this spec.
+- **Out of scope.** Deferred work, non-goals, and excluded integrations.
 
-### Target architecture
+### Architecture and design decisions
 
-Module boundaries, package interactions, schemas, and interface contracts. If a prototype produced a snippet that encodes a decision more precisely than prose (state machine, reducer, schema, or type shape), inline it here.
+Module boundaries, schemas, and public contracts. Describe interfaces rather than internal file paths or implementation code, which go stale. Inline a short snippet only when a prototype produced a decision-rich shape such as a state machine, reducer, schema, or type.
 
 ### Testing decisions
 
-- Seams and modules tested. Favor the highest possible seam and test external behavior rather than internals.
+- Agreed seams, modules tested, and external behaviors verified.
 - Prior art or existing fixtures reused.
 
-### Security and non-functional boundaries
+### Acceptance criteria
 
-Supply chain constraints, secret handling rules, fork security boundaries, performance invariants, or telemetry restrictions.
-
-### High-level acceptance criteria and milestone goals
-
-Observable conditions defining capability completion:
-
-- [ ] Automated verification suite passes
-- [ ] All child tickets delivered and verified
-
-</spec-template>
+- [ ] Verification suite passes
+- [ ] All child work items delivered and verified
+```
