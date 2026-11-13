@@ -6,56 +6,44 @@ disable-model-invocation: true
 
 # Retrospective
 
-Diagnose agent, tooling, and workflow problems from conversation transcripts, verify each against repository truth, and report unresolved findings with mechanical guardrails.
+Diagnose single-session or multi-session friction across conversations, skills, tooling, and documentation.
 
 ## Rules
 
-1. **Direct execution.** Run the retrospective directly in the active session. Retaining transcript findings in working memory enables immediate discussion, rebuttal, and clarification without secondary investigations.
-2. **Comprehensive problem scope.** Diagnose all verified problems across the target sessions, whether analyzing a single session, a pull request, or a multi-week milestone. Never drop a valid problem because it occurred only once. When analyzing multiple sessions, label whether each problem is an isolated incident or a recurring pattern across sessions.
-3. **Repository truth over transcript claims.** Verify candidate problems against git history, pull request status, repository configuration files, and command line help before reporting them. Discard already-resolved bugs and false positives.
-4. **Mechanical checks over text rules.** Prioritize automated guardrails, such as Lefthook pre-commit hooks, linter rules, TypeScript compiler options, and CI workflow checks, before suggesting additions to `.agents/AGENTS.md`. Pair every recommendation with an executable verification command.
-5. **Read-only verification.** Keep repository files untouched. Inspect git logs, diffs, configuration files, and CLI help without executing test runners, linters, or build scripts.
+1. Run directly in the active session unless explicitly told to delegate.
+2. Verify every transcript claim against current repository files, git history, or CI state before reporting it.
+3. Prefer mechanical checks (linters, schema validation, hooks, CI gates, test assertions) over adding prose rules.
+4. Keep tracked files and git state unmodified during diagnosis until the user approves changes.
+5. Keep full evidence and action tables in the report file rather than duplicating them in chat.
 
 ## Workflow
 
-### 1. Scope sessions and locate transcripts
+### 1. Gather scope and session digests
 
-1. Identify the retrospective target from the user prompt:
-   - *Fast-path mode (single session or PR)*: Read the specified session transcript or locate transcripts for the PR branch directly from disk.
-   - *Milestone mode (date range or milestone)*: Run the clustering script to identify transcripts and group them by branch or pull request:
-     ```bash
-     bun .agents/skills/retro/scripts/cluster.ts --agent <antigravity|claude|codex> --since <YYYY-MM-DD> --until <YYYY-MM-DD>
-     ```
-2. Default to the current session if no target is specified.
+Run `.agents/skills/retro/scripts/cluster.ts` instead of writing ad-hoc log parsers:
 
-Completion criterion: Target session transcripts identified and clustered by branch or pull request.
+- Cluster by time window or branch: `bun .agents/skills/retro/scripts/cluster.ts --since <YYYY-MM-DD> --format md` (supports `--days <N>`, `--branch <name>`, `--pr <number>`, `--query <text>`, and `--agent auto` by default).
+- Inspect target sessions: `bun .agents/skills/retro/scripts/cluster.ts --session <id[,id2]> --inspect --format md` to extract cleaned user turns, correction signals, command failures, harness errors, polling/hook-bypass/interactive counts, executed check counts, compactions, and child subagents.
+- Pass `--include-retro` when auditing past retrospective sessions themselves, and `--all-repos` for cross-repo sessions.
+- Read raw transcript logs only when `--inspect` highlights a step, failure, compaction, or child subagent needing deeper context.
 
-### 2. Extract and verify problems
+### 2. Analyze and verify root causes
 
-1. Scan transcripts in a single pass for failure signals:
-   - *User corrections and pushbacks*: Any turn where the user intervened, corrected code, redirected the approach, or expressed frustration. Verbatim user corrections are ground truth for agent failure.
-   - *Tool and environment seams*: Command failures, non-zero exits, invalid CLI flags, deprecated APIs, missing environment variables, or editor crashes.
-   - *Agent loops and drift*: Repetitive tool calls without progress, hallucinated commands, or unprompted scope expansion.
-   - *Workflow friction*: Broken handoffs, draft pull request stalls, or confirmation fatigue.
-   - *Healthy cycles vs flailing*: Discard routine test-driven development cycles where an agent runs a failing test, edits code, and passes the test. Discard internal model thinking traces and evaluate external actions.
-2. Verify candidate problems against git history and repository tracking:
-   - *Git history*: Inspect recent commits and diffs with `git log -n 20 --stat` and `git show <sha>` to filter out issues already resolved on main.
-   - *Pull requests and issues*: Check `gh pr list --state all --limit 15` and `gh issue list --state all --limit 15`.
+- Group verified problems across workflow, skills, instructions, hooks, CI, and tests.
+- Check whether cited scripts, rules, docs, or tests already changed since the session ran.
+- Inspect child subagent summaries and harness errors alongside user corrections to uncover silent failures and missing automated checks.
 
-Completion criterion: Candidate problems extracted, verified against repository sources of truth, and filtered.
+### 3. Write the retrospective report
 
-### 3. Author report and invite feedback
+Save the full report to `.scratch/retro/retrospective-<YYYYMMDD-HHMMSS>.md` (or a temporary session file outside tracked repository paths if `.scratch/` is unavailable):
 
-1. Write the report to `.scratch/retro/retrospective-<YYYYMMDD-HHMMSS>.md` with the current UTC timestamp down to the second.
-2. Structure the report with:
-   - **Executive Action Matrix**: Prioritize mechanical checks into `P0` (critical / security / broken CI), `P1` (high friction / silent quality decay), and `P2` (ergonomics / hygiene), mapping each to an explicit verification command.
-   - **Detailed Findings**: Group findings into **Agent problems**, **Codebase, tooling, and environment problems**, and **Developer workflow and prompting problems**. For each finding, document the verified problem, transcript evidence, frequency (single incident or recurring pattern), impact, and recommended mechanical check.
-3. Reply in chat with the report path, present the top `P0`/`P1` action table directly in the response, and invite user feedback. Ask the user to review the report and reply with feedback on the findings so we can start grilling. **Stop here and end your turn. Wait for the user to reply before starting step 4.** Keep the chat response under 15 lines.
+- Scope, date window, session counts by harness, and inspected conversation IDs.
+- Verified findings with session step evidence, current repository paths, and root causes.
+- P0 to P3 prioritized recommendations favoring mechanical checks over prose.
+- Open trade-offs, scope choices, or priority decisions needing user input.
 
-Completion criterion: Report written to `.scratch/retro/` and summary presented in chat with prioritized action table and feedback request.
+In chat, summarize only the top P0/P1 findings and link the report file.
 
-### 4. Grill on findings
+### 4. Settle open decisions
 
-Read [`.agents/skills/grilling/SKILL.md`](../grilling/SKILL.md) to resolve user feedback, disputed findings, and guardrails with genuine design trade-offs.
-
-Completion criterion: Open questions on proposed guardrails resolved with the user.
+If open trade-offs or implementation decisions remain before editing, follow [the grilling skill](../grilling/SKILL.md) to resolve them without duplicating report tables or adding redundant inline questions. Otherwise wait for user approval before modifying files.
