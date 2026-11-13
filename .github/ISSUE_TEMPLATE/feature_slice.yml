@@ -37,7 +37,7 @@ body:
     id: behavioral_contract
     attributes:
       label: Expected Behavioral Contract
-      description: What observable behavioral contracts, public seams, and user-facing capabilities will hold when this slice is complete? (Avoid prescribing internal file paths or implementation recipes.)
+      description: What observable behavioral contracts, public seams, and user-facing capabilities will hold when this slice is complete? State the problem and expected outcome without prescribing internal mechanics, implementation recipes, or rules already in CODING_STANDARDS.md or TESTING.md.
       placeholder: Describe observable behavior...
     validations:
       required: true
@@ -45,7 +45,7 @@ body:
     id: acceptance_criteria
     attributes:
       label: Automated Acceptance Criteria
-      description: Specify observable, binary checkable criteria (test commands, exit codes, HTTP statuses) that verify this ticket.
+      description: Specify observable, binary-checkable outcomes across public interfaces that verify this ticket. Mention specific CLI commands, routes, or status codes only when that external interface is itself part of the contract.
       placeholder: |
         - [ ] Automated tests pass
         - [ ] Behavioral contract holds across public interfaces
