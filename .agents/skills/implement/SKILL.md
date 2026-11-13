@@ -1,15 +1,9 @@
 ---
 name: implement
-description: Implement work based on a spec or tickets with smart verification.
+description: Implement requirements from any source using TDD and scoped verification.
 disable-model-invocation: true
 ---
 
-# Implement
-
-Implement the work described by the user in the spec or tickets.
-
-If the user passes a ticket reference, fetch it from the issue tracker and state its title before starting. If the reference is ambiguous, ask.
-
-Call the Skill tool with `tdd` where possible, at pre-agreed seams.
-
-Verify your work smartly following [`REVIEW.md`](../../../REVIEW.md): run the compound iterative checks during edits and completion checks at the end.
+1. **Resolve requirements.** Read the target requirements from the prompt, spec, ticket, handoff, or other source. If the user passes a ticket reference, fetch it from the issue tracker and state its title before editing. Ask if any reference or requirement is ambiguous.
+2. **Build the change.** Apply [`.agents/skills/tdd/SKILL.md`](../tdd/SKILL.md) wherever testable behavior exists.
+3. **Verify the diff.** Follow [`REVIEW.md`](../../../REVIEW.md) to run iterative compound checks during edits and matching completion checks across every changed path until every check exits `0`.

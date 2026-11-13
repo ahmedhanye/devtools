@@ -1,5 +1,5 @@
 interface:
   display_name: "Implement with QA"
-  short_description: "Build work with QA verification, auto-remediation, and reporting"
+  short_description: "Implement requirements with diff-scoped QA, fixes, and report"
 policy:
   allow_implicit_invocation: false
