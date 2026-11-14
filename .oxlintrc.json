@@ -110,8 +110,7 @@
       "files": [
         "**/packages/browser/src/detector.ts",
         "**/packages/browser/src/waterfall.ts",
-        "**/packages/lighthouse/src/runner.ts",
-        "**/packages/lighthouse/src/worker.ts"
+        "**/packages/lighthouse/src/runner.ts"
       ],
       "rules": {
         "no-await-in-loop": "off"
