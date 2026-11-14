@@ -13,7 +13,7 @@ Dispatch a background subagent with a fresh context window immediately without r
 
 ## Method
 
-Combine every applicable method below to gather primary evidence:
+Use all methods below that are useful for the question and available to you:
 
 - **External docs, releases, and advisories.** Run live web and documentation searches for upstream docs, changelogs, release notes, migration guides, and specs for the target version. Do not substitute training memory or local `--help` output for upstream release notes.
 - **APIs, rules, and CLI behavior.** Inspect upstream source or type definitions and run targeted verification commands (such as `--rules` or minimal checks) when verifying exact flags, rule names, or edge cases.
@@ -23,5 +23,5 @@ Combine every applicable method below to gather primary evidence:
 
 ## Output
 
-- **Report.** Create `.scratch/research/<topic>.md` when starting the investigation and append sourced findings with exact URLs and file references as each section is verified, preserving evidence on disk across long runs. Finalize the report with an answer summary, trade-offs, and unverified gaps.
+- **Report.** Write complete findings to `.scratch/research/<topic>.md`, including an answer summary, sourced findings with exact URLs and file references, trade-offs, and unverified gaps.
 - **Chat response.** Output only a brief summary in chat with the direct answer and key caveats, and link to the report.

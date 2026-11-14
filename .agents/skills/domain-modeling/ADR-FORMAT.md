@@ -45,7 +45,7 @@ If any criterion is missing, skip the ADR.
 
 ### What qualifies
 
-- **Persistence architecture:** Database engine, storage pragmas, connection boundaries, migration lifecycle (`0001-embedded-database-foundation.md`).
+- **Persistence architecture:** Database engine, storage pragmas, connection boundaries, migration lifecycle.
 - **Runtime execution and network boundaries:** Cross-process contracts, service communication protocols, in-process execution vs background workers.
 - **Technology choices that carry lock-in:** Foundational runtime engines, database drivers, or auth boundaries requiring substantial rewrites or data migrations to swap out.
 - **Boundary and scope decisions:** Package ownership and encapsulation boundaries where reasonable readers would assume the opposite.

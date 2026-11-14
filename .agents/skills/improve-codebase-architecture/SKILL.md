@@ -15,7 +15,7 @@ Use the exact vocabulary from [`codebase-design`](../codebase-design/SKILL.md) (
 ### 1. Explore subsystems deeply
 
 1. **Load design rules and repository context.** Read `codebase-design` and [`DEEPENING.md`](../codebase-design/DEEPENING.md) for depth and dependency rules. Read `GLOSSARY.md` and `ARCHITECTURE.md`, then load the linked context glossaries, architecture guides, and ADRs covering the target scope.
-2. **Set thorough scope.** If the user named a module, subsystem, or pain point, include it together with its callers and tests. Otherwise, check recent source churn (`git log -n 100 --name-only --pretty=format: -- apps packages site scripts`) and combine high-churn areas with the major subsystems in `ARCHITECTURE.md` so the scan covers real architectural boundaries rather than collapsing onto one small folder.
+2. **Set thorough scope.** If the user named a module, subsystem, or pain point, include it together with its callers and tests. Otherwise, inspect recent source churn with `git log -n 100 --name-only --pretty=format:` and combine high-churn source areas with the major subsystems in `ARCHITECTURE.md` so the scan covers real architectural boundaries rather than collapsing onto one small folder.
 3. **Inspect full modules, callers, and tests.** Fan out parallel read-only subagents across subsystems when scanning broadly (or inspect one subsystem thoroughly in a fresh subagent). Read complete module implementations, call sites, and tests rather than skimming headers or sorting for tiny files, looking for:
    - Domain concepts fragmented across files that force jumping to trace one flow
    - Shallow modules whose interface approaches their implementation in complexity

@@ -27,6 +27,6 @@ Choose between model invocation and user invocation based on who triggers the sk
 
 Place deterministic validation, lookup, or transformation logic in `.agents/skills/<name>/scripts/` so the agent executes the script via CLI without loading implementation code into the context window.
 
-- **Executable permissions.** Include a shebang such as `#!/usr/bin/env bun` or `#!/usr/bin/env bash` and mark the file executable with `chmod +x`.
+- **Executable permissions.** Include a portable shebang such as `#!/usr/bin/env bash` and mark the file executable with `chmod +x`.
 - **Non-interactive CLI.** Accept explicit file or flag arguments and exit `0` on success or non-zero with actionable error messages on failure. Never prompt for interactive TTY input.
 - **Documented invocation.** Show the exact command line and exit-code completion criterion inside `SKILL.md`.
