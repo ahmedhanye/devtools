@@ -1,6 +1,6 @@
 # ADR Format
 
-ADRs live in `docs/adr/` using sequential numbering (`0001-slug.md`, `0002-slug.md`, etc.) and are indexed in `ARCHITECTURE.md`. Create `docs/adr/` lazily only when the first ADR is needed.
+ADRs live in `docs/adr/` using sequential numbering (`0001-slug.md`, `0002-slug.md`, etc.) and are indexed in `ARCHITECTURE.md`.
 
 The ADR owns *what* and *why*; the code and `docs/architecture/` own *how*. State decisions and reasons as principles rather than copying schemas, tables, file layouts, or timeouts that go stale when code moves. Record **one decision per ADR** so future reversals supersede cleanly without partial edits.
 

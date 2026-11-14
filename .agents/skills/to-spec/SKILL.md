@@ -10,15 +10,15 @@ Synthesize decisions already made in the conversation and the current codebase i
 
 ## Process
 
-1. **Load repository docs, metadata, and code.** Read every present repository issue guide and template (such as `CONTRIBUTING.md`, `docs/contributing/issues.md`, and `.github/ISSUE_TEMPLATE/`), plus `ARCHITECTURE.md` (including its ADR index), `TESTING.md`, and `GLOSSARY.md`. Load only the context glossaries (`docs/glossary/<context>.md`) and ADRs (`docs/adr/<NNNN>-*.md`) relevant to the feature. Check live GitHub labels and milestones when applicable, and explore affected code so the spec uses canonical domain terms and respects existing decisions.
+1. **Load repository docs, metadata, and code.** Read `CONTRIBUTING.md` (and its linked issue guide), `.github/ISSUE_TEMPLATE/`, `ARCHITECTURE.md` (including its ADR index), `CODING_STANDARDS.md`, `TESTING.md`, and `GLOSSARY.md`. Load only the linked context glossaries and ADRs relevant to the feature. Check live GitHub labels and milestones when applicable, and explore affected code so the spec uses canonical domain terms and respects existing decisions.
 
-   Completion criterion: Present issue rules, templates, architecture and testing guides, and affected context glossaries and ADRs read, live GitHub metadata checked, and affected areas explored.
+   Completion criterion: `CONTRIBUTING.md`, `.github/ISSUE_TEMPLATE/`, `ARCHITECTURE.md`, `CODING_STANDARDS.md`, `TESTING.md`, `GLOSSARY.md`, and affected linked context glossaries and ADRs read, live GitHub metadata checked, and affected areas explored.
 
 2. **Sketch testing seams.** Propose the testing seams for the feature. Favor existing seams over new ones, pick the highest public boundary possible, and minimize the seam count (ideally one). When more than one seam is needed, note why a single higher seam is insufficient.
 
    Completion criterion: Testing seams selected and justified for the spec proposal.
 
-3. **Propose via artifact, confirm, and publish to GitHub.** Draft the spec following repository issue templates, labels, title rules, and milestone conventions when present, or the template below otherwise. Write the full proposal to a Markdown artifact in the session artifact directory (such as `spec_proposal_<slug>.md`) instead of pasting it in chat, including planned GitHub metadata (title, labels, and milestone), proposed testing seams, any unconfirmed assumptions from a cold start, and a diagram or table when it clarifies architecture. Link the artifact in chat, highlight only open questions or assumptions needing input, and wait for user confirmation before publishing. Once confirmed, create the GitHub issue and return its URL.
+3. **Propose via artifact, confirm, and publish to GitHub.** Draft the spec following `CONTRIBUTING.md` (and its linked issue guide), `.github/ISSUE_TEMPLATE/`, and the optional sections below. Write the full proposal to a Markdown artifact in the session artifact directory (such as `spec_proposal_<slug>.md`) instead of pasting it in chat, including planned GitHub metadata (title, labels, and milestone), proposed testing seams, any unconfirmed assumptions from a cold start, and a diagram or table when it clarifies architecture. Link the artifact in chat, highlight only open questions or assumptions needing input, and wait for user confirmation before publishing. Once confirmed, create the GitHub issue and return its URL.
 
    Completion criterion: Proposal artifact linked in chat, confirmed by the user, published to GitHub following repository conventions, and issue URL returned.
 

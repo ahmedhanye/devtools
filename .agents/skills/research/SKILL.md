@@ -23,5 +23,5 @@ Combine every applicable method below to gather primary evidence:
 
 ## Output
 
-- **Report.** Write complete findings to `.scratch/research/<topic>.md`, including an answer summary, sourced findings with exact URLs and file references, trade-offs, and unverified gaps.
+- **Report.** Create `.scratch/research/<topic>.md` when starting the investigation and append sourced findings with exact URLs and file references as each section is verified, preserving evidence on disk across long runs. Finalize the report with an answer summary, trade-offs, and unverified gaps.
 - **Chat response.** Output only a brief summary in chat with the direct answer and key caveats, and link to the report.

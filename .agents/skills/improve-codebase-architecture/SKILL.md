@@ -8,14 +8,14 @@ disable-model-invocation: true
 
 Surface substantive architectural friction and propose **deepening opportunities** that turn shallow modules into deep ones for testability and AI-navigability. Keep repository files unmodified during exploration and reporting.
 
-Use the exact vocabulary from [`codebase-design`](../codebase-design/SKILL.md) (**module**, **interface**, **implementation**, **depth**, **seam**, **adapter**, **leverage**, **locality**) rather than substitutes like "component", "service", "API", or "boundary". Ground domain names in `GLOSSARY.md` and `docs/glossary/*.md`, and respect decisions in `ARCHITECTURE.md` and `docs/adr/*.md` (proceeding silently if those docs are absent).
+Use the exact vocabulary from [`codebase-design`](../codebase-design/SKILL.md) (**module**, **interface**, **implementation**, **depth**, **seam**, **adapter**, **leverage**, **locality**) rather than substitutes like "component", "service", "API", or "boundary". Ground domain names in `GLOSSARY.md` (and linked context glossaries), and respect decisions in `ARCHITECTURE.md` (and linked architecture guides and ADRs).
 
 ## Process
 
 ### 1. Explore subsystems deeply
 
-1. **Load design rules and repository context.** Read `codebase-design` and [`DEEPENING.md`](../codebase-design/DEEPENING.md) for depth and dependency rules. Read `GLOSSARY.md` and `ARCHITECTURE.md` if present, then load the `docs/glossary/*.md` and `docs/adr/*.md` files covering the target scope.
-2. **Set thorough scope.** If the user named a module, subsystem, or pain point, include it together with its callers and tests. Otherwise, check recent source churn (`git log -n 100 --name-only --pretty=format: -- apps packages src`) and combine high-churn areas with the major subsystems in `ARCHITECTURE.md` so the scan covers real architectural boundaries rather than collapsing onto one small folder.
+1. **Load design rules and repository context.** Read `codebase-design` and [`DEEPENING.md`](../codebase-design/DEEPENING.md) for depth and dependency rules. Read `GLOSSARY.md` and `ARCHITECTURE.md`, then load the linked context glossaries, architecture guides, and ADRs covering the target scope.
+2. **Set thorough scope.** If the user named a module, subsystem, or pain point, include it together with its callers and tests. Otherwise, check recent source churn (`git log -n 100 --name-only --pretty=format: -- apps packages site scripts`) and combine high-churn areas with the major subsystems in `ARCHITECTURE.md` so the scan covers real architectural boundaries rather than collapsing onto one small folder.
 3. **Inspect full modules, callers, and tests.** Fan out parallel read-only subagents across subsystems when scanning broadly (or inspect one subsystem thoroughly in a fresh subagent). Read complete module implementations, call sites, and tests rather than skimming headers or sorting for tiny files, looking for:
    - Domain concepts fragmented across files that force jumping to trace one flow
    - Shallow modules whose interface approaches their implementation in complexity
@@ -45,7 +45,7 @@ Completion criterion: `architecture_review_<scope>.md` is written to the session
 Once the user picks a candidate, follow [`grilling`](../grilling/SKILL.md) to settle constraints, seam placement, dependency adapters, interface shape, and replacement tests round by round.
 
 - Use [`DESIGN-IT-TWICE.md`](../codebase-design/DESIGN-IT-TWICE.md) before locking an interface when comparing radically different shapes helps.
-- Keep the domain model current with [`domain-modeling`](../domain-modeling/SKILL.md) as terms are named or sharpened, updating `docs/glossary/` or `GLOSSARY.md` and offering an ADR only when warranted and confirmed.
+- Keep the domain model current with [`domain-modeling`](../domain-modeling/SKILL.md) as terms are named or sharpened, updating `GLOSSARY.md` (and its linked context glossaries) and offering an ADR only when warranted and confirmed.
 
 Completion criterion: All open architectural decisions for the chosen candidate are settled and confirmed by the user.
 

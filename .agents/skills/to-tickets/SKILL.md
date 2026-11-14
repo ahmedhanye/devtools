@@ -10,9 +10,9 @@ Break a plan, spec, or conversation into vertical tracer-bullet tickets with exp
 
 ## Process
 
-1. **Gather context and repository rules.** Read every present repository issue guide and template (such as `CONTRIBUTING.md`, `docs/contributing/issues.md`, and `.github/ISSUE_TEMPLATE/`), plus `ARCHITECTURE.md` (including its ADR index), `TESTING.md`, and `GLOSSARY.md`. Load only the context glossaries (`docs/glossary/<context>.md`) and ADRs (`docs/adr/<NNNN>-*.md`) relevant to the planned work. Work from the conversation context, or fetch the referenced spec, file, issue, or URL in full (body and comments). Check live GitHub labels and parent issue details when publishing to GitHub.
+1. **Gather context and repository rules.** Read `CONTRIBUTING.md` (and its linked issue guide), `.github/ISSUE_TEMPLATE/`, `ARCHITECTURE.md` (including its ADR index), `CODING_STANDARDS.md`, `TESTING.md`, and `GLOSSARY.md`. Load only the linked context glossaries and ADRs relevant to the planned work. Work from the conversation context, or fetch the referenced spec, file, issue, or URL in full (body and comments). Check live GitHub labels and parent issue details when publishing to GitHub.
 
-   Completion criterion: Present issue rules, templates, architecture and testing guides, and affected context glossaries and ADRs read, and target context, spec, or issue loaded completely.
+   Completion criterion: `CONTRIBUTING.md`, `.github/ISSUE_TEMPLATE/`, `ARCHITECTURE.md`, `CODING_STANDARDS.md`, `TESTING.md`, `GLOSSARY.md`, and affected linked context glossaries and ADRs read, and target context, spec, or issue loaded completely.
 
 2. **Explore codebase boundaries.** If not already explored, inspect the codebase so slices align with existing modules, canonical domain terms, and architecture decisions. Note any prefactoring that makes the upcoming change easier.
 
@@ -35,7 +35,7 @@ Break a plan, spec, or conversation into vertical tracer-bullet tickets with exp
 
    Completion criterion: Proposal artifact linked in chat and explicitly confirmed by the user with no pending revisions.
 
-5. **Publish the tickets.** Publish in dependency order (blockers first), matching repository issue templates, labels, title rules, and milestone conventions when present, or the template below otherwise:
+5. **Publish the tickets.** Publish in dependency order (blockers first), matching `CONTRIBUTING.md` (and its linked issue guide), `.github/ISSUE_TEMPLATE/`, and the optional sections below:
 
    - **Local files (default).** Unless the user asks to publish to GitHub, write each ticket to its own file under `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01`. Prepend `# <NN>: <Ticket title>` and include `### Blocked by` listing blocking ticket numbers or `None (can start immediately)`.
    - **GitHub (when requested).** Create one GitHub issue per ticket. Link each ticket to its parent spec as a sub-issue and record blocking dependencies natively when supported, or in the issue body otherwise. Leave any parent spec open until all child tickets reach done.

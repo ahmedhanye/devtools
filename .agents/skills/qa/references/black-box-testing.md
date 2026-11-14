@@ -20,7 +20,7 @@ Completion criterion: Specification partitions, boundaries, state transitions, a
 
 ### 2. Audit assigned end-to-end and UI suites
 
-Review assigned end-to-end, workflow, and UI interaction suites and completed runs against repository testing guides:
+Review assigned end-to-end, workflow, and UI interaction suites and completed runs against `TESTING.md` and its linked E2E and UI testing guides:
 
 - Confirm tests exercise real public binaries, subprocesses, rendered workflows, or interactive component harnesses rather than mocking internal module helpers inside end-to-end files.
 - Verify assertions check observable external contracts including exit codes, `stderr` diagnostics, structured output schemas, accessible semantics, keyboard navigation where UI applies, and completed state transitions.

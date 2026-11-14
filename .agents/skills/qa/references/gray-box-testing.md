@@ -20,9 +20,9 @@ Completion criterion: Modified seams, contracts, persistence invariants, and sec
 
 ### 2. Audit assigned integration suites, linters, and security scans
 
-Review integration suites and architectural or security scan results against repository testing guides:
+Review integration suites and architectural or security scan results against `TESTING.md` (and its linked integration testing guide), `CODING_STANDARDS.md`, and `ARCHITECTURE.md`:
 
-- Confirm integration tests cover modified seams, transport routes, migrations, and adapters under repository naming and test-level separation rules.
+- Confirm integration tests cover modified seams, transport routes, migrations, and adapters under the naming and test-level separation rules in `TESTING.md`.
 - **Local-substitutable adapter usage.** Confirm integration tests exercise real in-memory databases, in-process dispatchers, or ephemeral loopback servers rather than mocking owned internal modules, spying on private helpers, or patching globals when injectable seams exist.
 - **Mock and fake contract fidelity.** Wherever a test uses a fake or stub at an external boundary, confirm its return shapes, status codes, and thrown error types match the real producer.
 - **Architecture, security, and example triage.** Separate real untrusted-input sinks from developer build scripts and test fixtures, and check documentation examples against exported signatures.

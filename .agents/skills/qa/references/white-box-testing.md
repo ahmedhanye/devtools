@@ -8,10 +8,10 @@ Follow [the shared protocol](subagent-protocol.md) and these steps to create `<o
 
 ### 1. Audit control-flow branches, invariants, and test oracle quality
 
-Audit five white-box dimensions across non-exempt modified executable source and unit test files, honoring repository test exemptions for generated files, documentation, and excluded helper paths before flagging missing tests:
+Audit five white-box dimensions across non-exempt modified executable source and unit test files, honoring test exemptions in `TESTING.md` and coverage configuration before flagging missing tests:
 
 1. **Statement, branch, and condition coverage.** Catalog executable statements, conditional branches, ternaries, switch arms, short-circuit expressions like `&&`, `||`, and nullish coalescing, loop counts of `0`, `1`, and `N`, and error cleanup blocks. Line-hit coverage reports alone do not verify both outcomes of short-circuit conditions.
-2. **Dependency seams and global isolation.** Check injected configuration, time, filesystem, and environment seams per repository standards, and confirm unit tests avoid mutating process or global runtime state across test cases.
+2. **Dependency seams and global isolation.** Check injected configuration, time, filesystem, and environment seams per `CODING_STANDARDS.md` and `TESTING.md` (and their linked unit testing and standards guides), and confirm unit tests avoid mutating process or global runtime state across test cases.
 3. **Property-based and metamorphic invariants.** Check whether pure parsers, path normalizers, sorters, and calculators verify algebraic properties such as round-trip invertibility, idempotence, and predictable metamorphic transformations.
 4. **Unit test anti-pattern scan.** Audit unit suites against six oracle failure modes:
    - **Tautological assertions.** Recomputing expected values with the production formula instead of asserting independent known-good literals.
@@ -20,7 +20,7 @@ Audit five white-box dimensions across non-exempt modified executable source and
    - **Weak coverage padding.** Guarding assertions inside conditionals or asserting only type presence or definedness without checking exact domain values and error types.
    - **Boundary and negative-path blindness.** Testing only interior happy paths while omitting empty inputs, zero, negative bounds, edge values, and expected error paths.
    - **Unverified snapshot abuse.** Locking in large unverified snapshots or asserting decorative formatting over behavior.
-5. **Complexity, dead-code, and duplication triage.** Inspect static analyzer findings for elevated complexity, unused exports, and semantic duplication while filtering idiomatic boilerplate permitted by repository guides.
+5. **Complexity, dead-code, and duplication triage.** Inspect static analyzer findings for elevated complexity, unused exports, and semantic duplication while filtering idiomatic boilerplate permitted by `TESTING.md` and its linked testing guides.
 
 Completion criterion: Branch catalog, isolation review, invariant checks, oracle scan, and static code-health triage complete.
 

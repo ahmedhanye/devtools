@@ -7,7 +7,7 @@ description: Build and sharpen a project's domain model. Use when discussing cod
 
 Actively build and sharpen the project's domain model as you design. Challenge vague terms, test boundaries with concrete scenarios, and record vocabulary and decisions the moment they crystallize.
 
-Domain vocabulary lives in context glossaries under `docs/glossary/` indexed by `GLOSSARY.md` at the repository root. System-wide architectural decisions live under `docs/adr/` indexed in `ARCHITECTURE.md`. Create files lazily: only when you have something concrete to write.
+Domain vocabulary lives in context glossaries under `docs/glossary/` indexed by `GLOSSARY.md` at the repository root. System-wide architectural decisions live under `docs/adr/` indexed in `ARCHITECTURE.md`. Create new context or ADR files only when you have concrete entries to write.
 
 ## During the session
 
@@ -42,6 +42,6 @@ Only offer to create an ADR when all criteria in [ADR-FORMAT.md](./ADR-FORMAT.md
 When consuming domain models in engineering workflows:
 
 - **Vocabulary enforcement.** Use canonical terms from `GLOSSARY.md` and `docs/glossary/*.md` in code symbols, PR and issue titles, tests, and documentation. Never use synonyms listed under `_Avoid_`.
-- **Silent absence.** Proceed silently when a glossary or `docs/adr/` does not exist. Do not scaffold empty placeholders.
+- **No empty placeholders.** Create a new file under `docs/glossary/` or `docs/adr/` only when recording concrete terms or decisions; never scaffold empty placeholder files.
 - **Domain gap signaling.** Treat missing domain concepts as unvetted jargon or model gaps requiring `domain-modeling`. Do not invent ad-hoc terms.
 - **ADR conflict surfacing.** Surface contradictions explicitly when an exploration or refactor conflicts with an ADR: `Contradicts ADR-NNNN, but worth reopening because...`.

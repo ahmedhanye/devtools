@@ -4,9 +4,9 @@ Follow these four steps alongside your assigned axis playbook to produce the exa
 
 ## 1. Selectively load axis guides and run checks
 
-Read this protocol, your assigned axis playbook, and `<out_dir>/context.md` if provided. From the repository root, selectively discover and read only documentation and live build manifests relevant to your axis, such as testing guides, architecture or standards docs referenced from root testing docs, and package manifest scripts covering your axis test level and analyzers.
+Read this protocol, your assigned axis playbook, and `<out_dir>/context.md` if provided. From the repository root, read `TESTING.md`, `REVIEW.md`, and only the `CODING_STANDARDS.md`, `ARCHITECTURE.md`, linked guides, and package manifest scripts relevant to your axis.
 
-Follow repository deduplication rules, coverage ownership constraints, and test exemptions documented in testing guides or coverage configuration before selecting commands or flagging missing tests. Rely on `<out_dir>/context.md` and targeted file diffs rather than repeating broad git or issue queries; when running git commands, set `PAGER=cat` or place `--no-pager` before the subcommand. Launch assigned or discovered verification checks in non-interactive compound invocations, keeping diagnostic analyzers whose non-zero exit codes report findings separated from required downstream test or diff checks.
+Follow deduplication rules, coverage ownership constraints, and test exemptions in `TESTING.md`, `REVIEW.md`, and coverage configuration before selecting commands or flagging missing tests. Rely on `<out_dir>/context.md` and targeted file diffs rather than repeating broad git or issue queries; when running git commands, set `PAGER=cat` or place `--no-pager` before the subcommand. Launch assigned or discovered verification checks in non-interactive compound invocations, keeping diagnostic analyzers whose non-zero exit codes report findings separated from required downstream test or diff checks.
 
 While backgrounded commands finish, read candidate source and test files owned by your axis in full in parallel batches.
 
@@ -22,7 +22,7 @@ Completion criterion: All exploratory probes finish cleanly with zero leftover p
 
 ## 3. Verify uncertain findings against primary sources
 
-Before reporting any candidate finding where you are unsure whether it reflects a defect or an intentional design constraint, inspect repository architecture decisions, docstrings, testing guides, and targeted history using `git log -S` or `git --no-pager show`. When a candidate depends on external protocols, standards, accessibility specs, or library APIs, verify official primary documentation directly or through the repository research workflow if available. Confirm observable failure with a minimal reproduction, discard disproven candidates, and cite the verified primary source, architecture decision, or commit in every retained finding.
+Before reporting any candidate finding where you are unsure whether it reflects a defect or an intentional design constraint, inspect `ARCHITECTURE.md` (and linked ADRs), `TESTING.md` (and linked testing guides), docstrings, and targeted history using `git log -S` or `git --no-pager show`. When a candidate depends on external protocols, standards, accessibility specs, or library APIs, verify official primary documentation directly or through the repository research workflow if available. Confirm observable failure with a minimal reproduction, discard disproven candidates, and cite the verified primary source, architecture decision, or commit in every retained finding.
 
 Completion criterion: Every retained finding cites an observed reproduction and verified primary or repository evidence.
 
