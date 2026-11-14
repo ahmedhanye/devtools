@@ -17,7 +17,7 @@
       "source": "fallow-rs/fallow-skills",
       "sourceType": "github",
       "skillPath": "fallow/skills/fallow/SKILL.md",
-      "computedHash": "ca2a2ae08c220f858e1b145cbb73986d10165f2746bcf48ec7c96296ba2f1021"
+      "computedHash": "1e93fc7e7965494c70bcfcfddb7da9a3fbb0fb723bde398f920f14877de567e1"
     },
     "feature-sliced-design": {
       "source": "feature-sliced/skills",
