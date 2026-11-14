@@ -73,7 +73,7 @@ Detailed architecture guides live under `docs/architecture/`:
 ### Monorepo and tool orchestration
 
 - [Monorepo and CLI integration](docs/architecture/monorepo-and-cli.md): Workspace composition, tier ordering, direct source exports, how the codebase combines together, and standalone binary compilation.
-- [CLI and loopback daemon architecture](docs/architecture/cli-and-daemon.md): `apps/cli` architecture, Commander command tree, lazy action execution, unified loopback daemon lifecycle, and signal handling.
+- [CLI and loopback daemon architecture](docs/architecture/cli-and-daemon.md): `apps/cli` architecture, Commander command tree, lazy action execution, daemon lifecycle, and signal handling.
 
 ### Application architectures
 
@@ -85,6 +85,18 @@ Detailed architecture guides live under `docs/architecture/`:
 - [Persistence and database architecture](docs/architecture/persistence.md): `packages/db` architecture, embedded SQLite engine, WAL mode, Drizzle ORM schema, and startup migration execution.
 - [Browser automation architecture](docs/architecture/browser.md): `packages/browser` architecture, 3-tier Chromium resolution waterfall algorithm, managed Chrome for Testing cache, and binary verification.
 - [Performance auditing architecture](docs/architecture/lighthouse.md): `packages/lighthouse` architecture, direct in-process execution with `AbortSignal` cancellation, representative run selection, normalizer, and 3-tier persistence.
+
+## Architecture decision records
+
+System-wide architectural decisions live under `docs/adr/`:
+
+| ADR                                                                                                                   | Status                             | Contexts                               | Summary                                                                                                                                                      |
+| :-------------------------------------------------------------------------------------------------------------------- | :--------------------------------- | :------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [0001: Embedded database foundation](docs/adr/0001-embedded-database-foundation.md)                                   | `accepted`                         | Persistence                            | Local SQLite (`bun:sqlite`) with Drizzle ORM, WAL concurrency safeguards, startup embedded migrations, and `:memory:` test parity.                           |
+| [0002: Package configuration seams](docs/adr/0002-package-configuration-and-environment-seams.md)                     | `accepted`                         | Persistence, Browser, Performance, CLI | Isolate `process.env` reads into `config.ts` modules with injectable `options.env` Configuration Seams for concurrent tests.                                 |
+| [0003: Lighthouse audit isolation and tiered storage](docs/adr/0003-lighthouse-audit-isolation-and-tiered-storage.md) | `partially superseded by ADR-0005` | Performance, Persistence, Runtime      | Original subprocess isolation (superseded by ADR 0005), Euclidean Representative Run selection, 3-tier storage, and `@devtools/core` exclusion.              |
+| [0004: Lighthouse daemon API isolation and SSE](docs/adr/0004-lighthouse-daemon-api-isolation-and-sse.md)             | `accepted`                         | Performance, Runtime, Frontend         | Single-flight `POST` plus `GET` SSE contract, `AbortSignal` shutdown, `@devtools/lighthouse/schemas`, all-verb loopback checks, and sandboxed `report.html`. |
+| [0005: In-process Lighthouse execution](docs/adr/0005-in-process-lighthouse-execution.md)                             | `accepted`                         | Performance, Runtime                   | Execute Lighthouse iterations in-process in `@devtools/lighthouse` for compiled single-file binaries, leaving job concurrency to `apps/api`.                 |
 
 ## Core runtime lifecycles
 
@@ -102,6 +114,6 @@ For the detailed resolution flowchart, binary validation checks, and download pr
 
 ### Direct in-process Lighthouse audit lifecycle (`packages/lighthouse`)
 
-Programmatic audits execute Lighthouse iterations directly in-process against an ephemeral Chrome port (`port: 0`) with `AbortSignal` cancellation, select representative runs across multi-run batches via Euclidean distance minimization, and persist data across hot SQLite columns, warm JSON summaries, and cold disk artifacts.
+Programmatic audits execute Lighthouse iterations directly in-process against an ephemeral Chrome port (`port: 0`) with `AbortSignal` cancellation per [ADR 0005](docs/adr/0005-in-process-lighthouse-execution.md), select representative runs across multi-run batches via Euclidean distance minimization, and persist data across hot SQLite columns, warm JSON summaries, and cold disk artifacts per [ADR 0003](docs/adr/0003-lighthouse-audit-isolation-and-tiered-storage.md).
 
 For the sequence diagram, execution lifecycle guarantees, and 3-tier storage contracts, consult [Performance Auditing Architecture](docs/architecture/lighthouse.md).
