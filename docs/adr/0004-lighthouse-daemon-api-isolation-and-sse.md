@@ -1,21 +1,22 @@
+---
+status: accepted
+date: 2026-11-11
+contexts:
+  - Performance Auditing
+  - Runtime & CLI
+  - Frontend & UI
+---
+
 # Lighthouse daemon API isolation, SSE transport, and report sandboxing
 
-## Context
+Exposing Lighthouse auditing through the local daemon API uses cooperative `AbortSignal` job cancellation inside the daemon, a two-step `POST` plus `GET` SSE contract, a browser-safe `@devtools/lighthouse/schemas` subpath, all-verb loopback checks, and opaque-origin CSP sandboxing for saved HTML reports.
 
-Exposing Lighthouse performance auditing over the local HTTP daemon (`apps/api`) introduces three coupled architectural forces:
+## Rationale and constraints
 
-1. **Event-loop responsiveness, compiled binary constraints, and cancellation**: Long-running Lighthouse v13 phases must yield cleanly without leaking headless Chromium process trees or writing to a closed SQLite database on shutdown. Conversely, spawning external Bun `Worker` scripts breaks single-entrypoint `bun build --compile` executables per [ADR 0003](0003-lighthouse-audit-isolation-and-tiered-storage.md), and separate OS subprocesses cannot share in-memory SQLite (`":memory:"`) test databases.
-2. **Bun `idleTimeout` vs. silent Lighthouse phases**: `Bun.serve` enforces a default 10-second `idleTimeout`, whereas Lighthouse navigation spans >15 seconds with zero progress callbacks, dropping unconfigured SSE connections mid-flight. In addition, native browser `EventSource` supports only `GET` requests, and Hono's `streamSSE` `onError` hook emits a duplicate plain-text error frame alongside custom error writes.
-3. **Cross-package schema reuse and `report.html` origin isolation**: [ADR 0003](0003-lighthouse-audit-isolation-and-tiered-storage.md) keeps Lighthouse schemas out of `@devtools/core`, yet the web dashboard (`apps/frontend`) cannot import Node/Bun-bound `@devtools/lighthouse` runtime modules. Meanwhile, serving saved `report.html` files inline on the same loopback origin exposes `/api/*` endpoints to embedded report scripts unless origin-isolated.
-
-## Decision
-
-1. **Direct In-Process Batch Execution with `AbortSignal` Cancellation and Clear Daemon Ownership**: Execute SQLite-free audit batches (`executeLighthouseBatch({ ..., signal })`) directly via `@devtools/lighthouse` from `AuditJobManager` (`apps/api/src/lighthouse/job-manager.ts`), persisting artifacts and rows (`persistLighthouseAudit`) only if the job completes without abort or shutdown. Expose `await app.shutdown()` from `createApp()` so both standalone `startServer` (`apps/api/src/server.ts`) and `startDaemon` (`apps/cli/src/daemon.ts`) stop HTTP connections (`await server.stop(true)`), cancel in-flight Chromium runs and await cleanup (`await app.shutdown()`), and in `startDaemon` close SQLite handles (`closeDb()`) last. Keep `apps/cli/src/daemon.ts` as the single owner of SQLite initialization/migrations, static UI serving, and `/api/*` routing (with `{ server }` bindings forwarded), while keeping `apps/api/src/server.ts` strictly a minimal DB-free API server and keeping `bun build --compile` strictly single-entry (`apps/cli/bin/devtools.js`).
-2. **Single-Flight Two-Step `POST` + `GET` SSE Contract**: Enforce single-flight audit execution (`409 Conflict` with `activeJobId` on overlap), trigger jobs via `POST /api/lighthouse/audits` (`202 Accepted`), expose reload discovery via `GET /api/lighthouse/audits/active`, and stream progress via `GET /api/lighthouse/audits/:jobId/stream` (`EventSource`-compatible). Passive SSE disconnects do not abort running jobs; streams call `server.timeout(req, 0)`, emit `: keepalive\n\n` every `5000 ms`, omit Hono's `onError` callback in favor of in-callback error handling, replay the latest snapshot immediately, and retain the most recent terminal snapshot for 5 minutes (or until the next job starts).
-3. **Browser-Safe `@devtools/lighthouse/schemas` Subpath, All-Verb Loopback Checks, and Opaque-Origin `report.html` Sandbox**: Keep Lighthouse schemas inside `@devtools/lighthouse` via a pure `zod`-only subpath `@devtools/lighthouse/schemas` (`lighthouse-schemas` boundary zone in `.fallowrc.json`), enforce `Sec-Fetch-Site: cross-site`, non-loopback `Origin`, and `server.requestIP` loopback peer checks across all `/api/*` HTTP verbs (including `GET`), and serve `report.html` inline with `Content-Security-Policy: sandbox allow-scripts allow-popups allow-downloads; frame-ancestors 'self'`, `X-Content-Type-Options: nosniff`, and canonical symlink-safe path confinement inside `resolveArtifactsDir`.
+- **Cancellation and compiled-binary parity:** Daemon requests run audit batches in-process per [ADR 0005](0005-in-process-lighthouse-execution.md) and abort active Chromium runs during server shutdown before closing SQLite handles, preserving single-entry compiled binaries and `:memory:` integration tests.
+- **SSE resilience:** Native browser `EventSource` supports only `GET`, and `Bun.serve` drops idle connections after 10 seconds while Hono's `onError` emits duplicate SSE error frames; the two-step contract separates job creation from streaming, disables socket timeouts with periodic keepalives, handles errors inside the stream callback, and retains recent terminal snapshots for page reloads.
+- **Schema reuse and report isolation:** Because [ADR 0003](0003-lighthouse-audit-isolation-and-tiered-storage.md) keeps Lighthouse schemas out of `@devtools/core` and `apps/frontend` cannot bundle Bun runtime code, `@devtools/lighthouse/schemas` exposes pure Zod schemas while saved `report.html` files serve under an opaque `null`-origin CSP sandbox rejected by `/api/*` loopback guards across all HTTP verbs.
 
 ## Consequences
 
-- Standalone single-entry compiled binaries (`dist/devtools`) execute Lighthouse audits out-of-the-box without external worker script files while preserving `:memory:` SQLite hermetic integration tests via `CreateAppOptions` seams.
-- Server or daemon shutdowns (`stop()`, `SIGINT`, `SIGTERM`) cancel active audits, terminate Chromium cleanly, skip post-shutdown writes, and avoid closed-database errors; failed port binds in `startServer` leave already-running servers untouched.
-- Dashboard tabs recover gracefully across page reloads and SSE reconnects, and embedded `report.html` documents execute inside an opaque `null` origin (`Origin: null` is rejected by `/api/*` loopback protection), preventing cross-endpoint access while keeping interactive report features intact inside dashboard iframes.
+- Dashboard reloads recover active or recently finished audits, embedded report scripts cannot reach daemon APIs, and `apps/cli` owns SQLite lifecycle and static asset serving while `apps/api` remains a DB-free router factory; see [HTTP API Architecture](../architecture/api.md) for routes, headers, and status codes.
