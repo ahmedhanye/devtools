@@ -1,5 +1,5 @@
 interface:
   display_name: "Retro"
-  short_description: "Diagnose recurring agent, tooling, and workflow problems across one or more sessions"
+  short_description: "Diagnose command failures, slow tasks, wasted reads, and instruction friction"
 policy:
   allow_implicit_invocation: false
