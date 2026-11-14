@@ -1,30 +1,13 @@
 ---
 name: domain-modeling
-description: Build and sharpen a project's domain model. Use when discussing codebase terminology, writing or editing GLOSSARY-MAP.md or docs/glossary/*.md, or recording or editing an ADR.
+description: Build and sharpen a project's domain model. Use when discussing codebase terminology, writing or editing GLOSSARY.md or docs/glossary/*.md, or recording or editing an ADR.
 ---
 
 # Domain Modeling
 
-Actively build and sharpen the project's domain model as you design. This is the *active* discipline: challenging terms, inventing edge-case scenarios, and writing the glossary and decisions down the moment they crystallise. (Merely *reading* the glossary for vocabulary is not this skill: that's a one-line habit any skill can do. This skill is for when you're changing the model, not just consuming it.)
+Actively build and sharpen the project's domain model as you design. Challenge vague terms, test boundaries with concrete scenarios, and record vocabulary and decisions the moment they crystallize.
 
-## File structure
-
-DevTools organizes domain vocabulary across bounded contexts indexed by a root map:
-
-```
-/
-├── GLOSSARY-MAP.md
-├── docs/
-│   ├── glossary/
-│   │   ├── runtime.md       ← daemon, CLI, runtime stack, standalone binary
-│   │   ├── browser.md       ← resolution waterfall, managed cache, CfT
-│   │   └── persistence.md   ← database foundation, connection, seams
-│   └── adr/
-│       ├── 0001-embedded-database-foundation.md
-│       └── 0002-package-configuration-and-environment-seams.md
-```
-
-Create files lazily: only when you have something to write.
+Domain vocabulary lives in context glossaries under `docs/glossary/` indexed by `GLOSSARY.md` at the repository root. System-wide architectural decisions live under `docs/adr/` indexed in `ARCHITECTURE.md`. Create files lazily: only when you have something concrete to write.
 
 ## During the session
 
@@ -46,19 +29,19 @@ When the user states how something works, check whether the code agrees. If you 
 
 ### Update glossaries inline
 
-When a term is resolved, infer which context it belongs to (or ask) and update that context file in `docs/glossary/` right there using the format in [GLOSSARY-FORMAT.md](./GLOSSARY-FORMAT.md). If a new context is introduced, add it to `GLOSSARY-MAP.md`. Don't batch these up: capture them as they happen.
+When a term is resolved, infer which context it belongs to (or ask) and update that context file in `docs/glossary/` right there using [GLOSSARY-FORMAT.md](./GLOSSARY-FORMAT.md). If a new context is introduced, add it to `GLOSSARY.md`. Capture resolved terms as they happen rather than batching them.
 
-Domain glossaries should be totally devoid of implementation details and CI/CD/workflow rules. Verification gates belong in `TESTING.md`; issue tracking belongs in `CONTRIBUTING.md`.
+Keep domain glossaries free of implementation details, code paths, and CI or git workflow rules. Verification gates belong in `TESTING.md`; issue tracking belongs in `CONTRIBUTING.md`.
 
 ### Offer ADRs sparingly
 
-Only offer to create an ADR when all criteria in [ADR-FORMAT.md](./ADR-FORMAT.md) are met and explicitly approved by the maintainer. If any criterion is missing, skip the ADR.
+Only offer to create an ADR when all criteria in [ADR-FORMAT.md](./ADR-FORMAT.md) are met and explicitly approved by the maintainer. If any criterion is missing, skip the ADR. When an ADR is added or updated, update the ADR index table in `ARCHITECTURE.md`.
 
 ## Consumer habits
 
 When consuming domain models in engineering workflows:
 
-- **Vocabulary enforcement**: Use canonical terms from `GLOSSARY-MAP.md` and context glossaries in code symbols, PR and issue titles, tests, and documentation. Never use synonyms listed under `_Avoid_`.
-- **Silent absence**: Proceed silently when a glossary or `docs/adr/` does not exist. Do not scaffold empty placeholders.
-- **Domain gap signaling**: Treat missing domain concepts as unvetted jargon or model gaps requiring `/domain-modeling`. Do not invent ad-hoc terms.
-- **ADR conflict surfacing**: Surface contradictions explicitly when an exploration or refactor conflicts with an ADR: `Contradicts ADR-NNNN, but worth reopening because...`.
+- **Vocabulary enforcement.** Use canonical terms from `GLOSSARY.md` and `docs/glossary/*.md` in code symbols, PR and issue titles, tests, and documentation. Never use synonyms listed under `_Avoid_`.
+- **Silent absence.** Proceed silently when a glossary or `docs/adr/` does not exist. Do not scaffold empty placeholders.
+- **Domain gap signaling.** Treat missing domain concepts as unvetted jargon or model gaps requiring `domain-modeling`. Do not invent ad-hoc terms.
+- **ADR conflict surfacing.** Surface contradictions explicitly when an exploration or refactor conflicts with an ADR: `Contradicts ADR-NNNN, but worth reopening because...`.

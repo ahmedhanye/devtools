@@ -11,7 +11,7 @@ Run a three-axis quality assurance review across any repository while keeping tr
 
 Identify the review scope from the user request and repository state using non-interactive read-only commands, covering diff-scoped changes against a base ref, working tree edits, a target directory, or a full-repository inventory. Gather the target file list along with any explicitly referenced issue or pull request metadata.
 
-Choose one run directory for the review, such as `.scratch/qa/<timestamp>-<slug>/` using UTC YYYY-MM-DDTHH-MM-SSZ format and a kebab-case slug, or an isolated OS temporary directory when the repository does not designate `.scratch/`. Write `<out_dir>/context.md` with the base ref, git status, target file list, and issue context whenever the scope spans multiple files so subagents skip duplicate discovery.
+Choose one run directory for the review, such as `.scratch/qa/<timestamp>-<slug>/` using UTC YYYY-MM-DDTHH-MM-SSZ format and a kebab-case slug, or an isolated OS temporary directory when the repository does not designate `.scratch/`. Write `<out_dir>/context.md` with the base ref, git status, target file list, issue context, and relevant `GLOSSARY.md` terms or `ARCHITECTURE.md` ADRs whenever the scope spans multiple files so subagents skip duplicate discovery.
 
 Completion criterion: Review scope, target file list, and `<out_dir>/` are ready for subagent dispatch.
 

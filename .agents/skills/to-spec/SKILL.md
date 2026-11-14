@@ -10,9 +10,9 @@ Synthesize decisions already made in the conversation and the current codebase i
 
 ## Process
 
-1. **Load repository docs, metadata, and code.** Read every present repository issue guide and template (such as `CONTRIBUTING.md`, `docs/contributing/issues.md`, and `.github/ISSUE_TEMPLATE/`), plus any architecture, testing, glossary, and ADR docs (such as `ARCHITECTURE.md`, `TESTING.md`, `GLOSSARY-MAP.md`, `GLOSSARY.md`, `docs/glossary/`, and `docs/adr/`). Check live GitHub labels and milestones when applicable, and explore affected code so the spec uses canonical domain terms and respects existing decisions.
+1. **Load repository docs, metadata, and code.** Read every present repository issue guide and template (such as `CONTRIBUTING.md`, `docs/contributing/issues.md`, and `.github/ISSUE_TEMPLATE/`), plus `ARCHITECTURE.md` (including its ADR index), `TESTING.md`, and `GLOSSARY.md`. Load only the context glossaries (`docs/glossary/<context>.md`) and ADRs (`docs/adr/<NNNN>-*.md`) relevant to the feature. Check live GitHub labels and milestones when applicable, and explore affected code so the spec uses canonical domain terms and respects existing decisions.
 
-   Completion criterion: All present issue rules, templates, architecture and testing docs, glossaries, and ADRs read, live GitHub metadata checked, and affected areas explored.
+   Completion criterion: Present issue rules, templates, architecture and testing guides, and affected context glossaries and ADRs read, live GitHub metadata checked, and affected areas explored.
 
 2. **Sketch testing seams.** Propose the testing seams for the feature. Favor existing seams over new ones, pick the highest public boundary possible, and minimize the seam count (ideally one). When more than one seam is needed, note why a single higher seam is insufficient.
 

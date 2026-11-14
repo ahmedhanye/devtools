@@ -5,7 +5,7 @@ description: "Write, structure, and update project documentation across root *.m
 
 # Writing documentation
 
-Authoring guide for repository documentation across `docs/**`, package and app READMEs, and root `*.md` files: `README.md`, `ARCHITECTURE.md`, `CODE_OF_CONDUCT.md`, `CODING_STANDARDS.md`, `CONTRIBUTING.md`, `GLOSSARY-MAP.md`, `REVIEW.md`, `SECURITY.md`, and `TESTING.md`.
+Authoring guide for repository documentation across `docs/**`, package and app READMEs, and root `*.md` files: `README.md`, `ARCHITECTURE.md`, `CODE_OF_CONDUCT.md`, `CODING_STANDARDS.md`, `CONTRIBUTING.md`, `GLOSSARY.md`, `REVIEW.md`, `SECURITY.md`, and `TESTING.md`.
 
 Apply [`/unslop`](../unslop/SKILL.md) to all prose.
 

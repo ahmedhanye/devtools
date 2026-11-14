@@ -10,9 +10,9 @@ Break a plan, spec, or conversation into vertical tracer-bullet tickets with exp
 
 ## Process
 
-1. **Gather context and repository rules.** Read every present repository issue guide and template (such as `CONTRIBUTING.md`, `docs/contributing/issues.md`, and `.github/ISSUE_TEMPLATE/`), plus any architecture, testing, glossary, and ADR docs (such as `ARCHITECTURE.md`, `TESTING.md`, `GLOSSARY-MAP.md`, `GLOSSARY.md`, `docs/glossary/`, and `docs/adr/`). Work from the conversation context, or fetch the referenced spec, file, issue, or URL in full (body and comments). Check live GitHub labels and parent issue details when publishing to GitHub.
+1. **Gather context and repository rules.** Read every present repository issue guide and template (such as `CONTRIBUTING.md`, `docs/contributing/issues.md`, and `.github/ISSUE_TEMPLATE/`), plus `ARCHITECTURE.md` (including its ADR index), `TESTING.md`, and `GLOSSARY.md`. Load only the context glossaries (`docs/glossary/<context>.md`) and ADRs (`docs/adr/<NNNN>-*.md`) relevant to the planned work. Work from the conversation context, or fetch the referenced spec, file, issue, or URL in full (body and comments). Check live GitHub labels and parent issue details when publishing to GitHub.
 
-   Completion criterion: All present issue rules, templates, and architecture, testing, glossary, and ADR docs read, and target context, spec, or issue loaded completely.
+   Completion criterion: Present issue rules, templates, architecture and testing guides, and affected context glossaries and ADRs read, and target context, spec, or issue loaded completely.
 
 2. **Explore codebase boundaries.** If not already explored, inspect the codebase so slices align with existing modules, canonical domain terms, and architecture decisions. Note any prefactoring that makes the upcoming change easier.
 
