@@ -59,7 +59,7 @@ CLI errors must guide the user directly to a resolution:
    ```
    - Export all CLI commands and runner functions from `src/index.ts` (e.g. `runCli`, `createProgram`, `startDaemon`). This enables programmatic callers to invoke CLI commands directly in-process.
    - Use Commander's `.exitOverride()` so CLI parsing errors throw exceptions rather than terminating the process abruptly.
-4. **Action dependency injection and environment seams**:
+4. **Action dependency injection and configuration seams**:
    - CLI action functions should accept an optional `deps` parameter for external dependencies (e.g. browser probe functions, API clients) to allow callers to provide alternative implementations without spawning OS subprocesses.
    - Programmatic action runners (e.g. `runWebCommand`) must expose an optional `options.env?: EnvMap` seam and delegate configuration resolution to subsystem configuration resolvers (such as `resolveDaemonConfig`) rather than reading ambient `process.env` directly. This decouples library invocations from ambient host process state.
 

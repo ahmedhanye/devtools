@@ -9,7 +9,7 @@ All contributions across applications and packages must adhere to these foundati
 1. **Strict TypeScript baselines**: Workspaces inherit strict compiler checks (`strict: true`, `noUncheckedIndexedAccess: true`). Accessing indexable collections requires explicit bounds checking. Ban arbitrary `any`.
 2. **Schema-first boundary contracts**: Validate all data crossing boundaries (network, filesystem, CLI args, database rows) through Zod schemas. Derive TypeScript types using `z.infer<typeof Schema>`.
 3. **Headless package isolation**: Internal packages (`packages/*`) must never import from deployable applications (`apps/*`) or documentation (`site/`). Packages expose direct source exports (`"exports": "./src/index.ts"`) for zero-build development.
-4. **Environment seam discipline**: Domain logic must never read `process.env` directly. Centralize environment variable reads into a package `config.ts` module with injectable `env?: Record<string, string | undefined>` seams per [ADR 0002](docs/adr/0002-package-configuration-and-environment-seams.md). Code branching on runtime environment state (`isTTY`, `process.getuid`, OS platform) must expose injectable option parameters so all branches are exercised in unit tests to satisfy 100% diff coverage.
+4. **Configuration seam discipline**: Domain logic must never read `process.env` directly. Centralize environment variable reads into a package `config.ts` module with injectable `env?: Record<string, string | undefined>` Configuration Seams per [ADR 0002](docs/adr/0002-package-configuration-and-environment-seams.md). Code branching on runtime environment state (`isTTY`, `process.getuid`, OS platform) must expose injectable option parameters so all branches are exercised in unit tests to satisfy 100% diff coverage.
 5. **Ergonomic CLI tools**: Follow [Command Line Interface Guidelines (CLIG)](https://clig.dev/): separate `stdout` (data) from `stderr` (logs), provide `--json` for machine consumption, support `NO_COLOR`, and deliver actionable remediation steps in error messages.
 6. **Hono API standards**: Serve API endpoints in-process on `/api/*` using Hono. Validate all inputs with Zod and format non-2xx payloads using standardized JSON error envelopes.
 7. **Feature-Sliced Design v2.1**: Organize `apps/frontend` strictly by FSD layers (`app` -> `pages` -> `features` -> `entities` -> `shared`). Apply the "pages first" rule, keep App Router entrypoints thin, use React 19 native ref props, and use semantic theme tokens.
@@ -32,8 +32,8 @@ Detailed domain standards live under `docs/coding-standards/` and `TESTING.md`:
 
 - [System Architecture](ARCHITECTURE.md): Monorepo topology, component diagrams, runtime lifecycles, and architecture directory.
 - [Contributing Guide](CONTRIBUTING.md): Git branching, issue tracking, commit messages, and release procedures.
-- [Domain Glossary Map](GLOSSARY-MAP.md): Canonical domain vocabularies across bounded contexts.
-- [Architecture Decision Records](docs/adr/README.md): Historical records of architectural decisions and rationale.
+- [Domain Glossary](GLOSSARY.md): Canonical domain vocabularies across bounded contexts.
+- [Architecture Decision Records](ARCHITECTURE.md#architecture-decision-records): Historical records of architectural decisions and rationale.
 
 ## Authoring and review checklist
 
