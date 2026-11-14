@@ -31,7 +31,7 @@ export const SCOPES = {
     domain: "docs",
     pattern: "^(docs/contributing/|CONTRIBUTING\\.md$|CODE_OF_CONDUCT\\.md$)",
   },
-  glossary: { domain: "docs", pattern: "^(docs/glossary/|GLOSSARY-MAP\\.md$)" },
+  glossary: { domain: "docs", pattern: "^(docs/glossary/|GLOSSARY\\.md$)" },
   testing: { domain: "docs", pattern: "^(docs/testing/|TESTING\\.md$)" },
   review: { domain: "docs", pattern: "^(docs/review/|REVIEW\\.md$)" },
 
