@@ -114,7 +114,7 @@ reviews:
         Enforce the following:
         1. Input Validation: Validate all incoming request bodies, query params, and route parameters
            using Zod/validator middleware prior to execution.
-        2. Thin Controllers: Route handlers must delegate business logic to domain services in `packages/core`.
+        2. Thin Controllers: Route handlers must delegate business logic to domain packages (such as `packages/lighthouse`).
         3. HTTP Semantics: Return appropriate HTTP status codes (200, 201, 400, 401, 403, 404, 500)
            and structured JSON error responses.
 
@@ -153,7 +153,7 @@ reviews:
       instructions: >-
         This package provides the isolated Lighthouse v13 audit engine, metric extraction, and persistence services.
         Enforce the following:
-        1. Subprocess Isolation: Execute Lighthouse runs inside an isolated child process/worker with deterministic Chromium cleanup (`launchedChrome.kill()` in `finally`).
+        1. In-Process Execution & Chromium Cleanup: Execute Lighthouse iterations in-process with AbortSignal cancellation and deterministic Chromium cleanup (`launchedChrome.kill()` in `finally`) per ADR 0005.
         2. Configuration Seam: Isolate environment variable reads inside `src/config.ts` (`resolveArtifactsDir`) with injectable `options.env?: EnvMap` per ADR 0002.
         3. Representative Selection: Select a single Representative Run via Euclidean distance to median FCP and TTI rather than computing independent per-metric medians.
 
@@ -206,9 +206,9 @@ knowledge_base:
     enabled: true
     filePatterns:
       - ".agents/AGENTS.md"
-      - "GLOSSARY-MAP.md"
+      - "GLOSSARY.md"
       - "docs/glossary/*"
-      - ".agents/rules/*"
+      - "ARCHITECTURE.md"
       - "CONTRIBUTING.md"
       - "docs/adr/*"
   learnings:
