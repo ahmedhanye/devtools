@@ -18,6 +18,6 @@
   "dependencies": {
     "@devtools/core": "workspace:*",
     "@puppeteer/browsers": "^3.2.6",
-    "chrome-launcher": "^1.2.2"
+    "chrome-launcher": "^1.2.3"
   }
 }

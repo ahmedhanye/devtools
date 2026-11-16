@@ -21,7 +21,7 @@
     "@devtools/browser": "workspace:*",
     "@devtools/core": "workspace:*",
     "@devtools/db": "workspace:*",
-    "chrome-launcher": "^1.2.2",
+    "chrome-launcher": "^1.2.3",
     "lighthouse": "^13.5.0",
     "zod": "^4.6.7"
   }
