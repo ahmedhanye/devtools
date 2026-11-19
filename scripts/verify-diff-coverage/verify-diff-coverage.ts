@@ -377,6 +377,7 @@ export function verifyDiffCoverage(
     ((args: string[]) =>
       spawnSync("git", args, {
         encoding: "utf8",
+        maxBuffer: 64 * 1024 * 1024,
       }));
 
   if (!fileExists(lcovPath)) {
