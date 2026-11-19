@@ -14,9 +14,9 @@ Every `.agents/skills/<name>/SKILL.md` must start with a YAML frontmatter block 
 
 Choose between model invocation and user invocation based on who triggers the skill.
 
-- **Model-invoked skills.** Omit `disable-model-invocation`. Both the agent and the user can invoke the skill, and other skills can reference it. Because the `description` loads into context automatically on every turn, write it using the context pointer rules in `SKILL.md` and never add duplicate pointers to the skill inside `.agents/AGENTS.md` or `.agents/rules/*.md`. A model-invoked reference skill can also hold shared rules that multiple skills consult.
+- **Model-invoked skills.** Omit `disable-model-invocation`. Both the agent and the user can invoke the skill, and other skills can reference it. Because the `description` loads into context automatically on every turn, write it using the context pointer rules in `SKILL.md` and never add duplicate pointers to the skill inside `.agents/AGENTS.md` or optional scoped rules. A model-invoked reference skill can also hold shared rules that multiple skills consult.
 - **User-invoked skills.** Set `disable-model-invocation: true`. Only the user typing `/<name>` can invoke the skill, spending zero context tokens per turn. Write a concise one-sentence `description` for the human without `Use when...` trigger branches.
-- **Shared reference for user-invoked skills.** Two user-invoked skills cannot invoke each other automatically. Place shared reference in a standalone Markdown file or a model-invoked skill that both skills link to.
+- **Shared reference for user-invoked skills.** Two user-invoked skills cannot invoke each other automatically by name; link directly to the sibling `SKILL.md` path when already inside a user-invoked flow, or place shared reference in a standalone Markdown file or a model-invoked skill that both skills link to.
 
 ## Splitting by invocation and router skills
 

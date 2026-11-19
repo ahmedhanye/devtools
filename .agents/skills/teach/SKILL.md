@@ -11,7 +11,7 @@ Deliver progressive, source-grounded lessons inside isolated topic tracks under 
 
 ## Track CLI
 
-Run `.agents/skills/teach/scripts/track.ts` for track management and validation, consulting [references/track-files.md](references/track-files.md) when creating or updating `MISSION.md`, `NOTES.md`, `RESOURCES.md`, `GLOSSARY.md`, `learning-records/`, or `reference/` files:
+Run `.agents/skills/teach/scripts/track.ts` for track management and validation rather than reading `scripts/track.ts` source code, consulting [references/track-files.md](references/track-files.md) when creating or updating `MISSION.md`, `NOTES.md`, `RESOURCES.md`, `GLOSSARY.md`, `learning-records/`, or `reference/` files:
 
 - `bun .agents/skills/teach/scripts/track.ts status [topic]` inspects `tracks.json` and workspace files, printing `activeTrack`, `pendingLesson`, fuzzy matches, and next `NNNN` numbers; exits `0`.
 - `bun .agents/skills/teach/scripts/track.ts init <topic> --title "<Title>"` creates `<topic-slug>/lessons/` and sets `activeTrack` in `tracks.json`; exits `0`.
@@ -29,19 +29,19 @@ Run `track.ts status "<topic>"` when a topic is named, or `track.ts status` when
 - **Omitted topic.** If multiple tracks exist and the user is starting a fresh session rather than answering an active drill or interview, list tracks with `completedLessons` and `currentLesson` counts, ask which track to open or what new topic to start, and end your turn. If one track exists, use it. If none exist, ask what topic and outcome the user wants and end your turn.
 - **New track or missing mission.** Interview the user until the real-world outcome, success criteria, constraints, and baseline prior knowledge are settled, ending your turn if any remain open. Once settled, run `track.ts init <topic-slug> --title "<Title>"`, write `MISSION.md`, and record baseline knowledge in `learning-records/0001-<slug>.md` and preferences in `NOTES.md` when disclosed.
 
-Completion criterion: Active track is set in `tracks.json`, `MISSION.md` defines concrete success criteria, and all existing `NOTES.md`, `RESOURCES.md`, `GLOSSARY.md`, and `learning-records/*.md` files are read.
+Completion criterion: Active track is set in `tracks.json`, `MISSION.md` defines concrete success criteria, and all files listed under `Existing files` and `Records` by `track.ts status` are read.
 
 ### 2. Review mastery and plan next concept
 
-- **Evaluate replies.** When the user submits drill answers, demonstrates skill, corrects a misconception, or shifts goals, give direct feedback on their reasoning, write `learning-records/<NNNN>-<slug>.md` for non-trivial evidence or corrections, promote demonstrated canonical terms to `GLOSSARY.md`, and run `track.ts complete <topic-slug>`.
-- **Build retention.** Check `NOTES.md` and `learning-records/*.md` to skip mastered material and choose the single next skill advancing `MISSION.md`, unless `NOTES.md` specifies a broader scope. When `completedLessons > 0` or `pendingLesson` is set, include brief spaced recall across prior concepts and connect related active tracks when helpful.
+- **Evaluate replies and progression.** When the user submits drill answers, demonstrates skill, corrects a misconception, shifts goals, or requests advancing (such as `"next"`), give direct feedback on any answers (or note unverified drill recall if skipped), write `learning-records/<NNNN>-<slug>.md` for non-trivial evidence or corrections, promote demonstrated canonical terms to `GLOSSARY.md`, and run `track.ts complete <topic-slug>`.
+- **Build retention.** Check `NOTES.md` and `learning-records/*.md` to skip mastered material and choose the single next skill advancing `MISSION.md`, unless `NOTES.md` specifies a broader scope. Whenever `completedLessons > 0` or `pendingLesson` is set, include brief spaced recall across prior concepts inside `## Core concepts` or at least one cross-lesson retrieval question, and connect related active tracks when helpful.
 - **Ground facts.** Verify claims against directly read external documentation or inspected repository files, update `RESOURCES.md` with verified sources, practitioner communities, and any unverified access gaps, and cite only directly observed files or URLs in lesson headers and `Primary sources`.
 
-Completion criterion: Observed mastery is persisted, `tracks.json` progress matches completed lessons, and the next scope is grounded in verified sources.
+Completion criterion: Observed mastery or progression is persisted in `tracks.json`, spaced recall is planned whenever `completedLessons > 0`, and the next scope is grounded in verified sources.
 
 ### 3. Author and validate deliverable
 
-Write one self-contained Markdown lesson to `.scratch/teach/<topic-slug>/lessons/<NNNN>-<lesson-slug>.md` using the template below, or write durable lookup material to `.scratch/teach/<topic-slug>/reference/<name>.md`.
+Write one self-contained Markdown lesson to `.scratch/teach/<topic-slug>/lessons/<NNNN>-<lesson-slug>.md` (4-digit zero-padded `<NNNN>` matching `Next numbers: lesson=` and kebab-case `<lesson-slug>`) using the template below, or write durable lookup material to `.scratch/teach/<topic-slug>/reference/<name>.md`. Keep `<br>` at the end of every non-final `Eyebrow`/`Source` header line as shown below:
 
 ````markdown
 # Lesson <NNNN>: <Title>

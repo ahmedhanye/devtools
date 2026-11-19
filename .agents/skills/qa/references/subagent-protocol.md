@@ -6,7 +6,7 @@ Follow these four steps alongside your assigned axis playbook to produce the exa
 
 Read this protocol, your assigned axis playbook, and `<out_dir>/context.md` if provided. From the repository root, read `TESTING.md`, `REVIEW.md`, and only the `CODING_STANDARDS.md`, `ARCHITECTURE.md`, linked guides, and package manifest scripts relevant to your axis.
 
-Follow deduplication rules, coverage ownership constraints, and test exemptions in `TESTING.md`, `REVIEW.md`, and coverage configuration before selecting commands or flagging missing tests. Rely on `<out_dir>/context.md` and targeted file diffs rather than repeating broad git or issue queries; when running git commands, set `PAGER=cat` or place `--no-pager` before the subcommand. Launch assigned or discovered verification checks in non-interactive compound invocations, keeping diagnostic analyzers whose non-zero exit codes report findings separated from required downstream test or diff checks.
+Follow deduplication rules, coverage ownership constraints, and test exemptions in `TESTING.md`, `REVIEW.md`, and coverage configuration before selecting commands or flagging missing tests. Read `<out_dir>/context.md` for the changed-file inventory and base ref, running `git --no-pager diff <base> -- <file>` only for assigned files rather than repeating broad git or issue queries; when running git commands, set `PAGER=cat` or place `--no-pager` before the subcommand. Launch assigned or discovered verification checks in non-interactive compound invocations, keeping diagnostic analyzers whose non-zero exit codes report findings separated from required downstream test or diff checks.
 
 While backgrounded commands finish, read candidate source and test files owned by your axis in full in parallel batches.
 
@@ -16,7 +16,7 @@ Completion criterion: Relevant axis guides, manifests, source files, test files,
 
 Execute and inspect only checks owned by your axis. If a shared runner such as coverage fails inside another axis suite or due to unprovisioned external binaries like a browser runtime, record that external blocker without installing global tools, mutating user home caches, or running suites owned by another axis.
 
-Run exploratory delta probes inline or inside isolated OS temporary directories so the repository workspace and `<out_dir>/` remain clean. Enforce explicit runtime or subprocess timeouts, bind ephemeral loopback ports such as port `0`, use isolated temporary or in-memory state, sanitize host and port environment variables, and stop every spawned server or background child process before completing.
+Run exploratory delta probes inline or inside isolated OS temporary directories so the repository workspace and `<out_dir>/` remain clean. Wrap every probe command in an outer shell `timeout` (such as `timeout 20s`) alongside per-operation timeouts, bind ephemeral loopback ports such as port `0`, use isolated temporary or in-memory state, sanitize host and port environment variables, and stop every spawned server or background child process before completing.
 
 Completion criterion: All exploratory probes finish cleanly with zero leftover processes, mutated user caches, or temporary workspace files.
 

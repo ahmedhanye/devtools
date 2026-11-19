@@ -56,13 +56,6 @@
       "skillPath": "pstack/skills/unslop/SKILL.md",
       "computedHash": "4bbcb6719a8f0f6f7fb46752e1c360791d7758a837708e300a06fc7d6907938c",
       "commit": "e58dd043600587dbaf58ba315e7f2b38373eeb43"
-    },
-    "wait-what": {
-      "source": "mattpocock/skills",
-      "sourceType": "github",
-      "skillPath": "skills/productivity/wait-what/SKILL.md",
-      "computedHash": "70c9bf9f5a84b6849760f9492f569d5aa12307a0310323fde5f583144730c26c",
-      "commit": "5863806dd4e15c63174bee4e7515a4256792ecfa"
     }
   }
 }

@@ -20,7 +20,7 @@ Diagnose command bugs, slow detours, and unhelpful file reads across targeted co
 
 ### 1. Gather targeted session signals
 
-Default to the active session when no target is named. When targeting specific sessions, a branch, a PR, or a time window, narrow candidate logs by matching workspace path, branch, or modification time with `find` and `rg -l` before opening any transcript, excluding unrelated workspaces. Inspect compact transcript views first, and read exact line ranges from full logs only for steps with failures, truncation, or stalled subagents.
+Default to the active session when no target is named. When targeting specific sessions, a branch, a PR, or a time window, narrow candidate logs by matching workspace path, branch, or modification time with `find` or `rg --hidden -l` (since transcript directories may live under hidden folders) before opening any transcript, excluding unrelated workspaces. Inspect compact transcript views first, and read exact line ranges from full logs only for steps with failures, truncation, or stalled subagents.
 
 Filter JSON, JSONL, or exported session logs in one `jq` or `rg` pass to extract five metadata slices while skipping file-read bodies, internal reasoning traces, and passing output noise:
 

@@ -4,4 +4,4 @@ description: Answer the current message read-only without modifying files or run
 disable-model-invocation: true
 ---
 
-For this turn only, stay strictly read-only: use read-only inspection if needed and answer directly without editing files or running state-changing `git`, `gh`, package, or filesystem commands.
+Do not modify any git-tracked file or run any mutating action such as git or gh write or push commands; just answer the question(s).

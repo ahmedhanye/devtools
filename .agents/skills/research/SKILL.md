@@ -9,7 +9,8 @@ Investigate technical questions against live primary sources, gather relevant co
 
 ## Execution
 
-Dispatch a background subagent with a fresh context window immediately without running preliminary searches in the main session. Execute inline only when already inside a subagent or when the caller forbids delegation.
+1. **Dispatch immediately.** Frame the scoped research questions, pass `.agents/skills/research/SKILL.md` and the target `.scratch/research/<topic>.md` path in the brief, and dispatch a write-capable background subagent with a fresh context window as your first action before running main-session searches. Execute inline only when already inside a subagent or when delegation is unavailable.
+2. **Yield while delegated.** End your turn immediately with zero further tool calls until the subagent finishes.
 
 ## Method
 
@@ -23,5 +24,7 @@ Use all methods below that are useful for the question and available to you:
 
 ## Output
 
-- **Report.** Write complete findings (summary, sourced URLs and file refs, trade-offs, and unverified gaps) to `.scratch/research/<topic>.md`, or return them structured for the caller to save when running read-only.
-- **Chat response.** Output only a brief direct answer, key caveats, and link to the report in chat; keep full breakdowns in the report or active session artifact.
+- **Report.** Write complete sourced findings (summary, sourced URLs and file refs, trade-offs, and unverified gaps) directly to `.scratch/research/<topic>.md`.
+- **Chat response.** Output only a brief direct answer, key caveats, and a link to the report in chat; keep full breakdowns inside `.scratch/research/<topic>.md`.
+
+Completion criterion: A write-capable subagent was dispatched before main-session searches, complete sourced findings exist on disk at `.scratch/research/<topic>.md`, and chat contains only a brief direct answer, caveats, and the report link.

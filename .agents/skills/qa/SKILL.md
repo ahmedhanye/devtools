@@ -11,13 +11,13 @@ Run a three-axis quality assurance review across any repository while keeping tr
 
 Identify the review scope from the user request and repository state using non-interactive read-only commands, covering diff-scoped changes against a base ref, working tree edits, a target directory, or a full-repository inventory. Gather the target file list along with any explicitly referenced issue or pull request metadata.
 
-Choose one run directory for the review, such as `.scratch/qa/<timestamp>-<slug>/` using UTC YYYY-MM-DDTHH-MM-SSZ format and a kebab-case slug, or an isolated OS temporary directory when the repository does not designate `.scratch/`. Write `<out_dir>/context.md` with the base ref, git status, target file list, issue context, and relevant `GLOSSARY.md` terms and `ARCHITECTURE.md` ADRs (including linked context glossaries and ADRs) whenever the scope spans multiple files so subagents skip duplicate discovery.
+Choose one run directory for the review, such as `.scratch/qa/<timestamp>-<slug>/` using UTC YYYY-MM-DDTHH-MM-SSZ format and a kebab-case slug, or an isolated OS temporary directory when the repository does not designate `.scratch/`. Write `<out_dir>/context.md` with the base ref, `git status -s`, exact changed-file list (`git diff --name-status <base-ref>`), issue context, and relevant `GLOSSARY.md` terms and `ARCHITECTURE.md` ADRs (including linked context glossaries and ADRs) so subagents skip duplicate discovery.
 
-Completion criterion: Review scope, target file list, and `<out_dir>/` are ready for subagent dispatch.
+Completion criterion: Review scope, exact target file list, base ref, and `<out_dir>/context.md` are ready for subagent dispatch.
 
 ### 2. Dispatch three axis subagents
 
-Assign candidate source and test files loosely by inspection lens so each axis starts cleanly without reading testing guides, build manifests, or build scripts up front:
+Assign candidate source and test files plus non-overlapping test-level commands by inspection lens (following `REVIEW.md` / `TESTING.md` deduplication rules so only one axis owns shared artifact-mutating steps such as full coverage or binary builds, while leaving `references/` playbooks unread by the coordinator unless running axes sequentially):
 
 | Axis | Playbook | Focus and report path |
 | :--- | :--- | :--- |
@@ -25,7 +25,7 @@ Assign candidate source and test files loosely by inspection lens so each axis s
 | **Gray-box** | [references/gray-box-testing.md](references/gray-box-testing.md) | Module seams, API and wire contracts, persistence, security boundaries, and architecture checks; writes `<out_dir>/gray-box-testing.md` |
 | **White-box** | [references/white-box-testing.md](references/white-box-testing.md) | Internal branches, unit suites, static analyzers, complexity, coverage, and mutation checks; writes `<out_dir>/white-box-testing.md` |
 
-Launch all three subagents in parallel, or run each playbook sequentially if parallel delegation is unavailable. Pass each subagent [the shared protocol](references/subagent-protocol.md), its axis playbook, the scope summary or `<out_dir>/context.md` path, base ref, candidate files, and the exact target report path `<out_dir>/<axis>-testing.md`. Wait for all three subagents to finish before reading reports.
+Launch all three subagents in parallel, or run each playbook sequentially if parallel delegation is unavailable. Pass each subagent [the shared protocol](references/subagent-protocol.md), its axis playbook, the scope summary and `<out_dir>/context.md` path, base ref, candidate files, owned commands, and the exact target report path `<out_dir>/<axis>-testing.md`. Wait for all three subagents to finish, verify all three `<out_dir>/<axis>-testing.md` files exist (resuming any interrupted subagent that lacks its report file), and run any sequential post-coverage binary smoke check once parallel subagents finish.
 
 Completion criterion: All three report files exist at the assigned `<out_dir>/<axis>-testing.md` paths.
 

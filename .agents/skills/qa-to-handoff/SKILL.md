@@ -1,5 +1,5 @@
 ---
-name: human-qa
+name: qa-to-handoff
 description: Three-axis QA followed by human verification, grilling on findings, and remediation handoff.
 disable-model-invocation: true
 ---
