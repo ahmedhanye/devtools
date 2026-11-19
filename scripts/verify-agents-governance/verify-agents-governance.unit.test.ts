@@ -6,6 +6,7 @@ import {
   checkCodeFences,
   checkMachinePaths,
   checkMarkdownLinks,
+  checkSkillPortability,
   checkUnslop,
   discoverAgentFiles,
   loadVendorSkillNames,
@@ -373,6 +374,36 @@ unquoted colon: in: here
       expect(findings.some((f) => f.rule === "skill/frontmatter-syntax")).toBe(
         true,
       );
+    });
+
+    it("flags en dashes and harness tool names in non-vendor skills", () => {
+      const enDashFindings = checkUnslop(
+        "Write 1–3 sentences.",
+        ".agents/skills/my-skill/SKILL.md",
+      );
+      expect(enDashFindings.some((f) => f.rule === "unslop/no-en-dash")).toBe(
+        true,
+      );
+
+      const portabilityFindings = checkSkillPortability(
+        "Call invoke_subagent to delegate.",
+        ".agents/skills/my-skill/SKILL.md",
+        "my-skill",
+      );
+      expect(
+        portabilityFindings.some(
+          (f) => f.rule === "skill/no-harness-tool-name",
+        ),
+      ).toBe(true);
+    });
+
+    it("allows writing-for-agents documentation examples", () => {
+      const metaFindings = checkSkillPortability(
+        "Never use invoke_subagent in skill files.",
+        ".agents/skills/writing-for-agents/SKILL.md",
+        "writing-for-agents",
+      );
+      expect(metaFindings).toHaveLength(0);
     });
   });
 
