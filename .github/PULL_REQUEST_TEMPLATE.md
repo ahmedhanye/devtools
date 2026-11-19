@@ -1,33 +1,22 @@
 ## Summary
 
-<!-- Pick the smallest view that makes the key point clear:
-     - Shallow file tree for file responsibility / layout changes
-     - Component tree for UI structure & boundaries
-     - Diff sketch for state or control flow
-     - Mermaid sequence diagram for data flow or interaction
-     Provide structural views rather than commit messages, branch mechanics, or CLI commands. -->
+<!-- Pick the smallest view that makes the change clear (see docs/contributing/pull-request.md#description-visuals-and-evidence):
+     - Prefer ```diff for file-layout, component-tree, call-tree, or control-flow deltas
+     - Use ```text for new shallow file trees, component trees, call trees, or pseudocode
+     - Use ```mermaid for multi-component interaction or data flow
+     Skip preambles and omit commit mechanics or CLI commands. -->
 
 Closes #<issue>
 
 ## Evidence
 
-### Acceptance Criteria Verification
-
-<!-- Copy acceptance criteria from the linked issue and cite observable proof for each:
-     - [x] <criterion 1>: <command output / test result / screenshot>
-     - [x] <criterion 2>: <command output / test result / screenshot> -->
-
-### Test Suite & Coverage Results
-
-<!-- Observable verification proving the change works:
-     - Terminal test output: bun test or focused package tests
-     - Diff coverage verification: bun run verify:diff-coverage
-     - CLI timing, NO_COLOR, or non-TTY outputs where applicable -->
+- **Before:** <!-- what happened, failed, or was missing before this change -->
+- **After:** <!-- observable outcome after this change (omit routine CI checks already shown on the PR) -->
 
 ## Merge Danger
 
 **Door:** <!-- one-way or two-way -->
 
-<!-- Rationale if one-way (hard or destructive to reverse) -->
+<!-- Rationale if one-way (destructive or hard to reverse) -->
 
-**Blast Radius:** <!-- one-word or concise description of impact scope -->
+**Blast Radius:** <!-- concrete impact scope (consumers, layout shift, CLI flags, CI) -->
