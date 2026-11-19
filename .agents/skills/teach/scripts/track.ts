@@ -14,6 +14,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 /** Track metadata stored inside `.scratch/teach/tracks.json`. */
 export interface TrackEntry {
@@ -189,7 +190,7 @@ export function pad4(num: number): string {
  * @returns `file://` URI string.
  */
 export function toFileUri(absPath: string): string {
-  return `file://${absPath.replace(/\\/g, "/")}`;
+  return pathToFileURL(resolve(absPath)).href;
 }
 
 /**
