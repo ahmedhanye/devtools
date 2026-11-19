@@ -3,16 +3,16 @@ import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { API_ERROR_CODES } from "@devtools/core";
-import { createDb, runMigrations, type DevtoolsDb } from "@devtools/db";
 import {
   AuditCancelledError,
-  listLighthouseRuns,
+  openLighthouseStore,
   type LighthouseBatchExecutionResult,
+  type LighthouseStore,
 } from "@devtools/lighthouse";
 import {
   AuditJobManager,
   type AuditJobStreamEvent,
-} from "../src/lighthouse/job-manager";
+} from "../src/modules/lighthouse/job-manager";
 
 function makeBatchResult(url: string): LighthouseBatchExecutionResult {
   return {
@@ -64,16 +64,16 @@ const DEFAULT_REQUEST = {
 };
 
 describe("AuditJobManager (Unit)", () => {
-  let db: DevtoolsDb;
+  let store: LighthouseStore;
   let artifactsDir: string;
 
   beforeEach(() => {
-    db = createDb({ path: ":memory:" });
-    runMigrations(db);
     artifactsDir = mkdtempSync(join(tmpdir(), "devtools-jm-unit-"));
+    store = openLighthouseStore({ memory: true, artifactsDir });
   });
 
   afterEach(() => {
+    store.close();
     rmSync(artifactsDir, { recursive: true, force: true });
   });
 
@@ -85,8 +85,7 @@ describe("AuditJobManager (Unit)", () => {
     });
 
     const manager = new AuditJobManager({
-      resolveDb: () => db,
-      resolveArtifactsDir: () => artifactsDir,
+      store,
       env: { CUSTOM_ENV: "yes" },
       auditRunner: async (params) => {
         capturedEnv = params.env;
@@ -144,8 +143,7 @@ describe("AuditJobManager (Unit)", () => {
     });
 
     const manager = new AuditJobManager({
-      resolveDb: () => db,
-      resolveArtifactsDir: () => artifactsDir,
+      store,
       auditRunner: async (params) => {
         emitProgress = (event) => params.onProgress?.(event);
         await gate;
@@ -204,8 +202,7 @@ describe("AuditJobManager (Unit)", () => {
 
   it("replays terminal snapshot, expires retained jobs after retention window, and cancels prior retention timer on new job", async () => {
     const manager = new AuditJobManager({
-      resolveDb: () => db,
-      resolveArtifactsDir: () => artifactsDir,
+      store,
       jobRetentionMs: 25,
       auditRunner: async (params) => makeBatchResult(params.url),
     });
@@ -245,13 +242,15 @@ describe("AuditJobManager (Unit)", () => {
   it("transitions to failed, emits error event, and clears active job on runner rejection and persistence failure", async () => {
     let mode: "worker-error" | "persist-error" | "ok" = "worker-error";
     const manager = new AuditJobManager({
-      resolveDb: () => {
-        if (mode === "persist-error") {
-          throw new Error("DB closed");
-        }
-        return db;
+      store: {
+        ...store,
+        persistBatch: (batch, opts) => {
+          if (mode === "persist-error") {
+            throw new Error("DB closed");
+          }
+          return store.persistBatch(batch, opts);
+        },
       },
-      resolveArtifactsDir: () => artifactsDir,
       auditRunner: async (params) => {
         if (mode === "worker-error") {
           throw Object.assign(new Error("Chrome missing"), {
@@ -317,7 +316,7 @@ describe("AuditJobManager (Unit)", () => {
   });
 
   it("shutdown aborts active runner signal, awaits settlement, skips persistence, notifies subscribers, and rejects new jobs", async () => {
-    let resolveDbCalls = 0;
+    let persistBatchCalls = 0;
     let runnerSettled = false;
     let capturedSignal: AbortSignal | undefined;
     let notifyStarted!: () => void;
@@ -330,11 +329,13 @@ describe("AuditJobManager (Unit)", () => {
     });
 
     const manager = new AuditJobManager({
-      resolveDb: () => {
-        resolveDbCalls += 1;
-        return db;
+      store: {
+        ...store,
+        persistBatch: (batch, opts) => {
+          persistBatchCalls += 1;
+          return store.persistBatch(batch, opts);
+        },
       },
-      resolveArtifactsDir: () => artifactsDir,
       auditRunner: async (params) => {
         capturedSignal = params.signal;
         notifyStarted();
@@ -352,6 +353,7 @@ describe("AuditJobManager (Unit)", () => {
     await startedPromise;
     expect(capturedSignal).toBeDefined();
     expect(capturedSignal?.aborted).toBe(false);
+    expect(manager.isShuttingDown).toBe(false);
 
     const events: AuditJobStreamEvent[] = [];
     manager.subscribe(started.job.id, (ev) => events.push(ev));
@@ -375,8 +377,9 @@ describe("AuditJobManager (Unit)", () => {
 
     expect(shutdownCompleted).toBe(true);
     expect(runnerSettled).toBe(true);
-    expect(resolveDbCalls).toBe(0);
-    expect(listLighthouseRuns(db)).toHaveLength(0);
+    expect(manager.isShuttingDown).toBe(true);
+    expect(persistBatchCalls).toBe(0);
+    expect(store.listRuns()).toHaveLength(0);
     expect(readdirSync(artifactsDir)).toHaveLength(0);
     expect(manager.getActiveJob()).toBeNull();
     expect(manager.hasJob(started.job.id)).toBe(false);
@@ -402,8 +405,7 @@ describe("AuditJobManager (Unit)", () => {
     });
 
     const manager = new AuditJobManager({
-      resolveDb: () => db,
-      resolveArtifactsDir: () => artifactsDir,
+      store,
       auditRunner: async (params) => {
         emitLateProgress = () =>
           params.onProgress?.({

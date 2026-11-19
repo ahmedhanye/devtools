@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { createShutdownCoordinator } from "@devtools/core/node";
 import {
   mkdirSync,
   mkdtempSync,
@@ -10,14 +11,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { API_ERROR_CODES, ApiErrorResponseSchema } from "@devtools/core";
 import {
-  createDb,
-  runMigrations,
-  type DevtoolsDb,
-  type NewLighthouseRunRow,
-} from "@devtools/db";
-import {
-  insertLighthouseRun,
+  openLighthouseStore,
   type LighthouseBatchExecutionResult,
+  type LighthouseStore,
+  type NewLighthouseRunRecord,
 } from "@devtools/lighthouse";
 import {
   ActiveAuditJobResponseSchema,
@@ -110,7 +107,7 @@ function makeBatchResult(
 }
 
 const DEFAULT_SAMPLE_ROW: Omit<
-  NewLighthouseRunRow,
+  NewLighthouseRunRecord,
   "jsonReportPath" | "htmlReportPath"
 > = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -144,8 +141,8 @@ const DEFAULT_SAMPLE_ROW: Omit<
 
 function makeSampleRow(
   artifactsDir: string,
-  overrides: Partial<NewLighthouseRunRow> = {},
-): NewLighthouseRunRow {
+  overrides: Partial<NewLighthouseRunRecord> = {},
+): NewLighthouseRunRecord {
   const id = overrides.id ?? DEFAULT_SAMPLE_ROW.id;
   return {
     ...DEFAULT_SAMPLE_ROW,
@@ -156,16 +153,16 @@ function makeSampleRow(
 }
 
 describe("Lighthouse HTTP API Routes (/api/lighthouse)", () => {
-  let db: DevtoolsDb;
+  let store: LighthouseStore;
   let artifactsDir: string;
 
   beforeEach(() => {
-    db = createDb({ path: ":memory:" });
-    runMigrations(db);
     artifactsDir = mkdtempSync(join(tmpdir(), "devtools-api-lh-"));
+    store = openLighthouseStore({ memory: true, artifactsDir });
   });
 
   afterEach(() => {
+    store.close();
     rmSync(artifactsDir, { recursive: true, force: true });
   });
 
@@ -173,7 +170,7 @@ describe("Lighthouse HTTP API Routes (/api/lighthouse)", () => {
     it("returns 202 Accepted with AuditJob, reflects active job, and rejects concurrent triggers with 409 Conflict", async () => {
       const deferred = createDeferred<LighthouseBatchExecutionResult>();
       const app = createApp({
-        db,
+        store,
         artifactsDir,
         auditRunner: async () => deferred.promise,
       });
@@ -245,7 +242,7 @@ describe("Lighthouse HTTP API Routes (/api/lighthouse)", () => {
 
     it("returns 400 on malformed JSON and 422 on invalid target URL or Zod schema failure", async () => {
       const app = createApp({
-        db,
+        store,
         artifactsDir,
         auditRunner: async () => makeBatchResult("https://example.com/"),
       });
@@ -310,8 +307,7 @@ describe("Lighthouse HTTP API Routes (/api/lighthouse)", () => {
       const run1Html = join(run1Dir, "report.html");
       writeFileSync(run1Html, "<html><body>Run 1</body></html>");
 
-      insertLighthouseRun(
-        db,
+      store.insertRun(
         makeSampleRow(artifactsDir, {
           id: "aaaaaaaa-1111-4111-8111-111111111111",
           url: "https://docs.example.com/intro",
@@ -320,8 +316,7 @@ describe("Lighthouse HTTP API Routes (/api/lighthouse)", () => {
           createdAt: new Date("2026-11-10T12:00:00Z"),
         }),
       );
-      insertLighthouseRun(
-        db,
+      store.insertRun(
         makeSampleRow(artifactsDir, {
           id: "bbbbbbbb-2222-4222-8222-222222222222",
           url: "https://example.com/",
@@ -329,8 +324,7 @@ describe("Lighthouse HTTP API Routes (/api/lighthouse)", () => {
           createdAt: new Date("2026-11-10T11:00:00Z"),
         }),
       );
-      insertLighthouseRun(
-        db,
+      store.insertRun(
         makeSampleRow(artifactsDir, {
           id: "cccccccc-3333-4333-8333-333333333333",
           url: "https://other.dev/",
@@ -339,7 +333,7 @@ describe("Lighthouse HTTP API Routes (/api/lighthouse)", () => {
         }),
       );
 
-      const app = createApp({ db, artifactsDir });
+      const app = createApp({ store, artifactsDir });
 
       const allRes = await app.request("/api/lighthouse/runs?limit=2&offset=0");
       expect(allRes.status).toBe(200);
@@ -389,20 +383,18 @@ describe("Lighthouse HTTP API Routes (/api/lighthouse)", () => {
     });
 
     it("resolves single run detail by full UUID or unique prefix, returning 404/409 on missing/ambiguous IDs", async () => {
-      insertLighthouseRun(
-        db,
+      store.insertRun(
         makeSampleRow(artifactsDir, {
           id: "abcdef11-1111-4111-8111-111111111111",
         }),
       );
-      insertLighthouseRun(
-        db,
+      store.insertRun(
         makeSampleRow(artifactsDir, {
           id: "abcdef22-2222-4222-8222-222222222222",
         }),
       );
 
-      const app = createApp({ db, artifactsDir });
+      const app = createApp({ store, artifactsDir });
 
       const byPrefix = await app.request("/api/lighthouse/runs/abcdef11");
       expect(byPrefix.status).toBe(200);
@@ -422,8 +414,12 @@ describe("Lighthouse HTTP API Routes (/api/lighthouse)", () => {
         ApiErrorResponseSchema.parse(await ambiguous.json()).error.code,
       ).toBe(API_ERROR_CODES.CONFLICT);
 
-      const unmigratedDb = createDb({ path: ":memory:" });
-      const brokenApp = createApp({ db: unmigratedDb, artifactsDir });
+      using uninitializedStore = openLighthouseStore({
+        memory: true,
+        autoInit: false,
+        artifactsDir,
+      });
+      const brokenApp = createApp({ store: uninitializedStore, artifactsDir });
       const internalErrRes = await brokenApp.request(
         "/api/lighthouse/runs/abcdef11",
       );
@@ -445,12 +441,11 @@ describe("Lighthouse HTTP API Routes (/api/lighthouse)", () => {
         "<!doctype html><html><body><script>window.__LIGHTHOUSE_JSON__={};</script></body></html>",
       );
 
-      insertLighthouseRun(
-        db,
+      store.insertRun(
         makeSampleRow(artifactsDir, { id, htmlReportPath: reportPath }),
       );
 
-      const app = createApp({ db, artifactsDir });
+      const app = createApp({ store, artifactsDir });
       const res = await app.request(`/api/lighthouse/runs/${id}/report`);
       expect(res.status).toBe(200);
       expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
@@ -493,22 +488,20 @@ describe("Lighthouse HTTP API Routes (/api/lighthouse)", () => {
       symlinkSync(outsideFile, symlinkFile);
 
       try {
-        insertLighthouseRun(
-          db,
+        store.insertRun(
           makeSampleRow(artifactsDir, {
             id: "eeeeeeee-5555-4555-8555-555555555555",
             htmlReportPath: join(artifactsDir, "missing", "report.html"),
           }),
         );
-        insertLighthouseRun(
-          db,
+        store.insertRun(
           makeSampleRow(artifactsDir, {
             id: "ffffffff-6666-4666-8666-666666666666",
             htmlReportPath: symlinkFile,
           }),
         );
 
-        const app = createApp({ db, artifactsDir });
+        const app = createApp({ store, artifactsDir });
 
         const missingFileRes = await app.request(
           "/api/lighthouse/runs/eeeeeeee-5555-4555-8555-555555555555/report",
@@ -525,6 +518,14 @@ describe("Lighthouse HTTP API Routes (/api/lighthouse)", () => {
         expect(
           ApiErrorResponseSchema.parse(await escapedRes.json()).error.code,
         ).toBe(API_ERROR_CODES.NOT_FOUND);
+
+        const unknownRunRes = await app.request(
+          "/api/lighthouse/runs/999999/report",
+        );
+        expect(unknownRunRes.status).toBe(404);
+        expect(
+          ApiErrorResponseSchema.parse(await unknownRunRes.json()).error.code,
+        ).toBe(API_ERROR_CODES.NOT_FOUND);
       } finally {
         rmSync(outsideDir, { recursive: true, force: true });
       }
@@ -533,8 +534,7 @@ describe("Lighthouse HTTP API Routes (/api/lighthouse)", () => {
 
   describe("GET /api/lighthouse/diff", () => {
     it("returns baseline, comparison, and shared score/CWV/insight deltas", async () => {
-      insertLighthouseRun(
-        db,
+      store.insertRun(
         makeSampleRow(artifactsDir, {
           id: "11111111-aaaa-4111-8111-111111111111",
           performanceScore: 70,
@@ -562,8 +562,7 @@ describe("Lighthouse HTTP API Routes (/api/lighthouse)", () => {
           },
         }),
       );
-      insertLighthouseRun(
-        db,
+      store.insertRun(
         makeSampleRow(artifactsDir, {
           id: "22222222-bbbb-4222-8222-222222222222",
           performanceScore: 95,
@@ -571,7 +570,7 @@ describe("Lighthouse HTTP API Routes (/api/lighthouse)", () => {
         }),
       );
 
-      const app = createApp({ db, artifactsDir });
+      const app = createApp({ store, artifactsDir });
       const res = await app.request(
         "/api/lighthouse/diff?baseline=11111111&comparison=22222222",
       );
@@ -585,20 +584,18 @@ describe("Lighthouse HTTP API Routes (/api/lighthouse)", () => {
     });
 
     it("returns 422 when query params are missing, 404 when not found, and 409 on ambiguous prefix", async () => {
-      insertLighthouseRun(
-        db,
+      store.insertRun(
         makeSampleRow(artifactsDir, {
           id: "abcdef11-0000-4000-8000-000000000000",
         }),
       );
-      insertLighthouseRun(
-        db,
+      store.insertRun(
         makeSampleRow(artifactsDir, {
           id: "abcdef22-0000-4000-8000-000000000000",
         }),
       );
 
-      const app = createApp({ db, artifactsDir });
+      const app = createApp({ store, artifactsDir });
 
       const missingParams = await app.request(
         "/api/lighthouse/diff?baseline=abcdef11",
@@ -620,7 +617,7 @@ describe("Lighthouse HTTP API Routes (/api/lighthouse)", () => {
     });
 
     it("preserves AppType Hono RPC inference alongside app.shutdown()", async () => {
-      const app = createApp({ db, artifactsDir });
+      const app = createApp({ store, artifactsDir });
       const client = hc<AppType>("http://127.0.0.1", {
         fetch: app.request as typeof fetch,
       });
@@ -631,6 +628,175 @@ describe("Lighthouse HTTP API Routes (/api/lighthouse)", () => {
       expect(healthRes.status).toBe(200);
       expect(runsRes.status).toBe(200);
       await app.shutdown();
+
+      const rejectedDuringShutdown = await app.request(
+        "/api/lighthouse/audits",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: "https://example.com/" }),
+        },
+      );
+      expect(rejectedDuringShutdown.status).toBe(503);
+      expect(
+        ApiErrorResponseSchema.parse(await rejectedDuringShutdown.json()).error
+          .code,
+      ).toBe(API_ERROR_CODES.SERVICE_UNAVAILABLE);
+    });
+
+    it("rejects POST /api/lighthouse/audits with 503 during Phase 1 ingress and mid-body shutdown race", async () => {
+      const coordinator = createShutdownCoordinator();
+      let releaseIngress!: () => void;
+      const ingressGate = new Promise<void>((res) => {
+        releaseIngress = res;
+      });
+      coordinator.register("ingress", async () => {
+        await ingressGate;
+      });
+      const appWithCoord = createApp({ store, shutdown: coordinator });
+
+      const shutdownPromise = coordinator.shutdown("SIGTERM");
+      const duringIngressRes = await appWithCoord.request(
+        "/api/lighthouse/audits",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: "https://example.com/" }),
+        },
+      );
+      expect(duringIngressRes.status).toBe(503);
+      releaseIngress();
+      await shutdownPromise;
+
+      const bodyApp = createApp({ store });
+      let enqueueBody!: (chunk: Uint8Array) => void;
+      let closeBody!: () => void;
+      const slowBody = new ReadableStream<Uint8Array>({
+        start(controller) {
+          enqueueBody = (c) => controller.enqueue(c);
+          closeBody = () => controller.close();
+        },
+      });
+      const pendingPost = bodyApp.request("/api/lighthouse/audits", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: slowBody,
+      });
+      await Bun.sleep(10);
+      const bodyShutdownPromise = bodyApp.shutdown();
+      enqueueBody(
+        new TextEncoder().encode(
+          JSON.stringify({ url: "https://example.com/" }),
+        ),
+      );
+      closeBody();
+      const [bodyRaceRes] = await Promise.all([
+        pendingPost,
+        bodyShutdownPromise,
+      ]);
+      expect(bodyRaceRes.status).toBe(503);
+      expect(
+        ApiErrorResponseSchema.parse(await bodyRaceRes.json()).error.code,
+      ).toBe(API_ERROR_CODES.SERVICE_UNAVAILABLE);
+    });
+  });
+
+  describe("Concurrent Dual-App Instance Isolation", () => {
+    it("isolates active jobs, stores, and independent shutdown lifecycles across dual createApp instances", async () => {
+      const dirA = mkdtempSync(join(tmpdir(), "devtools-api-dual-a-"));
+      const dirB = mkdtempSync(join(tmpdir(), "devtools-api-dual-b-"));
+      const storeA = openLighthouseStore({ memory: true, artifactsDir: dirA });
+      const storeB = openLighthouseStore({ memory: true, artifactsDir: dirB });
+
+      try {
+        storeA.insertRun(
+          makeSampleRow(dirA, {
+            id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            url: "https://a.example/",
+            finalUrl: "https://a.example/",
+          }),
+        );
+
+        const deferredA = createDeferred<LighthouseBatchExecutionResult>();
+        const appA = createApp({
+          store: storeA,
+          artifactsDir: dirA,
+          auditRunner: async () => deferredA.promise,
+        });
+        const appB = createApp({
+          store: storeB,
+          artifactsDir: dirB,
+          auditRunner: async () => makeBatchResult("https://b.example/", 88),
+        });
+
+        const triggerARes = await appA.request("/api/lighthouse/audits", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: "https://a.example/" }),
+        });
+        expect(triggerARes.status).toBe(202);
+
+        const activeARes = await appA.request("/api/lighthouse/audits/active");
+        const activeBRes = await appB.request("/api/lighthouse/audits/active");
+        expect(
+          ActiveAuditJobResponseSchema.parse(await activeARes.json()).active,
+        ).toBe(true);
+        expect(
+          ActiveAuditJobResponseSchema.parse(await activeBRes.json()).active,
+        ).toBe(false);
+
+        const listARes = await appA.request("/api/lighthouse/runs");
+        const listBRes = await appB.request("/api/lighthouse/runs");
+        expect(
+          ListLighthouseRunsResponseSchema.parse(await listARes.json()).runs,
+        ).toHaveLength(1);
+        expect(
+          ListLighthouseRunsResponseSchema.parse(await listBRes.json()).runs,
+        ).toHaveLength(0);
+
+        // Shutting down appB must not affect appA
+        await appB.shutdown();
+        const postBRes = await appB.request("/api/lighthouse/audits", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: "https://b.example/" }),
+        });
+        expect(postBRes.status).toBe(503);
+
+        const stillActiveARes = await appA.request(
+          "/api/lighthouse/audits/active",
+        );
+        expect(stillActiveARes.status).toBe(200);
+        expect(
+          ActiveAuditJobResponseSchema.parse(await stillActiveARes.json())
+            .active,
+        ).toBe(true);
+
+        deferredA.resolve(makeBatchResult("https://a.example/", 97));
+        await new Promise((r) => setTimeout(r, 20));
+
+        const afterDoneActiveARes = await appA.request(
+          "/api/lighthouse/audits/active",
+        );
+        expect(
+          ActiveAuditJobResponseSchema.parse(await afterDoneActiveARes.json())
+            .active,
+        ).toBe(false);
+
+        const listAAfterRes = await appA.request("/api/lighthouse/runs");
+        expect(
+          ListLighthouseRunsResponseSchema.parse(await listAAfterRes.json())
+            .runs,
+        ).toHaveLength(2);
+        expect(storeB.listRuns()).toHaveLength(0);
+
+        await appA.shutdown();
+      } finally {
+        storeA.close();
+        storeB.close();
+        rmSync(dirA, { recursive: true, force: true });
+        rmSync(dirB, { recursive: true, force: true });
+      }
     });
   });
 });

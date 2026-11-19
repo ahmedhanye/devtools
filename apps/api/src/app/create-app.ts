@@ -1,16 +1,19 @@
 import { API_ERROR_CODES, type EnvMap } from "@devtools/core";
-import type { DevtoolsDb } from "@devtools/db";
+import type { ShutdownRegistry } from "@devtools/core/node";
+import type { LighthouseStore } from "@devtools/lighthouse";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import type { LighthouseAuditRunner } from "./lighthouse/job-manager";
+import { createHealthRoutes } from "../modules/health";
+import {
+  createLighthouseRoutes,
+  type LighthouseAuditRunner,
+} from "../modules/lighthouse";
+import { jsonApiError } from "../shared/http";
 import {
   type ApiBindings,
   createLoopbackProtectionMiddleware,
-  formatError,
   isLoopbackOrigin,
-} from "./middleware/security";
-import { createHealthRoutes } from "./routes/health";
-import { createLighthouseRoutes } from "./routes/lighthouse";
+} from "../shared/security";
 
 /**
  * Configuration options for instantiating the Hono API application via {@link createApp}.
@@ -22,8 +25,10 @@ export interface CreateAppOptions {
    * @defaultValue "/api"
    */
   basePath?: string;
-  /** Optional injected `@devtools/db` instance (defaults lazily to `getDb({ env })`). */
-  db?: DevtoolsDb;
+  /** Optional injected {@link LighthouseStore} instance (defaults lazily to `openLighthouseStore(...)`). */
+  store?: LighthouseStore;
+  /** Optional shutdown registry for Phase 3 (`"persistence"`) cleanup hook registration. */
+  shutdown?: ShutdownRegistry;
   /** Optional environment variable map overriding `process.env`. */
   env?: EnvMap;
   /** Optional explicit Lighthouse artifacts root directory override. */
@@ -46,7 +51,7 @@ function mountDefaultApiRoutes(
     .route("/lighthouse", lighthouseRoutes);
 }
 
-type DefaultMountedApp = ReturnType<typeof mountDefaultApiRoutes>;
+export type DefaultMountedApp = ReturnType<typeof mountDefaultApiRoutes>;
 
 /**
  * Creates a configured Hono application instance with loopback CORS, CSRF protection,
@@ -56,7 +61,7 @@ type DefaultMountedApp = ReturnType<typeof mountDefaultApiRoutes>;
  * @returns Chained Hono application instance with `shutdown()` while preserving {@link AppType} RPC inference.
  */
 export function createApp(options: CreateAppOptions = {}) {
-  const basePath = options.basePath ?? "/api";
+  const basePath = (options.basePath ?? "/api").replace(/\/+$/, "");
   const app = new Hono<{ Bindings: ApiBindings }>();
 
   const corsPath = basePath ? `${basePath}/*` : "/*";
@@ -85,23 +90,23 @@ export function createApp(options: CreateAppOptions = {}) {
   app.use(corsPath, createLoopbackProtectionMiddleware());
 
   app.notFound((c) => {
-    return c.json(
-      formatError(
-        API_ERROR_CODES.NOT_FOUND,
-        `Route not found: ${c.req.method} ${c.req.path}`,
-      ),
+    return jsonApiError(
+      c,
       404,
+      API_ERROR_CODES.NOT_FOUND,
+      `Route not found: ${c.req.method} ${c.req.path}`,
     );
   });
 
   app.onError((err, c) => {
     const message =
       err instanceof Error ? err.message : "Internal Server Error";
-    return c.json(formatError(API_ERROR_CODES.INTERNAL_ERROR, message), 500);
+    return jsonApiError(c, 500, API_ERROR_CODES.INTERNAL_ERROR, message);
   });
 
   const lighthouseRoutes = createLighthouseRoutes({
-    db: options.db,
+    store: options.store,
+    shutdown: options.shutdown,
     env: options.env,
     artifactsDir: options.artifactsDir,
     auditRunner: options.auditRunner,
@@ -123,16 +128,6 @@ export function createApp(options: CreateAppOptions = {}) {
 }
 
 /**
- * Default Hono API application instance mounted at `/api`.
- */
-export const app = createApp();
-
-/**
  * Inferred Hono RPC router type for end-to-end typed client consumption (`hc<AppType>`).
  */
 export type AppType = DefaultMountedApp;
-
-/**
- * Alias for {@link AppType}.
- */
-export type App = AppType;

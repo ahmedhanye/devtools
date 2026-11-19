@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 import type { EnvMap } from "@devtools/core";
-import type { DevtoolsDb } from "@devtools/db";
 import {
   AuditCancelledError,
   executeLighthouseBatch,
-  persistLighthouseAudit,
   type ExecuteLighthouseBatchOptions,
+  type LighthouseAuditExecutionResult,
   type LighthouseBatchExecutionResult,
+  type LighthouseStore,
 } from "@devtools/lighthouse";
 import type {
   AuditJob,
@@ -51,11 +51,9 @@ interface InternalAuditJob {
  * Configuration seams for {@link AuditJobManager}.
  */
 export interface AuditJobManagerOptions {
-  /** Lazy SQLite DB getter executed on the parent thread upon completion. */
-  resolveDb: () => DevtoolsDb;
-  /** Lazy artifacts directory resolver executed on the parent thread. */
-  resolveArtifactsDir: () => string;
-  /** Optional environment map forwarded to execution and persistence. */
+  /** Unified Lighthouse domain store executed on the parent thread upon completion. */
+  store: LighthouseStore;
+  /** Optional environment map forwarded to execution. */
   env?: EnvMap;
   /** Injectable batch execution runner (defaults to `executeLighthouseBatch`). */
   auditRunner?: LighthouseAuditRunner;
@@ -77,8 +75,7 @@ function cloneAuditJob(job: AuditJob): AuditJob {
  * retention, cooperative shutdown cancellation, and SQLite persistence.
  */
 export class AuditJobManager {
-  private readonly resolveDb: () => DevtoolsDb;
-  private readonly resolveArtifactsDir: () => string;
+  private readonly store: LighthouseStore;
   private readonly env?: EnvMap;
   private readonly auditRunner: LighthouseAuditRunner;
   private readonly jobRetentionMs: number;
@@ -90,14 +87,18 @@ export class AuditJobManager {
   private activeExecution: Promise<void> | null = null;
   private shuttingDown = false;
 
+  /** Whether {@link shutdown} has been initiated and new jobs must be rejected. */
+  get isShuttingDown(): boolean {
+    return this.shuttingDown;
+  }
+
   /**
    * Creates an {@link AuditJobManager}.
    *
-   * @param options - Lazy persistence resolvers, runner seam, and retention configuration.
+   * @param options - Unified Lighthouse store, runner seam, and retention configuration.
    */
   constructor(options: AuditJobManagerOptions) {
-    this.resolveDb = options.resolveDb;
-    this.resolveArtifactsDir = options.resolveArtifactsDir;
+    this.store = options.store;
     this.env = options.env;
     this.auditRunner = options.auditRunner ?? executeLighthouseBatch;
     this.jobRetentionMs = options.jobRetentionMs ?? DEFAULT_JOB_RETENTION_MS;
@@ -335,19 +336,13 @@ export class AuditJobManager {
         );
       }
 
-      let persisted: ReturnType<typeof persistLighthouseAudit>;
+      let persisted: LighthouseAuditExecutionResult;
       let serializedRun: ReturnType<typeof serializeLighthouseRunDetail>;
       try {
-        const db = this.resolveDb();
-        const artifactsDir = this.resolveArtifactsDir();
-        persisted = persistLighthouseAudit(batch, {
-          db,
-          artifactsDir,
-          env: this.env,
-        });
+        persisted = this.store.persistBatch(batch);
         serializedRun = serializeLighthouseRunDetail(
           persisted.run,
-          artifactsDir,
+          this.store.resolveArtifactsDir(),
         );
       } catch (persistErr: unknown) {
         throw new Error("Failed to persist completed audit results", {

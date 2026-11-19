@@ -1,26 +1,15 @@
 import { API_ERROR_CODES } from "@devtools/core";
-import type { LighthouseRunRow } from "@devtools/db";
 import {
+  EMPTY_LIGHTHOUSE_RUN_SUMMARY,
   parseRunSummary,
   resolveSafeHtmlReportPath,
+  type LighthouseRunRecord,
 } from "@devtools/lighthouse";
 import type {
   AuditJobError,
   LighthouseRunDetail,
   LighthouseRunListItem,
-  LighthouseRunSummary,
 } from "@devtools/lighthouse/schemas";
-
-const EMPTY_SUMMARY: LighthouseRunSummary = {
-  lcpElement: null,
-  lcpPhases: null,
-  clsCulprits: [],
-  insights: [],
-  failedAudits: [],
-  runWarnings: [],
-  runtimeError: null,
-  medianMetadata: null,
-};
 
 /**
  * Projects a database {@link LighthouseRunRow} into a sanitized {@link LighthouseRunListItem}
@@ -31,7 +20,7 @@ const EMPTY_SUMMARY: LighthouseRunSummary = {
  * @returns Sanitized API list item DTO.
  */
 export function serializeLighthouseRunListItem(
-  row: LighthouseRunRow,
+  row: LighthouseRunRecord,
   artifactsDir: string,
 ): LighthouseRunListItem {
   return {
@@ -66,12 +55,12 @@ export function serializeLighthouseRunListItem(
  * @returns Sanitized API detail DTO.
  */
 export function serializeLighthouseRunDetail(
-  row: LighthouseRunRow,
+  row: LighthouseRunRecord,
   artifactsDir: string,
 ): LighthouseRunDetail {
   return {
     ...serializeLighthouseRunListItem(row, artifactsDir),
-    summary: parseRunSummary(row.summaryJson) ?? EMPTY_SUMMARY,
+    summary: parseRunSummary(row.summaryJson) ?? EMPTY_LIGHTHOUSE_RUN_SUMMARY,
   };
 }
 
@@ -84,7 +73,7 @@ export function serializeLighthouseRunDetail(
  */
 export function serializeAuditError(err: unknown): AuditJobError {
   if (err instanceof Error) {
-    const maybeCode = (err as { code?: unknown }).code;
+    const maybeCode = "code" in err ? err.code : undefined;
     const code =
       typeof maybeCode === "string" && maybeCode.length > 0
         ? maybeCode

@@ -3,14 +3,13 @@ import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { HealthResponseSchema } from "@devtools/core";
-import { closeDb, createDb, getDb, resetDb, runMigrations } from "@devtools/db";
-import { listLighthouseRuns } from "@devtools/lighthouse";
+import { openLighthouseStore } from "@devtools/lighthouse";
 import {
   ActiveAuditJobResponseSchema,
   ListLighthouseRunsResponseSchema,
   TriggerLighthouseAuditResponseSchema,
 } from "@devtools/lighthouse/schemas";
-import { type ServerInstance, startServer } from "../src/server";
+import { type ServerInstance, startServer } from "../src/app/server";
 
 describe("Standalone Server Lifecycle", () => {
   let activeInstance: ServerInstance | null = null;
@@ -20,7 +19,6 @@ describe("Standalone Server Lifecycle", () => {
       await activeInstance.stop();
       activeInstance = null;
     }
-    resetDb();
   });
 
   test("boots on ephemeral port 0 and serves /api/health over HTTP socket", async () => {
@@ -54,8 +52,8 @@ describe("Standalone Server Lifecycle", () => {
     const tmpDir = mkdtempSync(join(tmpdir(), "devtools-srv-conflict-"));
     try {
       const ownerDbPath = join(tmpDir, "owner.db");
-      const ownerDb = getDb({ path: ownerDbPath });
-      runMigrations(ownerDb);
+      using ownerStore = openLighthouseStore({ dbPath: ownerDbPath });
+      ownerStore.ensureReady();
 
       activeInstance = startServer({
         port: 0,
@@ -84,16 +82,17 @@ describe("Standalone Server Lifecycle", () => {
         await activeInstance.stop();
         activeInstance = null;
       }
-      resetDb();
       rmSync(tmpDir, { recursive: true, force: true });
     }
   });
 
-  test("serves Lighthouse routes + SSE over live HTTP socket with injected db", async () => {
+  test("serves Lighthouse routes + SSE over live HTTP socket with injected store", async () => {
     const artifactsDir = mkdtempSync(join(tmpdir(), "devtools-srv-lh-"));
     try {
-      const customDb = createDb({ path: ":memory:" });
-      runMigrations(customDb);
+      using customStore = openLighthouseStore({
+        memory: true,
+        artifactsDir,
+      });
 
       let releaseAudit!: () => void;
       const gate = new Promise<void>((resolve) => {
@@ -103,7 +102,7 @@ describe("Standalone Server Lifecycle", () => {
       activeInstance = startServer({
         port: 0,
         hostname: "127.0.0.1",
-        db: customDb,
+        store: customStore,
         artifactsDir,
         auditRunner: async (params) => {
           params.onProgress?.({
@@ -201,8 +200,10 @@ describe("Standalone Server Lifecycle", () => {
   test("mid-audit stop() aborts active runner, awaits settlement, and leaves zero orphan artifacts or closed-DB errors", async () => {
     const artifactsDir = mkdtempSync(join(tmpdir(), "devtools-srv-stop-"));
     try {
-      const customDb = getDb({ path: ":memory:" });
-      runMigrations(customDb);
+      using customStore = openLighthouseStore({
+        memory: true,
+        artifactsDir,
+      });
 
       let notifyStarted!: () => void;
       const started = new Promise<void>((resolve) => {
@@ -218,7 +219,7 @@ describe("Standalone Server Lifecycle", () => {
       activeInstance = startServer({
         port: 0,
         hostname: "127.0.0.1",
-        db: customDb,
+        store: customStore,
         artifactsDir,
         auditRunner: async (params) => {
           params.signal?.addEventListener("abort", () => {
@@ -295,10 +296,8 @@ describe("Standalone Server Lifecycle", () => {
 
       expect(stopResolved).toBe(true);
       expect(runnerFinished).toBe(true);
-      expect(listLighthouseRuns(customDb)).toHaveLength(0);
+      expect(customStore.listRuns()).toHaveLength(0);
       expect(readdirSync(artifactsDir)).toHaveLength(0);
-
-      closeDb();
     } finally {
       rmSync(artifactsDir, { recursive: true, force: true });
     }
@@ -307,8 +306,10 @@ describe("Standalone Server Lifecycle", () => {
   test("preserves background audit completion when a live TCP SSE client aborts mid-stream", async () => {
     const artifactsDir = mkdtempSync(join(tmpdir(), "devtools-srv-abort-"));
     try {
-      const customDb = createDb({ path: ":memory:" });
-      runMigrations(customDb);
+      using customStore = openLighthouseStore({
+        memory: true,
+        artifactsDir,
+      });
 
       let releaseAudit!: () => void;
       const gate = new Promise<void>((resolve) => {
@@ -322,7 +323,7 @@ describe("Standalone Server Lifecycle", () => {
       activeInstance = startServer({
         port: 0,
         hostname: "127.0.0.1",
-        db: customDb,
+        store: customStore,
         artifactsDir,
         auditRunner: async (params) => {
           params.onProgress?.({

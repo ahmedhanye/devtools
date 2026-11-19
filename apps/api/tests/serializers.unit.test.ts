@@ -3,15 +3,17 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { API_ERROR_CODES } from "@devtools/core";
-import type { LighthouseRunRow } from "@devtools/db";
-import { InvalidAuditOptionsError } from "@devtools/lighthouse";
+import {
+  InvalidAuditOptionsError,
+  type LighthouseRunRecord,
+} from "@devtools/lighthouse";
 import {
   serializeAuditError,
   serializeLighthouseRunDetail,
   serializeLighthouseRunListItem,
-} from "../src/lighthouse/serializers";
+} from "../src/modules/lighthouse/serializers";
 
-const DEFAULT_ROW: LighthouseRunRow = {
+const DEFAULT_ROW: LighthouseRunRecord = {
   id: "run-ok",
   url: "https://example.com",
   finalUrl: "https://example.com/",
@@ -60,7 +62,7 @@ describe("Lighthouse API Run DTO Serializers", () => {
     const validHtmlPath = join(runDir, "report.html");
     writeFileSync(validHtmlPath, "<html><body>OK</body></html>", "utf-8");
 
-    const row: LighthouseRunRow = {
+    const row: LighthouseRunRecord = {
       ...DEFAULT_ROW,
       htmlReportPath: validHtmlPath,
     };
@@ -79,7 +81,8 @@ describe("Lighthouse API Run DTO Serializers", () => {
       {
         ...row,
         htmlReportPath: join(tmpdir(), "outside-report.html"),
-        summaryJson: "bad-json" as unknown as LighthouseRunRow["summaryJson"],
+        summaryJson:
+          "bad-json" as unknown as LighthouseRunRecord["summaryJson"],
       },
       artifactsDir,
     );

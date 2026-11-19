@@ -1,26 +1,9 @@
 export {
-  app,
   createApp,
-  type App,
+  startServer,
   type AppType,
   type CreateAppOptions,
-} from "./app";
-export { type LighthouseAuditRunner } from "./lighthouse/job-manager";
-export {
-  type ApiBindings,
-  createLoopbackProtectionMiddleware,
-  formatError,
-  isLoopbackAddress,
-  isLoopbackHostHeader,
-  isLoopbackOrigin,
-} from "./middleware/security";
-export { createHealthRoutes } from "./routes/health";
-export {
-  createLighthouseRoutes,
-  type LighthouseRoutesOptions,
-} from "./routes/lighthouse";
-export {
-  startServer,
+  type DefaultMountedApp,
   type ServerInstance,
   type StartServerOptions,
-} from "./server";
+} from "./app";

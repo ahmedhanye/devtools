@@ -1,12 +1,8 @@
 import { networkInterfaces, type NetworkInterfaceInfo } from "node:os";
-import {
-  API_ERROR_CODES,
-  type ApiErrorCode,
-  type ApiErrorResponse,
-  ApiErrorResponseSchema,
-} from "@devtools/core";
+import { API_ERROR_CODES, type ApiErrorCode } from "@devtools/core";
 import type { Server } from "bun";
 import type { Context, MiddlewareHandler } from "hono";
+import { formatError } from "../http";
 
 /**
  * Hono environment bindings injected by the unified Bun HTTP server bootstrap.
@@ -163,28 +159,6 @@ export function isLoopbackOrigin(origin: string): boolean {
 }
 
 /**
- * Constructs and schema-validates a canonical {@link ApiErrorResponse} envelope.
- *
- * @param code - Machine-readable error code (see {@link API_ERROR_CODES}).
- * @param message - Human-readable diagnostic message.
- * @param details - Optional structured validation or diagnostic details.
- * @returns Validated {@link ApiErrorResponse} payload.
- */
-export function formatError(
-  code: string,
-  message: string,
-  details?: unknown,
-): ApiErrorResponse {
-  return ApiErrorResponseSchema.parse({
-    error: {
-      code,
-      message,
-      ...(details !== undefined ? { details } : {}),
-    },
-  });
-}
-
-/**
  * Checks whether an incoming HTTP request carries a non-empty body requiring JSON content-type validation.
  */
 function hasNonJsonBody(c: Context): boolean {
@@ -307,5 +281,6 @@ export function createLoopbackProtectionMiddleware(): MiddlewareHandler<{
       );
     }
     await next();
+    return undefined;
   };
 }

@@ -1,14 +1,25 @@
 import {
   type EnvMap,
+  RuntimeConfigError,
   RuntimeConfigSchema,
+  formatRuntimeConfigError,
   parsePortFromEnv,
 } from "@devtools/core";
-import type { DevtoolsDb } from "@devtools/db";
+import {
+  attachHostSignals,
+  createConsoleOutput,
+  createShutdownCoordinator,
+  type ExitPort,
+  type OutputPort,
+  type ShutdownCoordinator,
+  type SignalSourcePort,
+} from "@devtools/core/node";
+import type { LighthouseStore } from "@devtools/lighthouse";
 import type { Server } from "bun";
 import type { Hono } from "hono";
-import { createApp } from "./app";
-import type { LighthouseAuditRunner } from "./lighthouse/job-manager";
-import type { ApiBindings } from "./middleware/security";
+import type { LighthouseAuditRunner } from "../modules/lighthouse";
+import type { ApiBindings } from "../shared/security";
+import { createApp } from "./create-app";
 
 /**
  * Options for configuring and booting the standalone `@devtools/api` HTTP server.
@@ -27,8 +38,10 @@ export interface StartServerOptions {
    * Defaults to creating an isolated instance via {@link createApp}.
    */
   app?: Hono | Hono<{ Bindings: ApiBindings }> | ReturnType<typeof createApp>;
-  /** Optional injected SQLite client forwarded to {@link createApp}. */
-  db?: DevtoolsDb;
+  /** Optional injected {@link LighthouseStore} forwarded to {@link createApp}. */
+  store?: LighthouseStore;
+  /** Optional shared 3-phase {@link ShutdownCoordinator} orchestrating server shutdown. */
+  shutdown?: ShutdownCoordinator;
   /** Optional explicit Lighthouse artifacts root directory override. */
   artifactsDir?: string;
   /** Optional audit runner seam passed through to {@link createApp}. */
@@ -52,25 +65,35 @@ export interface ServerInstance {
  *
  * @param options - Explicit host/port options and optional `env` seam override.
  * @returns Validated `{ host, port }` configuration.
- * @throws {@link Error} When `port` or `host` fails {@link RuntimeConfigSchema} validation.
+ * @throws {@link RuntimeConfigError} When `port` or `host` fails {@link RuntimeConfigSchema} validation.
  */
 export function resolveServerConfig(options: StartServerOptions = {}): {
   host: string;
   port: number;
 } {
   const currentEnv = options.env ?? process.env;
-  const hostInput = options.host ?? options.hostname ?? currentEnv.HOST;
-
+  const explicitHost = options.host ?? options.hostname;
+  const hostInput = explicitHost ?? currentEnv.HOST;
   const rawPort = options.port ?? parsePortFromEnv(currentEnv.PORT);
 
-  const validated = RuntimeConfigSchema.parse({
+  const result = RuntimeConfigSchema.safeParse({
     ...(rawPort !== undefined ? { port: rawPort } : {}),
     ...(hostInput !== undefined ? { host: hostInput } : {}),
   });
 
+  if (!result.success) {
+    throw formatRuntimeConfigError(result.error, {
+      portOverride: options.port,
+      envPort: currentEnv.PORT,
+      hostOverride: explicitHost,
+      envHost: currentEnv.HOST,
+      fallbackMessage: "Invalid server configuration",
+    });
+  }
+
   return {
-    host: validated.host,
-    port: validated.port,
+    host: result.data.host,
+    port: result.data.port,
   };
 }
 
@@ -84,12 +107,14 @@ export function resolveServerConfig(options: StartServerOptions = {}): {
  */
 export function startServer(options: StartServerOptions = {}): ServerInstance {
   const config = resolveServerConfig(options);
+  const coordinator = options.shutdown ?? createShutdownCoordinator();
 
   const activeApp =
     options.app ??
     createApp({
       basePath: "/api",
-      db: options.db,
+      store: options.store,
+      shutdown: coordinator,
       env: options.env,
       artifactsDir: options.artifactsDir,
       auditRunner: options.auditRunner,
@@ -103,13 +128,32 @@ export function startServer(options: StartServerOptions = {}): ServerInstance {
     },
   });
 
+  const disposeIngress = coordinator.register(
+    "ingress",
+    () => server.stop(true),
+    { id: "api-http-ingress" },
+  );
+  const rawShutdown =
+    "shutdown" in activeApp && typeof activeApp.shutdown === "function"
+      ? activeApp.shutdown
+      : undefined;
+  const shutdownApp = rawShutdown
+    ? async () => {
+        await rawShutdown();
+      }
+    : undefined;
+  const disposeWork = shutdownApp
+    ? coordinator.register("work", shutdownApp, {
+        id: "api-app-work",
+      })
+    : undefined;
+
   const stop = async () => {
-    const shutdownApp = (activeApp as { shutdown?: () => Promise<void> })
-      .shutdown;
     try {
-      await server.stop(true);
+      await coordinator.shutdown("stop");
     } finally {
-      await shutdownApp?.();
+      disposeIngress();
+      disposeWork?.();
     }
   };
 
@@ -128,14 +172,14 @@ export interface ServerCliDeps {
   resolveConfig?: () => { host: string; port: number };
   /** Override server booting. */
   start?: (options?: StartServerOptions) => ServerInstance;
-  /** Override stdout logger. */
-  log?: (message: string) => void;
-  /** Override stderr logger. */
-  error?: (message: string, ...rest: unknown[]) => void;
+  /** Override OS signal source port (`process` by default). */
+  signals?: SignalSourcePort;
+  /** Override stdout/stderr output port (`createConsoleOutput()` by default). */
+  output?: OutputPort;
   /** Override process exit handler. */
-  exit?: (code?: number) => void;
-  /** Override signal listener registration. */
-  onSignal?: (event: "SIGINT" | "SIGTERM", handler: () => void) => void;
+  exit?: ExitPort;
+  /** Override outer CLI shutdown coordinator. */
+  shutdown?: ShutdownCoordinator;
 }
 
 interface StartupErrorShape {
@@ -159,6 +203,9 @@ function formatServerStartupError(
   err: unknown,
   port?: number,
 ): { message: string; raw?: unknown } {
+  if (err instanceof RuntimeConfigError) {
+    return { message: `Invalid server configuration: ${err.message}` };
+  }
   const record =
     err && typeof err === "object" ? (err as StartupErrorShape) : {};
   const configError = formatConfigValidationError(record);
@@ -167,7 +214,7 @@ function formatServerStartupError(
   }
   if (
     record.code === "EADDRINUSE" ||
-    String(record.message ?? "").includes("in use")
+    (typeof record.message === "string" && record.message.includes("in use"))
   ) {
     return {
       message: `Port ${port ?? "unknown"} is already in use. Set PORT=<port> to use an alternate port.`,
@@ -185,68 +232,61 @@ function formatServerStartupError(
 export function runServerCli(deps?: ServerCliDeps): ServerInstance | undefined {
   const resolveConfig = deps?.resolveConfig ?? resolveServerConfig;
   const start = deps?.start ?? startServer;
-  const log = deps?.log ?? console.log;
-  const error = deps?.error ?? console.error;
-  const exit = deps?.exit ?? process.exit;
-  const onSignal =
-    deps?.onSignal ??
-    ((event, handler) => {
-      process.on(event, handler);
-    });
+  const output = deps?.output ?? createConsoleOutput();
+  const exit: ExitPort = deps?.exit ?? ((code) => process.exit(code));
 
   let config: { host: string; port: number } | undefined;
   try {
     config = resolveConfig();
     const instance = start(config);
-    log(
+    output.writeStdout(
       `Server listening on http://${instance.server.hostname}:${instance.port}`,
     );
 
-    let shuttingDown = false;
-    const handleShutdownError = (err: unknown): void => {
-      error("Failed to shut down server cleanly:", err);
-      exit(1);
-    };
-    const shutdown = () => {
-      if (shuttingDown) return;
-      shuttingDown = true;
-      log("Shutting down server...");
-      try {
-        const stopResult = instance.stop();
-        if (
-          stopResult &&
-          typeof (stopResult as Promise<void>).then === "function"
-        ) {
-          void (async () => {
-            try {
-              await stopResult;
-              exit(0);
-            } catch (err: unknown) {
-              handleShutdownError(err);
-            }
-          })();
-          return;
-        }
-        exit(0);
-      } catch (err: unknown) {
-        handleShutdownError(err);
-      }
-    };
+    const cliCoordinator = deps?.shutdown ?? createShutdownCoordinator();
+    cliCoordinator.register(
+      "ingress",
+      () => {
+        output.writeStdout("Shutting down server...");
+      },
+      { id: "api-cli-banner" },
+    );
+    cliCoordinator.register("work", () => instance.stop(), {
+      id: "api-cli-stop",
+    });
 
-    onSignal("SIGINT", shutdown);
-    onSignal("SIGTERM", shutdown);
+    const signalHandle = attachHostSignals({
+      coordinator: cliCoordinator,
+      signals: deps?.signals,
+      output,
+      exit,
+      exitCodeOnSignal: 0,
+      forceExitOnSecondSignal: true,
+      formatFirstSignalMessage: () => null,
+      formatErrorMessage: (err) =>
+        `Failed to shut down server cleanly: ${err instanceof Error ? err.message : String(err)}`,
+    });
 
-    return instance;
+    return {
+      server: instance.server,
+      port: instance.port,
+      stop: async () => {
+        signalHandle.detach();
+        await instance.stop();
+      },
+    };
   } catch (err: unknown) {
     const formatted = formatServerStartupError(err, config?.port);
     if ("raw" in formatted) {
-      error(formatted.message, formatted.raw);
+      const detail =
+        formatted.raw instanceof Error
+          ? formatted.raw.message
+          : String(formatted.raw);
+      output.writeStderr(`${formatted.message} ${detail}`);
     } else {
-      error(formatted.message);
+      output.writeStderr(formatted.message);
     }
     exit(1);
     return undefined;
   }
 }
-
-if (import.meta.main) runServerCli();

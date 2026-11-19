@@ -1,14 +1,11 @@
-import { readFileSync } from "node:fs";
 import { API_ERROR_CODES, type EnvMap } from "@devtools/core";
-import { getDb, type DevtoolsDb, type LighthouseRunRow } from "@devtools/db";
+import type { ShutdownRegistry } from "@devtools/core/node";
 import {
   AmbiguousRunIdError,
-  computeRunDeltas,
   LighthouseRunNotFoundError,
-  listLighthouseRunsWithTotal,
-  resolveArtifactsDir,
-  resolveLighthouseRun,
-  resolveSafeHtmlReportPath,
+  openLighthouseStore,
+  type LighthouseRunRecord,
+  type LighthouseStore,
 } from "@devtools/lighthouse";
 import {
   ActiveAuditJobResponseSchema,
@@ -23,27 +20,29 @@ import {
 } from "@devtools/lighthouse/schemas";
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
+import { jsonApiError } from "../../shared/http";
+import type { ApiBindings } from "../../shared/security";
 import {
   AuditJobManager,
   type AuditJobStreamEvent,
   type LighthouseAuditRunner,
-} from "../lighthouse/job-manager";
+} from "./job-manager";
+import { createHtmlReportResponse } from "./report-reader";
 import {
   serializeLighthouseRunDetail,
   serializeLighthouseRunListItem,
-} from "../lighthouse/serializers";
-import { type ApiBindings, formatError } from "../middleware/security";
+} from "./serializers";
 
 const DEFAULT_KEEPALIVE_INTERVAL_MS = 5000;
-const REPORT_CSP_HEADER =
-  "sandbox allow-scripts allow-popups allow-downloads; frame-ancestors 'self'";
 
 /**
  * Configuration seams for instantiating the `/lighthouse` API route module.
  */
 export interface LighthouseRoutesOptions {
-  /** Optional injected SQLite client (defaults lazily to `getDb({ env })`). */
-  db?: DevtoolsDb;
+  /** Optional injected {@link LighthouseStore} instance (defaults lazily to `openLighthouseStore(...)`). */
+  store?: LighthouseStore;
+  /** Optional shutdown registry for Phase 3 (`"persistence"`) cleanup hook registration. */
+  shutdown?: ShutdownRegistry;
   /** Optional environment map seam passed to DB and artifacts resolution. */
   env?: EnvMap;
   /** Optional explicit artifacts root directory override. */
@@ -56,30 +55,23 @@ export interface LighthouseRoutesOptions {
   keepaliveIntervalMs?: number;
 }
 
-function resolveRunOrError(
+function resolveStoreRead<T>(
   c: Context<{ Bindings: ApiBindings }>,
-  db: DevtoolsDb,
-  idOrPrefix: string,
-): { ok: true; row: LighthouseRunRow } | { ok: false; response: Response } {
+  read: () => T,
+): { ok: true; value: T } | { ok: false; response: Response } {
   try {
-    return { ok: true, row: resolveLighthouseRun(db, idOrPrefix) };
+    return { ok: true, value: read() };
   } catch (err: unknown) {
     if (err instanceof LighthouseRunNotFoundError) {
       return {
         ok: false,
-        response: c.json(
-          formatError(API_ERROR_CODES.NOT_FOUND, err.message),
-          404,
-        ),
+        response: jsonApiError(c, 404, API_ERROR_CODES.NOT_FOUND, err.message),
       };
     }
     if (err instanceof AmbiguousRunIdError) {
       return {
         ok: false,
-        response: c.json(
-          formatError(API_ERROR_CODES.CONFLICT, err.message),
-          409,
-        ),
+        response: jsonApiError(c, 409, API_ERROR_CODES.CONFLICT, err.message),
       };
     }
     throw err;
@@ -94,66 +86,92 @@ function resolveRunOrError(
  * @returns Chained Hono router preserving full RPC type inference.
  */
 export function createLighthouseRoutes(options: LighthouseRoutesOptions = {}) {
-  const resolveDb = (): DevtoolsDb => options.db ?? getDb({ env: options.env });
-  const resolveArtifacts = (): string =>
-    resolveArtifactsDir({ customDir: options.artifactsDir, env: options.env });
+  const ownsStore = options.store === undefined;
+  const store =
+    options.store ??
+    openLighthouseStore({
+      artifactsDir: options.artifactsDir,
+      env: options.env,
+      shutdown: options.shutdown,
+    });
   const keepaliveIntervalMs =
     options.keepaliveIntervalMs ?? DEFAULT_KEEPALIVE_INTERVAL_MS;
 
   const jobManager = new AuditJobManager({
-    resolveDb,
-    resolveArtifactsDir: resolveArtifacts,
+    store,
     env: options.env,
     auditRunner: options.auditRunner,
     jobRetentionMs: options.jobRetentionMs,
   });
 
+  const rejectIfShuttingDown = (
+    c: Context<{ Bindings: ApiBindings }>,
+  ): Response | null =>
+    options.shutdown?.isShuttingDown || jobManager.isShuttingDown
+      ? jsonApiError(
+          c,
+          503,
+          API_ERROR_CODES.SERVICE_UNAVAILABLE,
+          "Server is shutting down",
+        )
+      : null;
+
   const withResolvedRun = (
     c: Context<{ Bindings: ApiBindings }>,
-    handler: (row: LighthouseRunRow, artifactsDir: string) => Response,
+    handler: (row: LighthouseRunRecord, artifactsDir: string) => Response,
   ): Response => {
-    const resolved = resolveRunOrError(c, resolveDb(), c.req.param("id") ?? "");
+    const id = c.req.param("id") ?? "";
+    const resolved = resolveStoreRead(c, () => store.getRun(id));
     if (!resolved.ok) {
       return resolved.response;
     }
-    return handler(resolved.row, resolveArtifacts());
+    return handler(resolved.value, store.resolveArtifactsDir());
   };
 
   const router = new Hono<{ Bindings: ApiBindings }>()
     .post("/audits", async (c) => {
+      const earlyShutdown = rejectIfShuttingDown(c);
+      if (earlyShutdown) {
+        return earlyShutdown;
+      }
       let rawBody: unknown;
       try {
         rawBody = await c.req.json();
       } catch {
-        return c.json(
-          formatError(API_ERROR_CODES.BAD_REQUEST, "Invalid JSON request body"),
+        return jsonApiError(
+          c,
           400,
+          API_ERROR_CODES.BAD_REQUEST,
+          "Invalid JSON request body",
         );
       }
 
       const parsed = TriggerLighthouseAuditRequestSchema.safeParse(rawBody);
       if (!parsed.success) {
         const firstIssue = parsed.error.issues[0];
-        return c.json(
-          formatError(
-            API_ERROR_CODES.VALIDATION_ERROR,
-            firstIssue?.message ?? "Invalid audit request payload",
-            parsed.error.flatten(),
-          ),
+        return jsonApiError(
+          c,
           422,
+          API_ERROR_CODES.VALIDATION_ERROR,
+          firstIssue?.message ?? "Invalid audit request payload",
+          parsed.error.flatten(),
         );
+      }
+
+      const midBodyShutdown = rejectIfShuttingDown(c);
+      if (midBodyShutdown) {
+        return midBodyShutdown;
       }
 
       const normalized = normalizeLighthouseAuditRequest(parsed.data);
       const outcome = jobManager.startJob(normalized);
       if (!outcome.started) {
-        return c.json(
-          formatError(
-            API_ERROR_CODES.CONFLICT,
-            "An audit job is already in progress",
-            { activeJobId: outcome.activeJobId },
-          ),
+        return jsonApiError(
+          c,
           409,
+          API_ERROR_CODES.CONFLICT,
+          "An audit job is already in progress",
+          { activeJobId: outcome.activeJobId },
         );
       }
 
@@ -172,12 +190,11 @@ export function createLighthouseRoutes(options: LighthouseRoutesOptions = {}) {
     .get("/audits/:jobId/stream", (c) => {
       const jobId = c.req.param("jobId");
       if (!jobManager.hasJob(jobId)) {
-        return c.json(
-          formatError(
-            API_ERROR_CODES.NOT_FOUND,
-            `Audit job "${jobId}" not found or expired`,
-          ),
+        return jsonApiError(
+          c,
           404,
+          API_ERROR_CODES.NOT_FOUND,
+          `Audit job "${jobId}" not found or expired`,
         );
       }
 
@@ -263,21 +280,19 @@ export function createLighthouseRoutes(options: LighthouseRoutesOptions = {}) {
     .get("/runs", (c) => {
       const parsed = ListLighthouseRunsQuerySchema.safeParse(c.req.query());
       if (!parsed.success) {
-        return c.json(
-          formatError(
-            API_ERROR_CODES.VALIDATION_ERROR,
-            "Invalid query parameters",
-            parsed.error.flatten(),
-          ),
+        return jsonApiError(
+          c,
           422,
+          API_ERROR_CODES.VALIDATION_ERROR,
+          "Invalid query parameters",
+          parsed.error.flatten(),
         );
       }
 
       const limit = parsed.data.limit ?? 50;
       const offset = parsed.data.offset ?? 0;
-      const db = resolveDb();
-      const artifactsDir = resolveArtifacts();
-      const { runs, total } = listLighthouseRunsWithTotal(db, {
+      const artifactsDir = store.resolveArtifactsDir();
+      const { runs, total } = store.listRunsWithTotal({
         url: parsed.data.url,
         search: parsed.data.search,
         formFactor: parsed.data.formFactor,
@@ -308,71 +323,71 @@ export function createLighthouseRoutes(options: LighthouseRoutesOptions = {}) {
       );
     })
     .get("/runs/:id/report", (c) => {
-      return withResolvedRun(c, (row, artifactsDir) => {
-        const safePath = resolveSafeHtmlReportPath(
-          row.htmlReportPath,
-          artifactsDir,
-        );
-        if (!safePath) {
-          return c.json(
-            formatError(
-              API_ERROR_CODES.NOT_FOUND,
-              `HTML report artifact not found for run "${row.id}"`,
-            ),
-            404,
-          );
-        }
+      const id = c.req.param("id") ?? "";
+      const resolved = resolveStoreRead(c, () =>
+        store.resolveReportHtmlPath(id),
+      );
+      if (!resolved.ok) {
+        return resolved.response;
+      }
 
-        const html = readFileSync(safePath, "utf-8");
-        return new Response(html, {
-          status: 200,
-          headers: {
-            "Content-Type": "text/html; charset=utf-8",
-            "X-Content-Type-Options": "nosniff",
-            "Content-Security-Policy": REPORT_CSP_HEADER,
-            "Cache-Control": "private, no-store",
-          },
-        });
-      });
+      const { run, safePath } = resolved.value;
+      if (!safePath) {
+        return jsonApiError(
+          c,
+          404,
+          API_ERROR_CODES.NOT_FOUND,
+          `HTML report artifact not found for run "${run.id}"`,
+        );
+      }
+
+      return createHtmlReportResponse(safePath);
     })
     .get("/diff", (c) => {
       const parsed = LighthouseDiffQuerySchema.safeParse(c.req.query());
       if (!parsed.success) {
-        return c.json(
-          formatError(
-            API_ERROR_CODES.VALIDATION_ERROR,
-            "Both 'baseline' and 'comparison' query parameters are required",
-            parsed.error.flatten(),
-          ),
+        return jsonApiError(
+          c,
           422,
+          API_ERROR_CODES.VALIDATION_ERROR,
+          "Both 'baseline' and 'comparison' query parameters are required",
+          parsed.error.flatten(),
         );
       }
 
-      const db = resolveDb();
-      const baseline = resolveRunOrError(c, db, parsed.data.baseline);
-      if (!baseline.ok) {
-        return baseline.response;
-      }
-      const comparison = resolveRunOrError(c, db, parsed.data.comparison);
-      if (!comparison.ok) {
-        return comparison.response;
+      const diffResult = resolveStoreRead(c, () =>
+        store.diffRuns(parsed.data.baseline, parsed.data.comparison),
+      );
+      if (!diffResult.ok) {
+        return diffResult.response;
       }
 
-      const artifactsDir = resolveArtifacts();
+      const artifactsDir = store.resolveArtifactsDir();
       return c.json(
         LighthouseDiffResponseSchema.parse({
-          baseline: serializeLighthouseRunDetail(baseline.row, artifactsDir),
-          comparison: serializeLighthouseRunDetail(
-            comparison.row,
+          baseline: serializeLighthouseRunDetail(
+            diffResult.value.baseline,
             artifactsDir,
           ),
-          deltas: computeRunDeltas(baseline.row, comparison.row),
+          comparison: serializeLighthouseRunDetail(
+            diffResult.value.comparison,
+            artifactsDir,
+          ),
+          deltas: diffResult.value.deltas,
         }),
         200,
       );
     });
 
   return Object.assign(router, {
-    shutdown: () => jobManager.shutdown(),
+    shutdown: async () => {
+      try {
+        await jobManager.shutdown();
+      } finally {
+        if (ownsStore) {
+          store.close();
+        }
+      }
+    },
   });
 }

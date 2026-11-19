@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { formatError } from "../src/shared/http";
 import {
-  formatError,
   isLoopbackAddress,
   isLoopbackHostHeader,
   isLoopbackOrigin,
   isTrustedLoopbackPeer,
-} from "../src/middleware/security";
+} from "../src/shared/security";
 
 describe("Security Middleware Helpers (Unit)", () => {
   describe("isLoopbackHostHeader", () => {
