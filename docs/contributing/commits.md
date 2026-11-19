@@ -72,3 +72,4 @@ Each commit represents **one coherent, buildable, revertible logical change**, r
 - **Split unrelated work.** Separate unrelated refactors, bug fixes, dependency bumps, or documentation updates into distinct commits; never blindly stage a dirty tree with `git add .` or `git commit -a`.
 - **Avoid mechanical micro-splitting.** Do not chop one cohesive change into per-folder or test-only micro-commits.
 - **Let hooks run.** Allow [lefthook.yml](../../lefthook.yml) `pre-commit` and `commit-msg` hooks to validate staged changes automatically; never pass `--no-verify`.
+- **Push and reply to PR feedback.** After committing, push changes and handle any active PR comment replies per [Pushing changes and review synchronization](push.md).

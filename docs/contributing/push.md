@@ -30,6 +30,6 @@ If no pull request exists yet, open one following [Pull requests](pull-request.m
 
 ## Post-push review comment replies
 
-Reply to open review comments only **after** pushing the fixing commit to `origin` so the remote pull request diff displays the updated code, and leave thread resolution to the reviewer.
+When the branch has an open pull request and the pushed commits address comments on that pull request, reply to each addressed comment right after pushing (never before pushing, so the remote diff shows the updated code) following [Reply to a review comment](pull-request/comments.md#2-reply-to-a-review-comment).
 
-Follow the query, investigation, and reply steps in [Pull request comments](pull-request/comments.md).
+For querying open threads before replying, see [Pull request comments](pull-request/comments.md).
