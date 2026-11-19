@@ -51,6 +51,7 @@ The `generated:issue-types` table below is regenerated from `fallow schema` by s
 | `unprovided-inject` | `--unprovided-injects` | - | `// fallow-ignore-next-line unprovided-inject` | inject() / getContext() reads a key that no provide() / setContext() supplies |
 | `unrendered-component` | `--unrendered-components` | - | `// fallow-ignore-next-line unrendered-component` | A Vue / Svelte component is reachable through a barrel but rendered nowhere |
 | `absent-component-prop` | `--absent-component-props` | - | `// fallow-ignore-next-line absent-component-prop` | Known reachable callers omit an optional prop consumed inside its component; Opt-in manual review candidate; defaults to off. Inspect caller evidence and defaults before changing the component. No automatic fix. |
+| `constant-parameter` | `--constant-parameters` | - | `// fallow-ignore-next-line constant-parameter` | Each visible call passes a function parameter in the same way; Opt-in manual review candidate; defaults to off. Inspect the calls and the intent of the parameter before changing the function. No automatic fix. |
 | `unused-component-prop` | `--unused-component-props` | - | `// fallow-ignore-next-line unused-component-prop` | A Vue defineProps prop or React component prop is referenced nowhere in its own component |
 | `unused-component-emit` | `--unused-component-emits` | - | `// fallow-ignore-next-line unused-component-emit` | A Vue <script setup> defineEmits event is emitted nowhere in its own component |
 | `unused-component-input` | `--unused-component-inputs` | - | `// fallow-ignore-next-line unused-component-input` | An Angular @Input() / signal input() / model() is read nowhere in its own component (class body or template); needs `@angular/core` dep |
@@ -90,6 +91,7 @@ The `generated:issue-types` table below is regenerated from `fallow schema` by s
 | `test-only-branch` | - | - | `// fallow-ignore-next-line test-only-branch` | The change adds a test-environment branch to source code |
 | `diverged-clone-sibling` | - | - | `// fallow-ignore-next-line diverged-clone-sibling` | The change edits one copy of duplicated code but not its siblings |
 | `added-dependency` | - | - | - | The change adds a dependency. Config suppression only, because `package.json` cannot hold a comment: set `added-dependency` to `off` for the path in an `overrides` entry. |
+| `mutation-survived` | - | - | - | A small code change made no test fail |
 
 Runtime-coverage verdicts and the full security sink catalogue are listed by `fallow schema` (`issue_types`).
 <!-- generated:issue-types:end -->

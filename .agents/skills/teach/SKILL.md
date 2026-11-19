@@ -1,193 +1,100 @@
 ---
 name: teach
-description: Teach a skill or concept through grounded lessons organized by topic tracks. Use when asked to teach, create lessons, explain a topic, manage learning tracks, or record user learning progress.
+description: Teach a skill or concept through grounded multi-session lessons organized by topic tracks.
 disable-model-invocation: true
 argument-hint: "Which topic would you like to learn about?"
 ---
 
 # Teach
 
-The user wants to learn one or more topics over multiple sessions. All learning tracks live in `.scratch/teach/`, organized by topic subdirectories to prevent unrelated topics (such as Lighthouse, TypeScript, and CI/CD) from colliding.
+Deliver progressive, source-grounded lessons inside isolated topic tracks under `.scratch/teach/<topic-slug>/`, passing `--root <dir>` to `track.ts` when a repository designates another scratch directory.
 
-## Track architecture
+## Track CLI
 
-State is partitioned into isolated topic tracks registered in `.scratch/teach/tracks.json`:
+Run `.agents/skills/teach/scripts/track.ts` for track management and validation, consulting [references/track-files.md](references/track-files.md) when creating or updating `MISSION.md`, `NOTES.md`, `RESOURCES.md`, `GLOSSARY.md`, `learning-records/`, or `reference/` files:
 
-```text
-.scratch/teach/
-├── tracks.json                         # Global registry of tracks and active context
-└── <topic-slug>/                       # Isolated topic track (e.g. lighthouse, typescript, ci-cd)
-    ├── MISSION.md                      # Grounding outcome for this specific topic
-    ├── NOTES.md                        # User preferences, pacing, and track-specific notes
-    ├── RESOURCES.md                    # Curated external sources for this topic
-    ├── GLOSSARY.md                     # Domain vocabulary for this topic
-    ├── lessons/
-    │   ├── 0001-<slug>.md              # Sequenced progressively within this track
-    │   └── 0002-<slug>.md
-    ├── learning-records/
-    │   ├── 0001-<slug>.md              # Validated mastery and misconceptions for this track
-    │   └── 0002-<slug>.md
-    ├── reference/
-    │   └── ...                         # Syntax guides, cheat sheets, algorithms
-    └── assets/
-        └── ...                         # Diagrams and visual anchors for this track
-```
+- `bun .agents/skills/teach/scripts/track.ts status [topic]` inspects `tracks.json` and workspace files, printing `activeTrack`, `pendingLesson`, fuzzy matches, and next `NNNN` numbers; exits `0`.
+- `bun .agents/skills/teach/scripts/track.ts init <topic> --title "<Title>"` creates `<topic-slug>/lessons/` and sets `activeTrack` in `tracks.json`; exits `0`.
+- `bun .agents/skills/teach/scripts/track.ts use <topic-slug>` sets `activeTrack` to an existing track in `tracks.json`; exits `0` when found.
+- `bun .agents/skills/teach/scripts/track.ts complete <topic-slug> [--lesson <N>]` advances `completedLessons` and `currentLesson` in `tracks.json`; exits `0`.
+- `bun .agents/skills/teach/scripts/track.ts validate <lesson-path> [--sync]` checks structure, drills, Mermaid diagrams, assets, and links, optionally syncing `currentLesson`, and prints the exact `file://` URI; exits `0` when valid.
 
-## Track resolution and routing
+## Workflow
 
-Resolve the active topic track before reading state or generating lessons:
+### 1. Resolve track and mission
 
-1. **Explicit topic in prompt or arguments** (for example, `/teach typescript`, `/teach lighthouse`, or "teach me about CI/CD"):
-   - Convert the topic name to a kebab-case slug (`<topic-slug>`).
-   - If `.scratch/teach/<topic-slug>/` exists: set `activeTrack` to this slug in `.scratch/teach/tracks.json` and resume that track.
-   - If `.scratch/teach/<topic-slug>/` does not exist: interview the user to establish the topic mission, create `.scratch/teach/<topic-slug>/` with its subdirectories (`lessons/`, `learning-records/`, `reference/`, `assets/`), write `.scratch/teach/<topic-slug>/MISSION.md`, and add the track entry to `tracks.json`.
-2. **Ambiguous or omitted topic** (for example, `/teach` or "let's do a lesson"):
-   - Read `.scratch/teach/tracks.json`.
-   - If multiple tracks exist: list active tracks with completed lesson counts and prompt the user to choose one or specify a new topic.
-   - If exactly one track exists: default to it as `activeTrack`.
-   - If no tracks exist: prompt the user for the topic they want to learn and initialize the first track.
+Run `track.ts status "<topic>"` when a topic is named, or `track.ts status` when omitted, before researching external sources.
 
-## Teaching workspace
+- **Explicit topic.** If an exact track exists and is inactive, run `track.ts use <topic-slug>`. If fuzzy matches appear without an exact match, ask whether to resume a matching track or start a new one, then end your turn.
+- **Omitted topic.** If multiple tracks exist and the user is starting a fresh session rather than answering an active drill or interview, list tracks with `completedLessons` and `currentLesson` counts, ask which track to open or what new topic to start, and end your turn. If one track exists, use it. If none exist, ask what topic and outcome the user wants and end your turn.
+- **New track or missing mission.** Interview the user until the real-world outcome, success criteria, constraints, and baseline prior knowledge are settled, ending your turn if any remain open. Once settled, run `track.ts init <topic-slug> --title "<Title>"`, write `MISSION.md`, and record baseline knowledge in `learning-records/0001-<slug>.md` and preferences in `NOTES.md` when disclosed.
 
-Resolve all state files, reference documents, and lessons inside `.scratch/teach/<topic-slug>/`:
+Completion criterion: Active track is set in `tracks.json`, `MISSION.md` defines concrete success criteria, and all existing `NOTES.md`, `RESOURCES.md`, `GLOSSARY.md`, and `learning-records/*.md` files are read.
 
-- **MISSION.md.** Captures the concrete reason the user learns this specific topic. Ground every lesson in this file. Follow [MISSION-FORMAT.md](./MISSION-FORMAT.md).
-- **reference/*.md.** Condensed reference documents such as cheat sheets, algorithms, syntax guides, and glossaries for this topic. Use pure Markdown.
-- **RESOURCES.md.** Curated list of high-trust external sources and learning communities for this topic. Follow [RESOURCES-FORMAT.md](./RESOURCES-FORMAT.md).
-- **learning-records/*.md.** Sequential records (`0001-<slug>.md`) capturing validated understanding, misconceptions corrected, and prior knowledge for this topic track. Follow [LEARNING-RECORD-FORMAT.md](./LEARNING-RECORD-FORMAT.md).
-- **lessons/*.md.** Sequenced Markdown lessons (`0001-<slug>.md`). Numbering starts at `0001` within each topic track. Each lesson teaches one tightly scoped skill tied to the track mission.
-- **assets/*.** Visual and media files generated for lessons in this track.
-- **NOTES.md.** Working notes and user preferences recorded during sessions for this topic.
-- **GLOSSARY.md.** Canonical domain vocabulary for this topic. Follow [GLOSSARY-FORMAT.md](./GLOSSARY-FORMAT.md).
+### 2. Review mastery and plan next concept
 
-## Learning model
+- **Evaluate replies.** When the user submits drill answers, demonstrates skill, corrects a misconception, or shifts goals, give direct feedback on their reasoning, write `learning-records/<NNNN>-<slug>.md` for non-trivial evidence or corrections, promote demonstrated canonical terms to `GLOSSARY.md`, and run `track.ts complete <topic-slug>`.
+- **Build retention.** Check `NOTES.md` and `learning-records/*.md` to skip mastered material and choose the single next skill advancing `MISSION.md`, unless `NOTES.md` specifies a broader scope. When `completedLessons > 0` or `pendingLesson` is set, include brief spaced recall across prior concepts and connect related active tracks when helpful.
+- **Ground facts.** Verify claims against directly read external documentation or inspected repository files, update `RESOURCES.md` with verified sources, practitioner communities, and any unverified access gaps, and cite only directly observed files or URLs in lesson headers and `Primary sources`.
 
-Learning requires three inputs:
+Completion criterion: Observed mastery is persisted, `tracks.json` progress matches completed lessons, and the next scope is grounded in verified sources.
 
-- **Knowledge.** Verified facts from high-trust sources recorded in `RESOURCES.md`. Do not rely on unverified memory.
-- **Skills.** Practical application through interactive drills and structured exercises.
-- **Wisdom.** Real-world calibration through communities and outside practitioners.
+### 3. Author and validate deliverable
 
-### Fluency versus storage strength
+Write one self-contained Markdown lesson to `.scratch/teach/<topic-slug>/lessons/<NNNN>-<lesson-slug>.md` using the template below, or write durable lookup material to `.scratch/teach/<topic-slug>/reference/<name>.md`.
 
-Distinguish between two types of retention:
+````markdown
+# Lesson <NNNN>: <Title>
 
-- **Fluency strength.** Immediate retrieval during the lesson. Fluency creates an illusion of mastery without retention.
-- **Storage strength.** Long-term durability of knowledge.
+> **Eyebrow**: Teach Workspace · Topic: <Topic Title> · Lesson <NNNN> · ~<M> min read<br>
+> **Source**: Grounded in <Verified Source or Observed Code Paths><br>
+> **Workspace File**: `.scratch/teach/<topic-slug>/lessons/<NNNN>-<lesson-slug>.md`
 
-Build storage strength through deliberate difficulty:
+---
 
-- **Retrieval practice.** Require recall from memory before revealing answers.
-- **Spacing.** Revisit concepts across subsequent sessions.
-- **Interleaving.** Mix related skills during practice drills. When the user has active tracks across multiple topics, weave in optional synthesis drills connecting them.
+## Problem statement
 
-## Zone of proximal development
+<Failure mode or limitation that makes this skill necessary.>
 
-Tailor each lesson to challenge the user without overwhelming working memory:
+## Core concepts
 
-- Read existing `learning-records` inside the active topic track to identify what the user already knows in this domain.
-- Skip concepts already mastered.
-- Teach the single next concept needed to make progress toward the track mission.
+<Rules, definitions, and grounded comparisons. Reserve GFM alerts (`> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`) for critical constraints.>
 
-## Lessons
+## Interactive retrieval drill
 
-A lesson is the primary unit of instruction. Save each lesson to `.scratch/teach/<topic-slug>/lessons/0001-<slug>.md`. Increment the number sequentially within the active topic track.
+Test your recall from memory before expanding each answer.
 
-Write lessons in pure Markdown. Do not generate HTML files, CSS stylesheets, or JavaScript widgets.
+### Question 1
 
-Keep each lesson short and focused on a single win within the user's zone of proximal development.
+<Question testing application or cross-lesson synthesis>
 
-### Structure of a lesson
+* **A)** <Option A>
+* **B)** <Option B>
+* **C)** <Option C>
 
-Structure every lesson file in this sequence:
+<details>
+<summary>Reveal Answer & Explanation</summary>
 
-1. **Title.** Start with the top-level heading: `# Lesson <NNNN>: <Title>`.
-2. **Header metadata.** Directly below the title, include a blockquote with the lesson eyebrow, reading time, primary source citation, and workspace file path. End each line in the blockquote with `<br>` so Markdown previewers preserve line breaks:
-   ```markdown
-   > **Eyebrow**: Teach Workspace · Topic: <Topic Title> · Lesson 0001 · ~4 min read<br>
-   > **Source**: Grounded in <Source Title or Author><br>
-   > **Workspace File**: `.scratch/teach/<topic-slug>/lessons/0001-<slug>.md`
-   ```
-3. **Divider.** Place a horizontal rule (`---`) below the metadata block.
-4. **Hero visual (optional).** Place an illustration or primary Mermaid diagram directly beneath the divider if a visual anchor clarifies the lesson. Omit this section if not needed.
-5. **Problem statement.** Explain the failure mode or limitation that makes this skill necessary.
-6. **Core concepts.** Explain the key rules and definitions. Use GitHub Flavored Markdown alerts (`> [!TIP]`, `> [!IMPORTANT]`, `> [!NOTE]`) inside the lesson body only for critical constraints.
-7. **Visual workflows (optional).** Include Mermaid diagrams to illustrate state transitions, decision trees, or sequences when structural visualization clarifies the logic.
-8. **Interactive retrieval drill.** End the lesson with a self-testing drill.
-9. **Primary sources.** List verified external documentation, books, or repositories for deeper study.
+> **Correct Answer: <A|B|C>**
+>
+> **Why:** <Explain why the correct answer holds and why each distractor fails.>
+</details>
 
-Do not append generic reminder boilerplate about being a teacher or asking followup questions.
+## Primary sources
 
-### Interactive retrieval drill
+* [<Source Title>](<URL or verified absolute file:// URI>)
+````
 
-Conclude every lesson with an interactive drill:
+Include two or three drill questions per lesson, match option lengths across choices, and vary the correct answer letter across questions. Add an image in `.scratch/teach/<topic-slug>/assets/<name>.<ext>` embedded by absolute path directly below `---`, or a Mermaid diagram (`flowchart TD`, `flowchart LR`, `sequenceDiagram`, `stateDiagram-v2`, `classDiagram`) directly below `---` or under `## Visual workflow: <Title>`, only when visual structure clarifies the concept. Leave Mermaid nodes unstyled for theme contrast or specify high-contrast fill and text colors such as `#14532d` or `#7f1d1d` with `#ffffff`.
 
-- Title the section `## Interactive retrieval drill`.
-- Include two or three multiple-choice questions testing core concepts.
-- Format answer options symmetrically: `* **A)** ...`, `* **B)** ...`, `* **C)** ...`. Make options similar in length so formatting does not reveal the answer.
-- Vary the correct option position across questions.
-- Hide the solution behind a native disclosure block:
-  ```markdown
-  <details>
-  <summary>🔍 Reveal Answer & Explanation</summary>
+Completion criterion: `bun .agents/skills/teach/scripts/track.ts validate <lesson-path> --sync` exits `0` and prints the exact `file://` URI, or the reference file is saved cleanly.
 
-  > **Correct Answer: B**
-  >
-  > **Why:** Explain why the answer is correct and why the alternatives fail.
-  </details>
-  ```
+### 4. Deliver in chat
 
-## Lesson presentation in chat
+Keep full lesson prose inside the lesson file and present links directly in plain text rather than callout blocks. Include:
 
-Do not duplicate lesson content in the chat response. The Markdown file in `.scratch/teach/<topic-slug>/lessons/` is the complete deliverable.
+1. Clickable Markdown link using the exact `file://` URI printed by `track.ts validate`.
+2. Core concept and takeaway in two or three sentences.
+3. Prompt asking the user to complete the retrieval drill from memory before expanding answers and reply with their answers or questions.
 
-Do not wrap file references or links in callout alerts (`> [!TIP]`, `> [!NOTE]`, `> [!IMPORTANT]`). Present file references directly in plain text.
-
-Structure the chat response with these elements:
-
-- **Link the lesson file.** Provide a clickable Markdown link using the full absolute filesystem path with the `file://` scheme (for example, `[0001-<slug>.md](file:///path/to/workspace/.scratch/teach/<topic-slug>/lessons/0001-<slug>.md)`). Never attach `file:///` directly to a relative path like `.scratch/...`, which produces broken links such as `file:///.scratch/...`.
-- **Summarize the core win.** State the core concept and primary takeaway in two or three sentences.
-- **Direct the user to the drill.** Tell the user in plain text to open the lesson file to review the material and complete the interactive retrieval drill.
-
-## Visuals and diagrams
-
-Images and Mermaid diagrams are distinct visual tools. A lesson can use both, either, or neither:
-
-- **Need determines inclusion.** Create an image only when an illustration clarifies the concept. Create a Mermaid diagram only when a flowchart, sequence, or decision tree clarifies the logic. If visual aids add no value, omit them.
-- **Image generation.** If an image generation tool is available in your environment and an image is needed, generate the image. Save the file to `.scratch/teach/<topic-slug>/assets/<name>.<ext>`.
-- **Image embedding.** Embed images in lessons using absolute filesystem paths (for example, `![Description](/path/to/repo/.scratch/teach/<topic-slug>/assets/diagram.png)`). Absolute paths ensure markdown preview tools and webviews render gitignored assets without path resolution errors.
-- **Mermaid diagrams.** Author Mermaid diagrams directly in the Markdown document when a structural or procedural visualization clarifies the lesson.
-
-## Mermaid diagram accessibility
-
-Mermaid diagrams must remain legible across both dark and light editor themes:
-
-- Avoid low-contrast pastel backgrounds.
-- If defining custom node styles, specify both fill and font color with high contrast. For example, use dark green fill `#14532d` with white text `#ffffff`, or dark red fill `#7f1d1d` with white text `#ffffff`.
-- If custom colors are not strictly necessary, use default unstyled nodes to inherit the viewer's theme.
-- Stick to supported diagram types: `flowchart TD`, `flowchart LR`, `sequenceDiagram`, `stateDiagram-v2`, and `classDiagram`.
-
-## The mission
-
-Every lesson must advance the goal in `.scratch/teach/<topic-slug>/MISSION.md`.
-
-If `MISSION.md` for the active track is empty or missing, interview the user before teaching. Identify the concrete real-world outcome they want to achieve in this domain.
-
-Update `MISSION.md` and add a learning record whenever the user's focus or constraints evolve. Confirm with the user before changing the mission.
-
-## Reference documents
-
-Create reference documents in `.scratch/teach/<topic-slug>/reference/*.md` alongside lessons.
-
-Reference documents contain durable lookup material that outlives individual lessons:
-
-- Code syntax and snippets
-- Algorithm flowcharts
-- Domain glossaries
-- Workout sequences and movement standards
-
-Do not place interactive retrieval drills in reference documents. Keep them concise and structured for quick lookup.
-
-## User notes
-
-Record learning preferences, pace requirements, and environment constraints for the active topic in `.scratch/teach/<topic-slug>/NOTES.md`. Check this file before planning each session.
+Completion criterion: Chat response delivers the validated link, takeaway, and drill prompt while keeping lesson prose inside the lesson file.

@@ -1,6 +1,6 @@
 # Context Glossary Format
 
-Domain glossaries live under `docs/glossary/` and are mapped from `GLOSSARY-MAP.md` at the repository root.
+Domain glossaries live under `docs/glossary/` and are mapped from `GLOSSARY.md` at the repository root.
 
 ## Structure
 
@@ -38,6 +38,6 @@ _Avoid_: Client, buyer, account
 
 ## Repository Location & Mapping
 
-- Root map: `GLOSSARY-MAP.md` at the repository root.
+- Root glossary map: `GLOSSARY.md` at the repository root.
 - Context glossaries: `docs/glossary/<context>.md`.
-- Architectural decisions: `docs/adr/0001-*.md`.
+- Architectural decisions: `docs/adr/0001-*.md` (indexed in `ARCHITECTURE.md`).
