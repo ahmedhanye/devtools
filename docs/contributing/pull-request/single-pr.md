@@ -4,9 +4,10 @@ Workflow for opening and squash-merging a single pull request when the changeset
 
 ## Open a single pull request
 
-Write the PR description matching [`.github/PULL_REQUEST_TEMPLATE.md`](../../../.github/PULL_REQUEST_TEMPLATE.md) to a file and pass `--title` and `--body-file` (avoid `--fill`, which bypasses the template):
+Write the PR description matching [`.github/PULL_REQUEST_TEMPLATE.md`](../../../.github/PULL_REQUEST_TEMPLATE.md) to a file, push the branch if it is not yet on `origin`, and pass `--title` and `--body-file` (avoid `--fill`, which bypasses the template):
 
 ```bash
+git push -u origin "$(git branch --show-current)"
 gh pr create \
   --assignee "@me" \
   --label "<area-label>" \

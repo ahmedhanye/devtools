@@ -25,7 +25,9 @@ Evaluate each open thread along with all follow-up replies and commits pushed si
 
 ## Actions
 
-### 1. Query unresolved review threads
+### 1. Query unresolved review threads and review summaries
+
+Also inspect top-level `reviews` (`gh pr view <pr_number> --json reviews`) because automated reviewers sometimes place findings in a review summary outside inline threads.
 
 ```bash
 gh api graphql --paginate -F owner='{owner}' -F repo='{repo}' -F pr=<pr_number> -f query='
@@ -35,7 +37,7 @@ gh api graphql --paginate -F owner='{owner}' -F repo='{repo}' -F pr=<pr_number> 
         reviewThreads(first: 100, after: $endCursor) {
           pageInfo { hasNextPage endCursor }
           nodes {
-            isResolved path line
+            isResolved path line originalLine
             comments(first: 50) {
               nodes { databaseId author { login } body createdAt }
             }

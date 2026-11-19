@@ -19,7 +19,7 @@ Stack pull requests when a changeset exceeds **5,000 LOC** or **80 modified file
 1. **Layer 1 (foundation, tooling, or schemas).** Core types, database schemas, scripts, or CI configs.
 2. **Layer 2 (shared packages).** Domain logic, shared libraries, and runtime seams.
 3. **Layer 3 (backend applications).** API routes, CLI commands, or Daemon endpoints.
-4. **Layer 4 (frontend or documentation).** Web UI components, Portable Stories, or cross-cutting repository docs (`docs/**`, root `*.md`, `.agents/**` belong in their own top layer rather than inside a `cli` or `api` layer).
+4. **Layer 4 (frontend or documentation).** Web UI components, Portable Stories, or cross-cutting repository docs (`docs/**`, root `*.md`, and `.agents/**` belong in their own top layer rather than inside a `cli` or `api` layer).
 
 > [!WARNING]
 > **Prevent Git ref prefix collisions.** Name stack branches `<issue>-<topic>/<layer-number>-<layer-name>` (for example, `102-audit/01-schemas-and-core`). Never create `<branch>/<layer>` while `<branch>` exists locally or on `origin`, because Git cannot store both a branch ref and a folder prefix with the same name. Delete or rename any initial single tracking branch first, or choose a distinct prefix before `gh stack init`.
@@ -89,12 +89,10 @@ Never open a late layer standalone with `gh pr create`; use `gh stack add <branc
 
 ### Step 2: Verify each layer against its base
 
-Run the matching completion check from [`REVIEW.md`](../../../REVIEW.md#scope-and-verification-matrix) with `BASE_REF` set to that layer's base branch (`<parent-layer-branch>`, or `origin/main` once lower layers merge):
+Run the matching completion check row from [`REVIEW.md`](../../../REVIEW.md#scope-and-verification-matrix) for the files changed in `git diff --name-only <parent-layer-branch>...HEAD` (`origin/main` once lower layers merge). When running diff-scoped coverage checks, pass `BASE_REF`:
 
 ```bash
-BASE_REF="<parent-layer-branch>" bun run fallow:dead-code && \
-BASE_REF="<parent-layer-branch>" bun run fallow:arch && \
-BASE_REF="<parent-layer-branch>" bun run test:coverage <workspace> && \
+BASE_REF="<parent-layer-branch>" bun run test:coverage --changed && \
 BASE_REF="<parent-layer-branch>" bun run verify:diff-coverage
 ```
 

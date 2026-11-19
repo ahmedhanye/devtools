@@ -11,7 +11,7 @@ Work splits into two issue kinds in [`.github/ISSUE_TEMPLATE/`](../../.github/IS
 | **Spec**   | [`spec.yml`](../../.github/ISSUE_TEMPLATE/spec.yml)     | `Feature`                                  | `type:spec`                  | Active milestone when applicable | Tracks a capability or multi-slice effort and owns child sub-issues                        |
 | **Ticket** | [`ticket.yml`](../../.github/ISSUE_TEMPLATE/ticket.yml) | `Task` (`Bug` / `Feature` when overridden) | Matching `type:*` & `area:*` | None                             | Delivers one actionable slice (`feat`, `bug`, `docs`, `infra`, `research`, or `Task` work) |
 
-Repository areas group under five labels: `area:backend` (`api`, `core`, `db`, `browser`, `lighthouse`), `area:cli` (`cli`), `area:frontend` (`frontend`), `area:docs` (`docs` and `site`), and `area:tooling` (`.github`, `scripts`, `.agents`). Check live labels (`gh label list`) and milestones (`gh api --paginate repos/{owner}/{repo}/milestones --jq '.[].title'`) rather than guessing names.
+Repository areas group under five labels: `area:backend` (`api`, `core`, `db`, `browser`, `lighthouse`), `area:cli` (`cli`), `area:frontend` (`frontend`), `area:docs` (`docs` and `site`), and `area:tooling` (`.github`, `scripts`, `.agents`). Check live labels (`gh label list`) and milestones (`gh api --paginate repos/{owner}/{repo}/milestones --jq '.[].title'`) rather than guessing names. For interactive drafting workflows, use `/to-spec` for multi-slice Specs and `/to-tickets` for splitting a Spec into dependent child Tickets.
 
 ## Issue bodies and titles
 
@@ -24,25 +24,27 @@ Repository areas group under five labels: `area:backend` (`api`, `core`, `db`, `
 
 Because issues and pull requests share one number space on GitHub, resolve an unknown reference with `gh pr view <n> --json number,title` before `gh issue view <n> --json number,title`, and pass `--json` on queries to avoid deprecated project lookups.
 
-| Action                           | Command                                                                                                                |
-| :------------------------------- | :--------------------------------------------------------------------------------------------------------------------- |
-| Create a Spec                    | `gh issue create --title "<title>" --label "type:spec" [--milestone "<milestone>"] --body "..."`                       |
-| Create a Ticket                  | `gh issue create --title "<title>" --label "<type-label>" --body "..."`                                                |
-| List open unassigned tickets     | `gh issue list --state open --assignee "" --json number,title,labels`                                                  |
-| Resolve database ID              | `gh api repos/{owner}/{repo}/issues/<number> --jq .id`                                                                 |
-| Link child Ticket to parent Spec | `gh api --method POST repos/{owner}/{repo}/issues/<spec_number>/sub_issues -F sub_issue_id=<ticket_db_id>`             |
-| Add blocking dependency          | `gh api --method POST repos/{owner}/{repo}/issues/<ticket_number>/dependencies/blocked_by -F issue_id=<blocker_db_id>` |
-| Query child sub-issues           | `gh api --paginate repos/{owner}/{repo}/issues/<spec_number>/sub_issues --jq '.[] \| {number, title, state}'`          |
-| Query parent Spec                | `gh api repos/{owner}/{repo}/issues/<ticket_number>/parent --jq .number 2>/dev/null`                                   |
+| Action                              | Command                                                                                                                                             |
+| :---------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Create a Spec                       | `gh issue create --title "<title>" --label "type:spec" [--milestone "<milestone>"] --body "..."`                                                    |
+| Create a Ticket                     | `gh issue create --title "<title>" --label "<type-label>" --body "..."`                                                                             |
+| Set native Issue Type (`gh 2.46.0`) | `gh api --method PATCH repos/{owner}/{repo}/issues/<number> -f type="<Feature\|Task\|Bug>"`                                                         |
+| List open unassigned tickets        | `gh issue list --state open --assignee "" --json number,title,labels`                                                                               |
+| Resolve database ID                 | `gh api repos/{owner}/{repo}/issues/<number> --jq .id`                                                                                              |
+| Link child Ticket to parent Spec    | `gh api --method POST repos/{owner}/{repo}/issues/<spec_number>/sub_issues -F sub_issue_id=<ticket_db_id>`                                          |
+| Add blocking dependency             | `gh api --method POST repos/{owner}/{repo}/issues/<ticket_number>/dependencies/blocked_by -F issue_id=<blocker_db_id>`                              |
+| Query blocking dependencies         | `gh api --paginate repos/{owner}/{repo}/issues/<ticket_number>/dependencies/blocked_by --jq '[.[] \| select(.state == "open") \| {number, title}]'` |
+| Query child sub-issues              | `gh api --paginate repos/{owner}/{repo}/issues/<spec_number>/sub_issues --jq '.[] \| {number, title, state}'`                                       |
+| Query parent Spec                   | `gh api repos/{owner}/{repo}/issues/<ticket_number>/parent 2>/dev/null \| jq -r '.number // empty'`                                                 |
 
 ## Branching, updates, and closing
 
 1. **Claim a ticket.** Start from a clean tree on up-to-date `main`, assign `@me`, and check out the linked branch:
    ```bash
    gh issue edit <ticket_number> --add-assignee @me
-   gh issue develop <ticket_number> --checkout
+   gh issue develop <ticket_number> --base main --checkout
    ```
-   If a linked branch already exists, find its name with `gh issue develop <ticket_number> --list` and check it out.
+   If a linked branch already exists, list full branch names without PTY truncation (`gh issue develop <ticket_number> --list | cut -f1`), then run `git fetch origin <branch> && git checkout <branch>`.
 2. **Keep requirements stable.** Post technical discoveries, blocker updates, and scope decisions as issue comments rather than rewriting ticket requirements. When criteria pass, toggle `- [ ]` to `- [x]` via `gh issue edit <number> --body "$UPDATED_BODY"`.
 3. **Auto-close via PR.** Include `Closes #<ticket_number>` in the pull request description so merging closes the ticket automatically. Leave any parent Spec open until all child tickets finish.
 

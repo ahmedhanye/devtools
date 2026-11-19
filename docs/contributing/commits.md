@@ -41,7 +41,7 @@ Scopes are **optional** and appear as bold prefixes (`**cli:**`) in the Release 
 - **Omit scope for cross-cutting or root work.** Leave the scope empty (`feat: ...`, `refactor: ...`, `chore: ...`, `docs: ...`, `ci: ...`) when a change spans multiple equal areas or root files. Never use `(repo)` or comma-separated scopes (`api,cli`).
 
 > [!WARNING]
-> **Release safety (`exclude-paths`).** Release Please skips a commit only when _every_ modified file falls under excluded paths (`.agents`, `.github`, `docs`, `scripts`, `site`). Never use release-triggering types (`feat`, `fix`, `perf`, `revert`) for non-runtime areas—especially when a PR also touches `package.json` or `bun.lock`—or it will trigger an accidental CLI release. Reserve `fix(deps)` strictly for security dependency patches.
+> **Release safety (`exclude-paths`).** Release Please skips a commit only when _every_ modified file falls under excluded paths (`.agents`, `.github`, `docs`, `scripts`, `site`). Never use release-triggering types (`feat`, `fix`, `perf`, `revert`) for non-runtime areas, especially when a PR also touches `package.json` or `bun.lock`, or it will trigger an accidental CLI release. Reserve `fix(deps)` strictly for security dependency patches.
 
 ### Clean commit subjects
 
@@ -55,7 +55,7 @@ Examples: `feat(cli): add lighthouse audit command`, `fix(frontend): resolve lay
 
 Commit bodies are **optional**. Omit the body whenever the header is self-explanatory.
 
-Write a short 1–3 sentence body (separated by one blank line, wrapped around 72 characters; `commitlint` rejects lines over 100 characters unless they contain URLs) only when the **why**, constraint, or trade-off is not obvious from the header or diff. Avoid bulleted diff recaps that merely restate changed files or symbols:
+Write a short 1 to 3 sentence body (separated by one blank line, wrapped around 72 characters; `commitlint` rejects lines over 100 characters unless they contain URLs) only when the **why**, constraint, or trade-off is not obvious from the header or diff. Avoid bulleted diff recaps that merely restate changed files or symbols:
 
 ```text
 fix(cli): return exit code 2 on missing config path
