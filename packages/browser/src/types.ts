@@ -50,12 +50,9 @@ export interface ResolveBrowserOptions {
    * @defaultValue 3000
    */
   timeoutMs?: number;
+  /** Optional cancellation signal aborting browser probe subprocesses. */
+  signal?: AbortSignal;
 }
-
-/**
- * Machine-readable error codes emitted when browser resolution fails.
- */
-export type BrowserErrorCode = "BROWSER_NOT_FOUND" | "INVALID_BROWSER_PATH";
 
 /**
  * Discriminated union representing the non-throwing status result of {@link getBrowserStatus}.
@@ -74,8 +71,8 @@ export type BrowserStatus =
   | {
       /** Indicates browser resolution failed. */
       found: false;
-      /** Optional machine-readable error code classifying the failure. */
-      code?: BrowserErrorCode | (string & {});
+      /** Optional machine-readable error code classifying the failure (e.g. `"BROWSER_NOT_FOUND"`, `"INVALID_BROWSER_PATH"`). */
+      code?: string;
       /** Actionable human-readable diagnostic and remediation message. */
       error: string;
     };

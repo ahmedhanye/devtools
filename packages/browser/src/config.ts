@@ -13,7 +13,7 @@ export interface BrowserConfigSeam {
   /** Isolated environment variable dictionary overriding `process.env`. */
   env?: EnvMap;
   /** Callback returning the simulated OS platform (for example, `"linux"`, `"darwin"`, `"win32"`). */
-  platform?: () => NodeJS.Platform | string;
+  platform?: () => string;
   /** Callback returning the simulated current working directory. */
   cwd?: () => string;
 }
@@ -27,7 +27,7 @@ export interface BrowserSeamOptions {
   /** Shorthand environment variable dictionary. */
   env?: EnvMap;
   /** Shorthand OS platform string or provider function. */
-  platform?: NodeJS.Platform | string | (() => NodeJS.Platform | string);
+  platform?: string | (() => string);
   /** Shorthand working directory provider function. */
   cwd?: () => string;
 }
@@ -36,9 +36,8 @@ export interface BrowserSeamOptions {
  * Converts a platform value or function into a normalized provider callback.
  */
 function toPlatformProvider(
-  rawPlat:
-    NodeJS.Platform | string | (() => NodeJS.Platform | string) | undefined,
-): (() => NodeJS.Platform | string) | undefined {
+  rawPlat: string | (() => string) | undefined,
+): (() => string) | undefined {
   if (typeof rawPlat === "function") {
     return rawPlat;
   }
@@ -56,10 +55,16 @@ function extractSeamEnv(
 ): EnvMap | undefined {
   const hasSeamProps = "env" in input || "platform" in input || "cwd" in input;
   if (!hasSeamProps) {
-    return input as EnvMap;
+    const normalized: Record<string, string | undefined> = {};
+    for (const [key, value] of Object.entries(input)) {
+      if (typeof value === "string") {
+        normalized[key] = value;
+      }
+    }
+    return normalized;
   }
   return typeof input.env === "object" && input.env !== null
-    ? (input.env as EnvMap)
+    ? input.env
     : undefined;
 }
 
@@ -73,7 +78,7 @@ function extractSeamEnv(
  */
 export function resolveSeam(
   input?: BrowserSeamOptions | BrowserConfigSeam | EnvMap,
-  platformOverride?: NodeJS.Platform | string,
+  platformOverride?: string,
 ): BrowserConfigSeam | undefined {
   if (!input || typeof input !== "object") {
     return platformOverride ? { platform: () => platformOverride } : undefined;
@@ -83,7 +88,7 @@ export function resolveSeam(
     typeof input.seam === "object" &&
     input.seam !== null
   ) {
-    return input.seam as BrowserConfigSeam;
+    return input.seam;
   }
 
   const rawPlat =
@@ -92,9 +97,7 @@ export function resolveSeam(
       ? input.platform
       : undefined);
   const cwd =
-    "cwd" in input && typeof input.cwd === "function"
-      ? (input.cwd as () => string)
-      : undefined;
+    "cwd" in input && typeof input.cwd === "function" ? input.cwd : undefined;
 
   return {
     env: extractSeamEnv(input),
@@ -130,9 +133,7 @@ function resolveTrimmedEnvVar(
  * @param seam - Optional {@link BrowserConfigSeam}.
  * @returns OS platform string (such as `"linux"`, `"darwin"`, or `"win32"`).
  */
-export function resolvePlatform(
-  seam?: BrowserConfigSeam,
-): NodeJS.Platform | string {
+export function resolvePlatform(seam?: BrowserConfigSeam): string {
   return seam?.platform ? seam.platform() : platform();
 }
 
@@ -257,4 +258,47 @@ export function resolvePuppeteerCacheDir(
     resolveTrimmedEnvVar("PUPPETEER_CACHE_DIR", seam) ??
     join(home, ".cache", "puppeteer")
   );
+}
+
+/**
+ * Configuration seam options for resolving Chromium sandbox behavior.
+ */
+export interface ResolveChromeSandboxOptions {
+  /** Explicit override to disable or keep sandbox. */
+  disableSandbox?: boolean;
+  /** Environment variable map overriding `process.env`. */
+  env?: EnvMap;
+  /** Custom user ID retriever for unit testing (defaults to `process.getuid`). */
+  getuid?: () => number | undefined;
+}
+
+/**
+ * Determines whether Chromium `--no-sandbox` flag should be applied.
+ *
+ * @remarks
+ * In root environments (`uid 0`), continuous integration environments (`CI=true`),
+ * or when `CHROME_NO_SANDBOX=1` is configured, `--no-sandbox` is required for Chromium
+ * to launch without SUID or unprivileged user namespace sandbox failures.
+ * In desktop non-root sessions, sandboxing remains enabled by default.
+ *
+ * @param options - Explicit override, environment map, and user ID seam.
+ * @returns True if `--no-sandbox` should be passed to Chromium.
+ */
+export function resolveChromeSandboxDisabled(
+  options: ResolveChromeSandboxOptions = {},
+): boolean {
+  if (typeof options.disableSandbox === "boolean") {
+    return options.disableSandbox;
+  }
+  const currentEnv = options.env ?? process.env;
+  if (
+    currentEnv.CHROME_NO_SANDBOX === "1" ||
+    currentEnv.CHROME_NO_SANDBOX === "true" ||
+    currentEnv.CI === "true" ||
+    currentEnv.CI === "1"
+  ) {
+    return true;
+  }
+  const getuid = options.getuid ?? process.getuid;
+  return getuid?.() === 0;
 }

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { BrowserConfigSeam } from "../src/config";
 import { BrowserNotFoundError, InvalidBrowserPathError } from "../src/errors";
 import { getBrowserStatus, resolveBrowserPath } from "../src/waterfall";
 
@@ -141,7 +142,7 @@ describe("Browser Resolution Waterfall", () => {
     writeFileSync(mockBin, '#!/bin/sh\necho "Chromium 128.0.0"\n');
     chmodSync(mockBin, 0o755);
 
-    let passedSeam: any;
+    let passedSeam: BrowserConfigSeam | undefined;
     const resolution = await resolveBrowserPath(
       {
         env: {
@@ -198,10 +199,17 @@ describe("Browser Resolution Waterfall", () => {
           probeToolCaches: async () => [],
         },
       );
-    } catch (err: any) {
-      expect(err.message).toContain("No Chromium-compatible browser found.");
-      expect(err.message).toContain('Run "devtools browser install"');
-      expect(err.message).toContain('or pass "--chrome-path <path>"');
+    } catch (err: unknown) {
+      expect(err).toBeInstanceOf(Error);
+      expect((err as Error).message).toContain(
+        "No Chromium-compatible browser found.",
+      );
+      expect((err as Error).message).toContain(
+        'Run "devtools browser install"',
+      );
+      expect((err as Error).message).toContain(
+        'or pass "--chrome-path <path>"',
+      );
     }
   });
 
@@ -372,5 +380,105 @@ describe("Browser Resolution Waterfall", () => {
     );
     expect(res.executablePath).toBe(validCandidatePath);
     expect(res.version).toBe("132.0.0");
+  });
+
+  test("rejects immediately and skips downstream probes when AbortSignal is aborted", async () => {
+    const preAborted = new AbortController();
+    preAborted.abort("stop-early");
+    let probed = false;
+
+    await expect(
+      resolveBrowserPath(
+        { signal: preAborted.signal },
+        {
+          probeManagedCache: async () => {
+            probed = true;
+            return null;
+          },
+        },
+      ),
+    ).rejects.toThrow("Browser resolution was aborted");
+    expect(probed).toBe(false);
+
+    const midController = new AbortController();
+    const status = await getBrowserStatus(
+      { signal: midController.signal },
+      {
+        probeManagedCache: async () => {
+          midController.abort("mid-abort");
+          return null;
+        },
+      },
+    );
+    expect(status.found).toBe(false);
+    if (!status.found) {
+      expect(status.error).toContain("aborted");
+    }
+
+    const mockBin = join(testDir, "aborted-candidate.sh");
+    writeFileSync(mockBin, '#!/bin/sh\necho "132.0.0"\n');
+    chmodSync(mockBin, 0o755);
+
+    const tier2AbortOnValid = new AbortController();
+    await expect(
+      resolveBrowserPath(
+        { signal: tier2AbortOnValid.signal },
+        {
+          probeManagedCache: async () => null,
+          probeSystemInstallations: async () => [mockBin],
+          verifyBrowserExecutable: async () => {
+            tier2AbortOnValid.abort("mid-tier2-verify");
+            return { valid: true, version: "132.0.0" };
+          },
+        },
+      ),
+    ).rejects.toThrow("Browser resolution was aborted");
+
+    const tier2AbortSkipsDownstream = new AbortController();
+    let alternativesCalled = false;
+    let toolCachesCalled = false;
+    await expect(
+      resolveBrowserPath(
+        { signal: tier2AbortSkipsDownstream.signal },
+        {
+          probeManagedCache: async () => null,
+          probeSystemInstallations: async () => [mockBin],
+          verifyBrowserExecutable: async () => {
+            tier2AbortSkipsDownstream.abort("mid-tier2-fail");
+            return { valid: false };
+          },
+          probeAlternativeBrowsers: async () => {
+            alternativesCalled = true;
+            return [];
+          },
+          probeToolCaches: async () => {
+            toolCachesCalled = true;
+            return [];
+          },
+        },
+      ),
+    ).rejects.toThrow("Browser resolution was aborted");
+    expect(alternativesCalled).toBe(false);
+    expect(toolCachesCalled).toBe(false);
+
+    const abortDuringExplicit = new AbortController();
+    await expect(
+      resolveBrowserPath(
+        { chromePath: mockBin, signal: abortDuringExplicit.signal },
+        {
+          verifyBrowserExecutable: async () => {
+            abortDuringExplicit.abort();
+            return { valid: true, version: "132.0.0" };
+          },
+        },
+      ),
+    ).rejects.toThrow("Browser resolution was aborted");
+
+    const liveController = new AbortController();
+    const fastOk = await resolveBrowserPath({
+      chromePath: mockBin,
+      signal: liveController.signal,
+    });
+    expect(fastOk.executablePath).toBe(mockBin);
   });
 });

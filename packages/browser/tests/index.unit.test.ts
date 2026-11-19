@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { DEFAULT_BROWSER_NOT_FOUND_MESSAGE } from "../src/errors";
 import * as browser from "../src/index";
 
 describe("@devtools/browser exports", () => {
@@ -15,7 +16,7 @@ describe("@devtools/browser exports", () => {
     const notFound = new browser.BrowserNotFoundError();
     expect(notFound.exitCode).toBe(1);
     expect(notFound.code).toBe("BROWSER_NOT_FOUND");
-    expect(notFound.message).toBe(browser.DEFAULT_BROWSER_NOT_FOUND_MESSAGE);
+    expect(notFound.message).toBe(DEFAULT_BROWSER_NOT_FOUND_MESSAGE);
 
     const invalidPath = new browser.InvalidBrowserPathError(
       "/bad/path",

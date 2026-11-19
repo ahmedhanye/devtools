@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "bun:test";
 import {
   resolveChromePathOverride,
+  resolveChromeSandboxDisabled,
   resolveCwd,
   resolveLocalAppData,
   resolveManagedCacheDir,
@@ -212,6 +213,88 @@ describe("packages/browser/src/config", () => {
       });
       expect(seamWithEnvAndCwd?.env).toEqual({ FOO: "bar" });
       expect(seamWithEnvAndCwd?.cwd?.()).toBe("/custom/project/dir");
+    });
+  });
+
+  describe("resolveChromeSandboxDisabled (Chromium sandbox policy seam)", () => {
+    it("respects explicit disableSandbox boolean overrides", () => {
+      expect(resolveChromeSandboxDisabled({ disableSandbox: true })).toBe(true);
+      expect(
+        resolveChromeSandboxDisabled({
+          disableSandbox: false,
+          env: { CI: "true", CHROME_NO_SANDBOX: "1" },
+          getuid: () => 0,
+        }),
+      ).toBe(false);
+    });
+
+    it("disables sandbox when CHROME_NO_SANDBOX is configured", () => {
+      expect(
+        resolveChromeSandboxDisabled({
+          env: { CHROME_NO_SANDBOX: "1" },
+          getuid: () => 1000,
+        }),
+      ).toBe(true);
+      expect(
+        resolveChromeSandboxDisabled({
+          env: { CHROME_NO_SANDBOX: "true" },
+          getuid: () => 1000,
+        }),
+      ).toBe(true);
+    });
+
+    it("disables sandbox when running in CI environment", () => {
+      expect(
+        resolveChromeSandboxDisabled({
+          env: { CI: "true" },
+          getuid: () => 1000,
+        }),
+      ).toBe(true);
+      expect(
+        resolveChromeSandboxDisabled({
+          env: { CI: "1" },
+          getuid: () => 1000,
+        }),
+      ).toBe(true);
+    });
+
+    it("disables sandbox when running as root (uid 0)", () => {
+      expect(
+        resolveChromeSandboxDisabled({
+          env: {},
+          getuid: () => 0,
+        }),
+      ).toBe(true);
+    });
+
+    it("keeps sandboxing enabled in non-root desktop environments or when UID is unavailable", () => {
+      expect(
+        resolveChromeSandboxDisabled({
+          env: {},
+          getuid: () => 1000,
+        }),
+      ).toBe(false);
+      expect(
+        resolveChromeSandboxDisabled({
+          env: {},
+          getuid: () => undefined,
+        }),
+      ).toBe(false);
+    });
+
+    it("delegates to default process.env and process.getuid when seams are omitted", () => {
+      expect(resolveChromeSandboxDisabled({ env: {} })).toBe(
+        resolveChromeSandboxDisabled({
+          env: {},
+          getuid: process.getuid,
+        }),
+      );
+      expect(resolveChromeSandboxDisabled()).toBe(
+        resolveChromeSandboxDisabled({
+          env: process.env,
+          getuid: process.getuid,
+        }),
+      );
     });
   });
 });

@@ -2,7 +2,17 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { installBrowser } from "../src/installer";
+import {
+  installBrowser,
+  type BrowserInstallerDependencies,
+} from "../src/installer";
+
+type ResolveBuildIdArgs = Parameters<
+  NonNullable<BrowserInstallerDependencies["resolveBuildId"]>
+>;
+type InstallOptionsArg = Parameters<
+  NonNullable<BrowserInstallerDependencies["install"]>
+>[0];
 
 describe("Browser Installer", () => {
   const testDir = join(
@@ -20,21 +30,25 @@ describe("Browser Installer", () => {
 
   test("installBrowser resolves stable buildId and downloads into cache directory (mocked)", async () => {
     let resolvedTag = "";
-    let capturedOptions: any = null;
+    let capturedOptions: InstallOptionsArg | null = null;
     const mockExePath = join(
       testDir,
       "chrome-headless-shell-linux64",
       "chrome-headless-shell",
     );
 
-    const mockDeps = {
-      resolveBuildId: async (_browser: any, _platform: any, tag: string) => {
+    const mockDeps: BrowserInstallerDependencies = {
+      resolveBuildId: async (
+        _browser: ResolveBuildIdArgs[0],
+        _platform: ResolveBuildIdArgs[1],
+        tag: string,
+      ) => {
         resolvedTag = tag;
         return "130.0.6723.69";
       },
-      install: async (options: any) => {
+      install: async (options: InstallOptionsArg) => {
         capturedOptions = options;
-        if (options.downloadProgressCallback) {
+        if (typeof options.downloadProgressCallback === "function") {
           options.downloadProgressCallback(50, 100);
           options.downloadProgressCallback(100, 100);
         }
@@ -59,9 +73,9 @@ describe("Browser Installer", () => {
     );
 
     expect(resolvedTag).toBe("stable");
-    expect(capturedOptions).toBeDefined();
-    expect(capturedOptions.buildId).toBe("130.0.6723.69");
-    expect(capturedOptions.cacheDir).toBe(testDir);
+    expect(capturedOptions).not.toBeNull();
+    expect(capturedOptions!.buildId).toBe("130.0.6723.69");
+    expect(capturedOptions!.cacheDir).toBe(testDir);
     expect(progressReports.length).toBe(2);
     expect(progressReports[0]).toEqual({ downloaded: 50, total: 100 });
     expect(progressReports[1]).toEqual({ downloaded: 100, total: 100 });
@@ -102,10 +116,10 @@ describe("Browser Installer", () => {
 
   test("installBrowser resolves cache directory from options.env when options.cacheDir is omitted", async () => {
     const envCacheDir = join(testDir, "env-cache");
-    let capturedOptions: any = null;
-    const mockDeps = {
+    let capturedOptions: InstallOptionsArg | null = null;
+    const mockDeps: BrowserInstallerDependencies = {
       resolveBuildId: async () => "130.0.0",
-      install: async (options: any) => {
+      install: async (options: InstallOptionsArg) => {
         capturedOptions = options;
         return {
           executablePath: join(envCacheDir, "mock"),
@@ -120,6 +134,6 @@ describe("Browser Installer", () => {
       mockDeps,
     );
     expect(existsSync(envCacheDir)).toBe(true);
-    expect(capturedOptions?.cacheDir).toBe(envCacheDir);
+    expect(capturedOptions!.cacheDir).toBe(envCacheDir);
   });
 });

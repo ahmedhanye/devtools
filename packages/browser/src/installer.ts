@@ -6,7 +6,7 @@ import {
   resolveBuildId as defaultResolveBuildId,
   type InstallOptions,
 } from "@puppeteer/browsers";
-import { getManagedCacheDir } from "./detector";
+import { resolveManagedCacheDir } from "./config";
 import type { InstallBrowserOptions, InstalledBrowser } from "./types";
 
 /**
@@ -43,7 +43,9 @@ export async function installBrowser(
   options?: InstallBrowserOptions,
   deps?: BrowserInstallerDependencies,
 ): Promise<InstalledBrowser> {
-  const cacheDir = options?.cacheDir ?? getManagedCacheDir(options?.env);
+  const cacheDir =
+    options?.cacheDir ??
+    resolveManagedCacheDir(undefined, { env: options?.env });
   mkdirSync(cacheDir, { recursive: true });
 
   const resolveBuild = deps?.resolveBuildId ?? defaultResolveBuildId;
