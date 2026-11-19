@@ -1,28 +1,16 @@
 ---
 name: comments-review
-description: Review open pull request comments against repository truth and write a scannable action report. Use when reviewing PR comments, triaging reviewer feedback, or auditing unresolved PR threads.
+description: Review open pull request comments against repository truth and settle actions for each thread. Use when reviewing PR comments, triaging reviewer feedback, or auditing unresolved PR threads.
 ---
 
 # Review pull request comments
 
-Audit open pull request review threads against repository truth and write an action report for user approval. Leave repository files, git state, and GitHub threads untouched during the review.
+Audit open pull request review threads against repository truth and settle dispositions before making changes. Leave repository files, git state, and GitHub threads untouched during the review.
 
 ## Workflow
 
 1. **Fetch open threads.** Following `CONTRIBUTING.md` and its linked PR comment guide, query unresolved threads and top-level review summaries for the target PR or active branch PR. Read every comment and follow-up reply in each thread alongside commits pushed after the comment. Stop and report if zero threads are open.
 2. **Research and verify.** Trace cited lines, callers, types, tests, `CODING_STANDARDS.md`, `ARCHITECTURE.md` (including linked ADRs), and `GLOSSARY.md`, and verify technical or external claims against primary sources using [`../research/SKILL.md`](../research/SKILL.md). Check for regressions and broken contracts, then classify each thread as a valid defect, architectural trade-off, or false positive.
-3. **Write the report and stop.** Save `pr_<number>_comments_review.md` in the session artifact directory using the format below, present the link and summary table in chat, and end the turn. Never schedule timers, background tasks, or polling loops to wait for new PR comments or remote CI checks, either after the review or after pushing approved fixes and posting replies.
+3. **Present findings via grilling.** Frame open threads, options, and grounded recommendations using [`../grilling/SKILL.md`](../grilling/SKILL.md).
 
-## Report format
-
-Keep the report short, scannable, and action-first. Cite each location once as `path:line` rather than repeating inline links on every symbol, omit GraphQL thread IDs, and skip large code blocks unless a short snippet prevents ambiguity.
-
-- **Header.** Include the PR link, branch, and one-line verdict counts (for example, `2 open: 1 valid defect, 1 false positive`).
-- **Summary table.** Use columns `| # | File | Issue | Author | Verdict | Next step |`.
-- **Findings.** Group by `Valid defects`, `Architectural trade-offs`, then `False positives`, omitting empty groups. Format each thread with:
-  - Heading `### <N>. <Short title> (<Verdict>)` and metadata line `<path>:<line> | <author>`.
-  - **Reviewer claim.** State what the reviewer flagged, including any follow-up reply, in one or two sentences.
-  - **Verification.** List short bullets with load-bearing facts, root cause or refutation, and exact citations or reproduction results.
-  - **Next step.** State the fix and test target for a defect, competing options with a recommendation for a trade-off, or the reason to decline a false positive.
-
-Completion criterion: `pr_<number>_comments_review.md` is written to the session artifact directory, its summary table is shown in chat, and repository files and GitHub threads remain untouched.
+Completion criterion: All open threads are verified, the grilling session artifact is written and linked in chat, and repository files and GitHub threads remain untouched.

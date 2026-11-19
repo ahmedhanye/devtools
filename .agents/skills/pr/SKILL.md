@@ -5,7 +5,7 @@ description: Create, update, or stack pull requests following repository convent
 
 # Pull requests
 
-Create, update, or stack pull requests following repository rules without editing source code or waiting on remote CI.
+Create, update, or stack pull requests following repository rules without editing source code.
 
 ## 1. Inspect repository rules and branch state
 
@@ -29,6 +29,6 @@ Completion criterion: The PR plan artifact contains every planned PR title and f
 Run only the narrowest unverified local checks required by `REVIEW.md` for each planned PR, running fast static and cross-layer checks before heavy build or coverage suites and skipping checks already green on the same commit. Update completed tracking issue checklists and project status, then create, stack, or update the PRs using the exact approved titles and bodies from the plan artifact.
 
 - **Plan lock.** Never silently reorder approved stack layers or edit source files during PR execution. If a local check failure or layer dependency invalidates the plan, stop immediately, update the PR plan artifact with the blocker and proposed options, and wait for user approval.
-- **Stop after creation.** End the workflow as soon as the PRs are created or updated and their URLs are returned. Do not wait on remote CI checks or automated PR reviewers.
+- **Stop after creation.** End the workflow as soon as the PRs are created or updated and their URLs are returned.
 
 Completion criterion: All approved PRs are created or updated with synced metadata and issue links, and their URLs are returned to the user.
