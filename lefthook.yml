@@ -15,9 +15,13 @@ pre-commit:
       run: bunx --bun prettier --write {staged_files}
       stage_fixed: true
 
-    react-doctor:
-      glob: "{apps/frontend,site}/**/*.{js,jsx,ts,tsx}"
-      run: CI=true bunx react-doctor --project apps/frontend,site -y --no-telemetry --no-supply-chain --blocking warning --staged
+    react-doctor-frontend:
+      glob: "apps/frontend/**/*.{js,jsx,ts,tsx}"
+      run: CI=true bunx react-doctor --project apps/frontend -y --no-telemetry --no-supply-chain --blocking warning --staged
+
+    react-doctor-site:
+      glob: "site/**/*.{js,jsx,ts,tsx}"
+      run: CI=true bunx react-doctor --project site -y --no-telemetry --no-supply-chain --blocking warning --staged
 
     test-staged-ui:
       glob: "apps/frontend/src/**/*.{ts,tsx}"
