@@ -61,7 +61,12 @@ export type DefaultMountedApp = ReturnType<typeof mountDefaultApiRoutes>;
  * @returns Chained Hono application instance with `shutdown()` while preserving {@link AppType} RPC inference.
  */
 export function createApp(options: CreateAppOptions = {}) {
-  const basePath = (options.basePath ?? "/api").replace(/\/+$/, "");
+  const rawBasePath = options.basePath ?? "/api";
+  let basePathEnd = rawBasePath.length;
+  while (basePathEnd > 0 && rawBasePath.charCodeAt(basePathEnd - 1) === 47) {
+    basePathEnd -= 1;
+  }
+  const basePath = rawBasePath.slice(0, basePathEnd);
   const app = new Hono<{ Bindings: ApiBindings }>();
 
   const corsPath = basePath ? `${basePath}/*` : "/*";
