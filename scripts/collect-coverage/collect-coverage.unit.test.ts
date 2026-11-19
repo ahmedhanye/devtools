@@ -5,7 +5,10 @@ import { describe, expect, it } from "bun:test";
 import {
   collectCoverage,
   mergeLcovContents,
+  normalizeCoverageTarget,
   normalizeLcovPaths,
+  parseCollectCoverageCliArgs,
+  resolveTargetsForFiles,
 } from "./collect-coverage";
 
 describe("collect-coverage", () => {
@@ -328,6 +331,132 @@ end_of_record
       } finally {
         fs.rmSync(tmpDir, { recursive: true, force: true });
       }
+    });
+
+    it("runs only requested workspaces when scoped and preserves sibling LCOV reports on merge", async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "cov-scoped-"));
+      try {
+        fs.mkdirSync(path.join(tmpDir, "packages/core"), { recursive: true });
+        fs.mkdirSync(path.join(tmpDir, "packages/db/coverage"), {
+          recursive: true,
+        });
+        fs.writeFileSync(
+          path.join(tmpDir, "packages/db/coverage/lcov.info"),
+          `SF:src/db.ts\nDA:1,1\nend_of_record\n`,
+        );
+
+        const ranCwds: string[] = [];
+        const defaultSpawner = createMockCoverageSpawner();
+        const result = await collectCoverage({
+          repoRoot: tmpDir,
+          outputDir: path.join(tmpDir, "coverage"),
+          cleanPriorReports: true,
+          workspaces: ["packages/core"],
+          spawnCommand: (cmd, args, opts) => {
+            ranCwds.push(opts.cwd);
+            return defaultSpawner(cmd, args, opts);
+          },
+        });
+
+        expect(ranCwds).toEqual([path.join(tmpDir, "packages/core")]);
+        expect(result.mergedCount).toBe(2);
+        const merged = fs.readFileSync(result.outputPath, "utf8");
+        expect(merged).toContain("SF:packages/core/sample.ts");
+        expect(merged).toContain("SF:packages/db/src/db.ts");
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe("workspace targeting helpers", () => {
+    it("normalizes paths, trailing slashes, and workspace package aliases", () => {
+      expect(normalizeCoverageTarget("./packages/lighthouse/")).toBe(
+        "packages/lighthouse",
+      );
+      expect(normalizeCoverageTarget("@devtools/cli")).toBe("apps/cli");
+      expect(normalizeCoverageTarget("scripts/")).toBe("scripts");
+      expect(() => normalizeCoverageTarget("packages/unknown")).toThrow(
+        'Unknown coverage target "packages/unknown"',
+      );
+    });
+
+    it("maps modified file paths to unique coverage targets and skips docs", () => {
+      expect(
+        resolveTargetsForFiles([
+          "REVIEW.md",
+          "docs/testing/box-testing.md",
+          "packages/lighthouse/src/index.ts",
+          "packages/lighthouse/tests/audit.unit.test.ts",
+          "scripts/verify-staged-secrets/verify-staged-secrets.ts",
+          "apps/frontend/src/App.tsx",
+        ]),
+      ).toEqual(["packages/lighthouse", "scripts", "apps/frontend"]);
+    });
+
+    it("parses positional targets, --scope, --changed, --base, and --help", () => {
+      expect(parseCollectCoverageCliArgs(["--help"])).toEqual({
+        help: true,
+        emptyChangedSelection: false,
+      });
+
+      expect(
+        parseCollectCoverageCliArgs([
+          "packages/core",
+          "--scope",
+          "@devtools/db",
+        ]),
+      ).toEqual({
+        help: false,
+        workspaces: ["packages/core", "packages/db"],
+        emptyChangedSelection: false,
+      });
+
+      const gitCalls: string[][] = [];
+      const changed = parseCollectCoverageCliArgs(["--changed"], {
+        repoRoot: "/tmp/repo",
+        env: { BASE_REF: "origin/stack-parent" },
+        gitRunner: (args) => {
+          gitCalls.push(args);
+          if (args.includes("origin/stack-parent...HEAD")) {
+            return { status: 0, stdout: "apps/api/src/routes.ts\n" };
+          }
+          return { status: 0, stdout: "" };
+        },
+      });
+      expect(changed).toEqual({
+        help: false,
+        workspaces: ["apps/api"],
+        emptyChangedSelection: false,
+      });
+      expect(gitCalls[0]).toEqual([
+        "diff",
+        "--name-only",
+        "origin/stack-parent...HEAD",
+      ]);
+
+      const docsOnly = parseCollectCoverageCliArgs(
+        ["--changed", "--base", "origin/main"],
+        {
+          repoRoot: "/tmp/repo",
+          gitRunner: () => ({ status: 0, stdout: "REVIEW.md\nTESTING.md\n" }),
+        },
+      );
+      expect(docsOnly).toEqual({
+        help: false,
+        workspaces: [],
+        emptyChangedSelection: true,
+      });
+
+      expect(() => parseCollectCoverageCliArgs(["--bogus"])).toThrow(
+        'Unknown option "--bogus"',
+      );
+      expect(() => parseCollectCoverageCliArgs(["--scope"])).toThrow(
+        'Option "--scope" requires a workspace target argument.',
+      );
+      expect(() => parseCollectCoverageCliArgs(["--base"])).toThrow(
+        'Option "--base" requires a git ref argument.',
+      );
     });
   });
 });
