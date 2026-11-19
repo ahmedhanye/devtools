@@ -11,7 +11,7 @@ Audit open pull request review threads against repository truth and write an act
 
 1. **Fetch open threads.** Following `CONTRIBUTING.md` and its linked PR comment guide, query unresolved threads and top-level review summaries for the target PR or active branch PR. Read every comment and follow-up reply in each thread alongside commits pushed after the comment. Stop and report if zero threads are open.
 2. **Research and verify.** Trace cited lines, callers, types, tests, `CODING_STANDARDS.md`, `ARCHITECTURE.md` (including linked ADRs), and `GLOSSARY.md`, and verify technical or external claims against primary sources using [`../research/SKILL.md`](../research/SKILL.md). Check for regressions and broken contracts, then classify each thread as a valid defect, architectural trade-off, or false positive.
-3. **Write the report.** Save `pr_<number>_comments_review.md` in the session artifact directory using the format below, then present the link and summary table in chat.
+3. **Write the report and stop.** Save `pr_<number>_comments_review.md` in the session artifact directory using the format below, present the link and summary table in chat, and end the turn. Never schedule timers, background tasks, or polling loops to wait for new PR comments or remote CI checks, either after the review or after pushing approved fixes and posting replies.
 
 ## Report format
 
