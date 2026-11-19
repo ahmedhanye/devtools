@@ -39,20 +39,19 @@ reviews:
     title:
       mode: "error"
       requirements: >-
-        Title must strictly adhere to Conventional Commits and the repository Type × Scope Matrix:
-        `<type>[optional (<scope>)]: <imperative description>`.
-        Allowed types: feat, fix, chore, docs, style, refactor, perf, test, build, revert. (Note: "ci" is not a type; CI changes use "chore(ci)").
-        Scope is required for feat and fix; scope is optional for root maintenance (chore, build, docs).
-        When present, scope must be a single-noun lowercase matching repository taxonomy:
-        api, cli, frontend, site, browser, core, db, lighthouse, adr, architecture, standards, contributing, glossary, testing, review, agents, ci, scripts, deps.
-        Internal systems type mapping:
-        - Scope "(agents)" strictly requires type "docs": always use "docs(agents): <description>".
-        - Scope "(ci)" strictly requires type "chore": always use "chore(ci): <description>".
-        - Scope "(scripts)" permits chore, refactor, perf, test (never feat or fix).
-        Do not use (repo) as a scope. When touching root configurations or cross-cutting files, omit the scope.
-        Do not include issue references (e.g., `(#123)`) in the title.
+        Deterministic CI already checks PR title syntax, allowed types, scope syntax, and length.
+        Focus strictly on semantic and logical alignment between the PR title and the actual diff:
+        1. Type matches the delivered change: `feat` for end-user runtime capabilities, `fix` for runtime bug fixes or security dependency patches (`fix(deps)`), `perf` for runtime performance, `ci` (preferred over `chore(ci)`) for CI/workflow changes, and non-releasing types (`docs`, `chore`, `refactor`, `style`, `test`, `build`) for internal or documentation work.
+        2. Release safety: fail if a non-runtime change (`site`, `docs`, `.agents`, `scripts`, `.github`) uses a release-triggering type (`feat`, `fix`, `perf`, `revert`)—especially when root files like `package.json` or `bun.lock` are also modified.
+        3. Canonical scope consistency: when a scope is present, verify it matches the primary delivered area and uses canonical workspace names (`api`, `cli`, `frontend`, `browser`, `core`, `db`, `lighthouse`, `site`, `deps`) rather than synonyms (for example, flag `ui` or `web` in favor of `frontend`, `lh` in favor of `lighthouse`). Clear domain or sub-scopes (such as `cli/audit`) and omitted scopes for cross-cutting changes are allowed.
+        4. Summary accuracy: verify the title description accurately reflects the primary change delivered by the PR.
+        Exception: Release Please candidate PRs (`chore(main): release X.Y.Z`).
     description:
-      mode: "warning"
+      mode: "error"
+      requirements: >-
+        Non-bot, ready-for-review PR descriptions must follow `.github/PULL_REQUEST_TEMPLATE.md`
+        (`## Summary`, `## Evidence`, and `## Merge Danger`) and link a tracking issue via
+        `Closes #<issue>` or `Part of #<issue>`.
     custom_checks:
       - name: "Feature-Sliced Design (FSD) Layer Purity"
         mode: "error"
@@ -90,7 +89,15 @@ reviews:
     - "!**/coverage/**"
     - "!**/.turbo/**"
     - "!skills-lock.json"
-    - "!.agents/skills/**"
+    - "!.agents/skills/codebase-design/**"
+    - "!.agents/skills/fallow/**"
+    - "!.agents/skills/feature-sliced-design/**"
+    - "!.agents/skills/grill-with-docs/**"
+    - "!.agents/skills/prototype/**"
+    - "!.agents/skills/react-doctor/**"
+    - "!.agents/skills/tdd/**"
+    - "!.agents/skills/unslop/**"
+    - "!.agents/skills/wait-what/**"
     - "!**/*.{png,jpg,jpeg,gif,svg,ico,woff,woff2,ttf,eot,mp4,webm}"
     - "!**/*.min.{js,css}"
     - "!**/*.map"
@@ -110,28 +117,29 @@ reviews:
 
     - path: "apps/api/**"
       instructions: >-
-        This package is a Hono API service.
+        This package is a vertical-slice Hono API service (`src/app/`, `src/modules/`, `src/shared/`).
         Enforce the following:
-        1. Input Validation: Validate all incoming request bodies, query params, and route parameters
+        1. Slice Isolation: Cross-module and shared imports must go through slice `index.ts` barrels (`app -> modules (isolated) -> shared`) enforced by `.fallowrc.json` and Oxlint `no-restricted-imports`.
+        2. Input Validation: Validate all incoming request bodies, query params, and route parameters
            using Zod/validator middleware prior to execution.
-        2. Thin Controllers: Route handlers must delegate business logic to domain services in `packages/core`.
-        3. HTTP Semantics: Return appropriate HTTP status codes (200, 201, 400, 401, 403, 404, 500)
-           and structured JSON error responses.
+        3. Thin Controllers: Route handlers must delegate business logic to domain packages (such as `packages/lighthouse`) and never import `node:fs` directly inside HTTP routes (isolate disk reads in helpers like `report-reader.ts`).
+        4. HTTP Semantics: Return appropriate HTTP status codes (200, 201, 400, 401, 403, 404, 500)
+           and structured JSON error responses (`jsonApiError`).
 
     - path: "packages/db/**"
       instructions: >-
         This package manages database models and migrations via Drizzle ORM.
         Enforce the following:
         1. Type Safety: Use Drizzle query builders and prepared statements; strictly forbid raw unescaped SQL.
-        2. Migrations: All schema modifications must be backward-compatible and accompanied by generated migrations.
+        2. Migrations & Parity: All schema modifications must be accompanied by generated Drizzle migrations and pass `bun run verify:db-migrations`.
         3. Integrity: Ensure indexes are defined on foreign keys and frequently queried columns.
         4. Transactions: Multi-table writes must be wrapped inside `db.transaction()`.
 
     - path: "apps/cli/**"
       instructions: >-
-        This package provides command-line developer tooling.
+        This package provides command-line developer tooling organized into vertical command slices (`src/app/`, `src/commands/`, `src/shared/`).
         Enforce clean exit codes (0 for success, non-zero for failure), pipe-friendly stdout,
-        informative stderr diagnostics, and graceful exception handling.
+        informative stderr diagnostics, slice barrel isolation (`index.ts`), and graceful exception handling.
 
     - path: "packages/core/**"
       instructions: >-
@@ -139,23 +147,25 @@ reviews:
         Enforce the following:
         1. Pure Domain: Zero runtime dependencies on database clients, HTTP servers, or browser/UI frameworks.
         2. Schema Authority: Export canonical Zod schemas and derived TypeScript types for cross-package contracts.
-        3. Stable Contracts: Maintain backward-compatible schema changes and explicit error codes.
+        3. Stable Contracts: Maintain backward-compatible schema changes and explicit curated barrel exports.
 
     - path: "packages/browser/**"
       instructions: >-
-        This package provides Chromium browser provisioning and detection infrastructure.
+        This package provides Chromium browser provisioning, detection, and isolated session launching infrastructure.
         Enforce the following:
         1. 3-Tier Waterfall: Strict resolution order (explicit flag/env -> managed cache & system probes -> terminal remediation failure).
-        2. Clean Seams: Mock external download operations (@puppeteer/browsers) in tests to guarantee offline test isolation.
-        3. Stable Contracts: Export public contracts (resolveBrowserPath, installBrowser, getBrowserStatus, types, errors) via index.ts.
+        2. Session & Sandbox Isolation: Launch Chromium via `launchBrowserSession` (`ignoreDefaultFlags: true`, `handleSIGINT: false`) and policy helpers (`resolveChromeSandboxDisabled`).
+        3. Clean Seams: Mock external download and launcher operations (@puppeteer/browsers, chrome-launcher) in tests to guarantee offline test isolation.
+        4. Stable Contracts: Export public contracts (resolveBrowserPath, installBrowser, getBrowserStatus, launchBrowserSession, resolveChromeSandboxDisabled, types, errors) via `index.ts`.
 
     - path: "packages/lighthouse/**"
       instructions: >-
-        This package provides the isolated Lighthouse v13 audit engine, metric extraction, and persistence services.
+        This package provides the isolated Lighthouse v13 audit engine, metric extraction, and persistence services structured as hexagonal internal layers (`contracts/`, `domain/`, `application/`, `config/`, `infra/`, `wiring.ts`).
         Enforce the following:
-        1. Subprocess Isolation: Execute Lighthouse runs inside an isolated child process/worker with deterministic Chromium cleanup (`launchedChrome.kill()` in `finally`).
-        2. Configuration Seam: Isolate environment variable reads inside `src/config.ts` (`resolveArtifactsDir`) with injectable `options.env?: EnvMap` per ADR 0002.
-        3. Representative Selection: Select a single Representative Run via Euclidean distance to median FCP and TTI rather than computing independent per-metric medians.
+        1. Layering Purity: Keep `contracts/`, `domain/`, and `application/` free of runtime infra, SQLite, browser, or `node:fs` calls; wire runtime ports in `src/wiring.ts`.
+        2. In-Process Execution & Chromium Cleanup: Delegate browser session lifecycle to `launchBrowserSession` (`@devtools/browser`) with AbortSignal cancellation and batch browser resolution once per multi-run audit per ADR 0005.
+        3. Configuration Seam: Isolate environment variable reads inside `src/config/artifacts-config.ts` (`resolveArtifactsDir`) with injectable `options.env?: EnvMap` per ADR 0002.
+        4. Representative Selection: Select a single Representative Run via Euclidean distance to median FCP and TTI rather than computing independent per-metric medians.
 
     - path: "site/**"
       instructions: >-
@@ -206,9 +216,9 @@ knowledge_base:
     enabled: true
     filePatterns:
       - ".agents/AGENTS.md"
-      - "GLOSSARY-MAP.md"
+      - "GLOSSARY.md"
       - "docs/glossary/*"
-      - ".agents/rules/*"
+      - "ARCHITECTURE.md"
       - "CONTRIBUTING.md"
       - "docs/adr/*"
   learnings:

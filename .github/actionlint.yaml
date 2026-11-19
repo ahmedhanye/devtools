@@ -1,0 +1,2 @@
+ignore:
+  - 'unexpected key "queue" for "concurrency" section'
