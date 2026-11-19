@@ -99,9 +99,6 @@
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
-  --radius-btn-xs: min(var(--radius-md), 10px);
-  --radius-btn-sm: min(var(--radius-md), 12px);
-  --text-btn-sm: 0.8rem;
 }
 
 @utility card-spacing-default {

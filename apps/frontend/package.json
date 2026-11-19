@@ -11,12 +11,12 @@
     "test:unit": "vitest run unit",
     "test:e2e": "vitest run stories",
     "test:coverage": "vitest run --coverage",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "lint:fsd": "steiger ./src",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
-    "lint:design": "oxlint -c .oxlintrc.json",
-    "doctor": "react-doctor"
+    "lint:design": "oxlint --deny-warnings -c .oxlintrc.json",
+    "doctor": "CI=true react-doctor --no-telemetry --no-supply-chain"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

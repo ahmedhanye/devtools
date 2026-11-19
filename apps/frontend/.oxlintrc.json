@@ -1,4 +1,5 @@
 {
+  "extends": ["../../.oxlintrc.json"],
   "jsPlugins": ["@shadcn/lint"],
   "rules": {
     "shadcn/no-raw-colors": "error",
@@ -12,9 +13,21 @@
     {
       "files": ["src/shared/ui/shadcn/**"],
       "rules": {
+        "no-shadow": "off",
+        "react/button-has-type": "off",
+        "react/set-state-in-effect": "off",
+        "react-perf/jsx-no-new-object-as-prop": "off",
+        "react-perf/jsx-no-new-function-as-prop": "off",
         "shadcn/no-restyle": "off",
         "shadcn/no-arbitrary-values": "off",
-        "shadcn/require-static-classes": "off"
+        "shadcn/require-static-classes": "off",
+        "typescript/no-unsafe-type-assertion": "off"
+      }
+    },
+    {
+      "files": [".storybook/**"],
+      "rules": {
+        "typescript/no-unsafe-type-assertion": "off"
       }
     }
   ]

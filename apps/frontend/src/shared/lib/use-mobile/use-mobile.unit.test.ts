@@ -9,18 +9,22 @@ import {
 
 describe("useIsMobile", () => {
   it("returns true when viewport width is below mobile breakpoint", () => {
-    const addEventListener = vi.fn();
-    const removeEventListener = vi.fn();
-    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-      matches: true,
-      media: query,
-      onchange: null,
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      addEventListener,
-      removeEventListener,
-      dispatchEvent: vi.fn(),
-    }));
+    const addEventListener =
+      vi.fn<(type: string, listener: EventListener) => void>();
+    const removeEventListener =
+      vi.fn<(type: string, listener: EventListener) => void>();
+    window.matchMedia = vi
+      .fn<(query: string) => MediaQueryList>()
+      .mockImplementation((query: string) => ({
+        matches: true,
+        media: query,
+        onchange: null,
+        addListener: vi.fn<() => void>(),
+        removeListener: vi.fn<() => void>(),
+        addEventListener,
+        removeEventListener,
+        dispatchEvent: vi.fn<() => boolean>(),
+      }));
     window.innerWidth = 500;
 
     const { result, unmount } = renderHook(() => useIsMobile());
@@ -38,16 +42,18 @@ describe("useIsMobile", () => {
   });
 
   it("returns false when viewport width is at or above mobile breakpoint", () => {
-    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-      matches: false,
-      media: query,
-      onchange: null,
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    }));
+    window.matchMedia = vi
+      .fn<(query: string) => MediaQueryList>()
+      .mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn<() => void>(),
+        removeListener: vi.fn<() => void>(),
+        addEventListener: vi.fn<() => void>(),
+        removeEventListener: vi.fn<() => void>(),
+        dispatchEvent: vi.fn<() => boolean>(),
+      }));
     window.innerWidth = 1024;
 
     const { result } = renderHook(() => useIsMobile());
@@ -71,14 +77,16 @@ describe("useIsMobile", () => {
   });
 
   it("subscribes and unsubscribes via subscribeMobileMedia", () => {
-    const addEventListener = vi.fn();
-    const removeEventListener = vi.fn();
-    window.matchMedia = vi.fn().mockReturnValue({
-      matches: false,
-      addEventListener,
-      removeEventListener,
-    });
-    const cb = vi.fn();
+    const addEventListener = vi.fn<() => void>();
+    const removeEventListener = vi.fn<() => void>();
+    window.matchMedia = vi
+      .fn<(query: string) => Partial<MediaQueryList>>()
+      .mockReturnValue({
+        matches: false,
+        addEventListener,
+        removeEventListener,
+      }) as unknown as typeof window.matchMedia;
+    const cb = vi.fn<() => void>();
     const unsubscribe = subscribeMobileMedia(cb);
     expect(addEventListener).toHaveBeenCalledWith("change", cb);
     unsubscribe();

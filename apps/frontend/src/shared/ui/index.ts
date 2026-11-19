@@ -1,2 +1,1 @@
-export * from "./blocks/app-layout";
-export * from "./shadcn";
+export { AppLayout } from "./blocks/app-layout";
