@@ -1,9 +1,10 @@
+import type { EnvMap } from "@devtools/core";
 import pc from "picocolors";
 
 export type TerminalColors = ReturnType<typeof pc.createColors>;
 
 export interface ColorOptions {
-  env?: NodeJS.ProcessEnv;
+  env?: EnvMap;
   isTTY?: boolean;
   colors?: boolean;
 }
@@ -16,12 +17,16 @@ export interface ColorOptions {
  * 3. Enabled when `FORCE_COLOR` is present (and not "0" or "false").
  * 4. Otherwise enabled only when stdout is an interactive TTY and `TERM !== "dumb"`.
  */
+export function isStreamTTY(stream: { isTTY?: boolean } | undefined): boolean {
+  return stream?.isTTY === true;
+}
+
 export function shouldEnableColor(options: ColorOptions = {}): boolean {
   if (typeof options.colors === "boolean") {
     return options.colors;
   }
   const env = options.env ?? process.env;
-  const isTTY = options.isTTY ?? Boolean(process.stdout?.isTTY);
+  const isTTY = options.isTTY ?? isStreamTTY(process.stdout);
 
   if (env.NO_COLOR !== undefined && env.NO_COLOR !== "") {
     return false;

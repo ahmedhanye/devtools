@@ -11,7 +11,7 @@ export function getFreePort(): number {
     },
   });
   const port = temp.port ?? 0;
-  temp.stop(true);
+  void temp.stop(true);
   if (port === 0) {
     throw new Error("Failed to allocate ephemeral port");
   }

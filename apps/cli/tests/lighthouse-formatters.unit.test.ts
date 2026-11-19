@@ -1,17 +1,18 @@
 import { describe, expect, test } from "bun:test";
-import type { LighthouseRunRow } from "@devtools/db";
-import type { NormalizedLighthouseRun } from "@devtools/lighthouse";
-import { computeInsightDiff } from "@devtools/lighthouse";
+import type {
+  LighthouseRunRecord,
+  NormalizedLighthouseRun,
+} from "@devtools/lighthouse";
 import {
   formatAgentMarkdown,
   stripAnsi,
-} from "../src/lighthouse/formatters/agent";
-import { formatJson } from "../src/lighthouse/formatters/json";
+} from "../src/commands/lighthouse/formatters/agent";
+import { formatJson } from "../src/commands/lighthouse/formatters/json";
 import {
   formatTerminalDiff,
   formatTerminalList,
   formatTerminalSummary,
-} from "../src/lighthouse/formatters/terminal";
+} from "../src/commands/lighthouse/formatters/terminal";
 
 const sampleNormalizedRun: NormalizedLighthouseRun = {
   requestedUrl: "https://example.com/",
@@ -112,7 +113,7 @@ const sampleNormalizedRun: NormalizedLighthouseRun = {
   },
 };
 
-const sampleRow1: LighthouseRunRow = {
+const sampleRow1: LighthouseRunRecord = {
   id: "3f74b419-f027-4c07-b359-5f2105e46342",
   url: "https://example.com/",
   finalUrl: "https://example.com/",
@@ -144,7 +145,7 @@ const sampleRow1: LighthouseRunRow = {
   createdAt: new Date("2026-11-04T12:00:00Z"),
 };
 
-const sampleRow2: LighthouseRunRow = {
+const sampleRow2: LighthouseRunRecord = {
   id: "8c91a723-d142-4f18-a621-7e3240b98561",
   url: "https://example.com/",
   finalUrl: "https://example.com/",
@@ -263,7 +264,7 @@ describe("Lighthouse Formatters (Unit)", () => {
       expect(output.length).toBeLessThan(3000);
     });
 
-    test("accepts a LighthouseRunRow directly", () => {
+    test("accepts a LighthouseRunRecord directly", () => {
       const output = formatAgentMarkdown(sampleRow2);
       // oxlint-disable-next-line no-control-regex
       expect(/\u001b\[/.test(output)).toBe(false);
@@ -300,7 +301,7 @@ describe("Lighthouse Formatters (Unit)", () => {
         },
       };
 
-      const baselineRow: LighthouseRunRow = {
+      const baselineRow: LighthouseRunRecord = {
         ...sampleRow1,
         performanceScore: 50, // delta is -10 (negative)
         accessibilityScore: 60, // delta is 0
@@ -510,109 +511,6 @@ describe("Lighthouse Formatters (Unit)", () => {
       };
       const poorTerm = formatTerminalSummary(poorRun);
       expect(poorTerm).toContain("Poor");
-    });
-  });
-
-  describe("computeInsightDiff", () => {
-    test("handles empty or missing summary data gracefully", () => {
-      expect(computeInsightDiff(null, null)).toEqual({
-        resolved: [],
-        regressed: [],
-        clsCulpritDelta: null,
-      });
-      expect(computeInsightDiff(undefined, undefined)).toEqual({
-        resolved: [],
-        regressed: [],
-        clsCulpritDelta: null,
-      });
-    });
-
-    const createInsight = (
-      id: string,
-      title: string,
-      score: number,
-      metricSavings: Record<string, number> = {},
-    ): (typeof sampleNormalizedRun.summary.insights)[number] => ({
-      ...sampleNormalizedRun.summary.insights[0]!,
-      id,
-      title,
-      score,
-      metricSavings,
-    });
-
-    test("computes resolved and regressed insight transitions and CLS culprit deltas", () => {
-      const baseCulprit = sampleNormalizedRun.summary.clsCulprits[0]!;
-      const s1 = {
-        ...sampleNormalizedRun.summary,
-        insights: [
-          createInsight("unused-javascript", "Reduce unused JavaScript", 0.4, {
-            LCP: 600,
-          }),
-          createInsight(
-            "render-blocking-resources",
-            "Eliminate render-blocking resources",
-            0.5,
-            { LCP: 200 },
-          ),
-        ],
-        clsCulprits: [baseCulprit, { ...baseCulprit, score: 0.05 }],
-      };
-
-      const s2 = {
-        ...sampleNormalizedRun.summary,
-        insights: [
-          // unused-javascript resolved (now score 1.0, 0 savings)
-          createInsight(
-            "unused-javascript",
-            "Reduce unused JavaScript",
-            1.0,
-            {},
-          ),
-          // render-blocking-resources still failing
-          createInsight(
-            "render-blocking-resources",
-            "Eliminate render-blocking resources",
-            0.45,
-            { LCP: 220 },
-          ),
-          // unminified-css regressed (new failing insight)
-          createInsight("unminified-css", "Minify CSS", 0.6, { LCP: 150 }),
-        ],
-        clsCulprits: [{ ...baseCulprit, score: 0.02 }],
-      };
-
-      const diff = computeInsightDiff(s1, s2);
-      expect(diff.resolved).toEqual([
-        { id: "unused-javascript", title: "Reduce unused JavaScript" },
-      ]);
-      expect(diff.regressed).toEqual([
-        { id: "unminified-css", title: "Minify CSS" },
-      ]);
-      expect(diff.clsCulpritDelta).toBe(-1); // 1 - 2 = -1
-    });
-
-    test("evaluates boundary conditions for isFailingInsight", () => {
-      // Score exactly 0.9 with 0 savings -> passing
-      const sPass = {
-        ...sampleNormalizedRun.summary,
-        insights: [createInsight("i1", "Insight 1", 0.9, { LCP: 50 })],
-      };
-      // Score 0.89 with 0 savings -> failing
-      const sFailScore = {
-        ...sampleNormalizedRun.summary,
-        insights: [createInsight("i1", "Insight 1", 0.89, {})],
-      };
-      // Score 1.0 with 51ms savings -> failing
-      const sFailSavings = {
-        ...sampleNormalizedRun.summary,
-        insights: [createInsight("i1", "Insight 1", 1.0, { LCP: 51 })],
-      };
-
-      const diff1 = computeInsightDiff(sPass, sFailScore);
-      expect(diff1.regressed).toHaveLength(1);
-
-      const diff2 = computeInsightDiff(sFailSavings, sPass);
-      expect(diff2.resolved).toHaveLength(1);
     });
   });
 });

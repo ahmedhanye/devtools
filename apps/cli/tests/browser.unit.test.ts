@@ -1,13 +1,13 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { Command } from "commander";
+import { createProgram } from "../src";
 import {
   type BrowserInstallOptions,
   type BrowserStatusOptions,
-  createProgram,
   registerBrowserCommands,
   runBrowserInstallCommand,
   runBrowserStatusCommand,
-} from "../src/index";
+} from "../src/commands/browser";
 
 describe("CLI Browser Command Surface (Unit)", () => {
   test("createProgram registers browser command with install and status subcommands", () => {
@@ -70,13 +70,41 @@ describe("CLI Browser Command Surface (Unit)", () => {
     expect(combined).toContain('Run "devtools browser install"');
   });
 
+  test("forwards AbortSignal to getBrowserStatus when provided", async () => {
+    const controller = new AbortController();
+    let capturedSignal: AbortSignal | undefined;
+    const origLog = console.log;
+    console.log = () => {};
+    try {
+      await runBrowserStatusCommand(
+        { json: true, signal: controller.signal },
+        {
+          getBrowserStatus: async (opts) => {
+            capturedSignal = opts?.signal;
+            return {
+              found: true,
+              path: "/usr/bin/chromium",
+              version: "130.0.0.0",
+              source: "system",
+            };
+          },
+        },
+      );
+      expect(capturedSignal).toBe(controller.signal);
+    } finally {
+      console.log = origLog;
+    }
+  });
+
   test("runBrowserStatusCommand isolates stdout and stderr color formatting for redirected output", async () => {
     const origLog = console.log;
     const origErr = console.error;
     const stdoutLogs: string[] = [];
     const stderrLogs: string[] = [];
-    console.log = (...args: any[]) => stdoutLogs.push(args.join(" "));
-    console.error = (...args: any[]) => stderrLogs.push(args.join(" "));
+    console.log = (...args: unknown[]) =>
+      stdoutLogs.push(args.map(String).join(" "));
+    console.error = (...args: unknown[]) =>
+      stderrLogs.push(args.map(String).join(" "));
 
     try {
       // Case 1: Browser not found - stderr is TTY, stdout is redirected (non-TTY)
@@ -211,7 +239,7 @@ describe("CLI Browser Command Surface (Unit)", () => {
     const mockInstalledPath = "/mock/cache/dir/installed-browser";
     const logs: string[] = [];
     const origLog = console.log;
-    console.log = (...args: any[]) => logs.push(args.join(" "));
+    console.log = (...args: unknown[]) => logs.push(args.map(String).join(" "));
 
     try {
       await runBrowserInstallCommand(
@@ -243,8 +271,10 @@ describe("CLI Browser Command Surface (Unit)", () => {
     const origErr = console.error;
     const stdoutLogs: string[] = [];
     const stderrLogs: string[] = [];
-    console.log = (...args: any[]) => stdoutLogs.push(args.join(" "));
-    console.error = (...args: any[]) => stderrLogs.push(args.join(" "));
+    console.log = (...args: unknown[]) =>
+      stdoutLogs.push(args.map(String).join(" "));
+    console.error = (...args: unknown[]) =>
+      stderrLogs.push(args.map(String).join(" "));
 
     try {
       // Case 1: stderr is TTY, stdout is redirected (non-TTY)
@@ -332,7 +362,8 @@ describe("CLI Browser Command Surface (Unit)", () => {
   test("runBrowserInstallCommand logs error and exits code 1 on failure", async () => {
     const errLogs: string[] = [];
     const origErr = console.error;
-    console.error = (...args: any[]) => errLogs.push(args.join(" "));
+    console.error = (...args: unknown[]) =>
+      errLogs.push(args.map(String).join(" "));
     let exitCalledWith: number | undefined;
 
     try {
@@ -361,7 +392,8 @@ describe("CLI Browser Command Surface (Unit)", () => {
   test("runBrowserInstallCommand error logging respects isStderrTTY color formatting", async () => {
     const origErr = console.error;
     const stderrLogs: string[] = [];
-    console.error = (...args: any[]) => stderrLogs.push(args.join(" "));
+    console.error = (...args: unknown[]) =>
+      stderrLogs.push(args.map(String).join(" "));
     let exitCode: number | undefined;
 
     try {
@@ -416,7 +448,8 @@ describe("CLI Browser Command Surface (Unit)", () => {
     const errLogs: string[] = [];
     const stderrChunks: string[] = [];
     const origErr = console.error;
-    console.error = (...args: any[]) => errLogs.push(args.join(" "));
+    console.error = (...args: unknown[]) =>
+      errLogs.push(args.map(String).join(" "));
     let exitCalledWith: number | undefined;
 
     try {
@@ -442,7 +475,12 @@ describe("CLI Browser Command Surface (Unit)", () => {
   });
 
   test("runBrowserInstallCommand forwards env option to installBrowser", async () => {
-    let capturedOptions: any;
+    type InstallDeps = NonNullable<
+      Parameters<typeof runBrowserInstallCommand>[1]
+    >;
+    let capturedOptions: Parameters<
+      NonNullable<InstallDeps["installBrowser"]>
+    >[0];
     const origErr = console.error;
     console.error = () => {};
 
@@ -467,7 +505,12 @@ describe("CLI Browser Command Surface (Unit)", () => {
   });
 
   test("runBrowserStatusCommand forwards path option as cacheDir to getBrowserStatus", async () => {
-    let capturedOptions: any;
+    type StatusDeps = NonNullable<
+      Parameters<typeof runBrowserStatusCommand>[1]
+    >;
+    let capturedOptions: Parameters<
+      NonNullable<StatusDeps["getBrowserStatus"]>
+    >[0];
     const origLog = console.log;
     const logged: string[] = [];
     console.log = (...args: unknown[]) => {

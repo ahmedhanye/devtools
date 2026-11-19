@@ -7,10 +7,8 @@
  */
 export class InvalidBudgetRuleError extends Error {
   /** Suggested CLI exit code (`1`) when this error terminates a command. */
-  // fallow-ignore-next-line unused-class-member
   readonly exitCode = 1;
   /** Machine-readable error code (`"INVALID_BUDGET_RULE"`). */
-  // fallow-ignore-next-line unused-class-member
   readonly code = "INVALID_BUDGET_RULE" as const;
 
   /**

@@ -4,8 +4,8 @@ import {
   formatBudgetEvaluationMarkdown,
   formatBudgetEvaluationTerminal,
   parseBudgetRules,
-} from "../src/lighthouse/budgets";
-import { InvalidBudgetRuleError } from "../src/lighthouse/errors";
+} from "../src/commands/lighthouse/budgets";
+import { InvalidBudgetRuleError } from "../src/commands/lighthouse/errors";
 
 describe("Lighthouse Budgets (Unit)", () => {
   describe("parseBudgetRules", () => {

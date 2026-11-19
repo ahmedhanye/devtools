@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { getColors, shouldEnableColor } from "../src/colors";
+import { getColors, shouldEnableColor } from "../src/shared/terminal";
 
 describe("colors", () => {
   describe("shouldEnableColor", () => {

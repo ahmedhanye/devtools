@@ -1,5 +1,13 @@
-import { describe, expect, test } from "bun:test";
-import { createProgram, runCli, runWebCommand } from "../src/cli";
+import { describe, expect, spyOn, test } from "bun:test";
+import { Command } from "commander";
+import {
+  createBufferOutput,
+  createMemorySignalSource,
+  createShutdownCoordinator,
+  hostShutdown,
+} from "@devtools/core/node";
+import { createProgram, executeCliMain, runCli } from "../src/app";
+import { registerWebCommand, runWebCommand } from "../src/commands/web";
 import pkg from "../../../package.json";
 
 describe("CLI Program Configuration & Seam Tests (Unit)", () => {
@@ -42,197 +50,226 @@ describe("CLI Program Configuration & Seam Tests (Unit)", () => {
     expect(typeof runWebCommand).toBe("function");
   });
 
-  test("runWebCommand resolves port conflicts across interactive and non-interactive flows", async () => {
+  test("runWebCommand handles occupied port when isInteractive is omitted across TTY and non-TTY runners", async () => {
     const blocker = Bun.serve({
       port: 0,
       hostname: "127.0.0.1",
       fetch: () => new Response("occupied"),
     });
     const occupiedPort = blocker.port ?? 0;
-
-    const origLog = console.log;
-    const origErr = console.error;
-    const origExit = process.exit;
-    let errOutput = "";
-    console.log = () => {};
-    console.error = (msg: string) => {
-      errOutput += msg;
-    };
-    process.exit = ((code?: number) => {
-      throw new Error(`exit:${code}`);
-    }) as unknown as typeof process.exit;
+    const output = createBufferOutput();
+    const exitCodes: number[] = [];
 
     try {
-      // 0. Default interactive check when isInteractive is not provided
-      await expect(
-        runWebCommand(
-          { port: occupiedPort, host: "127.0.0.1" },
-          { confirm: async () => false },
-        ),
-      ).rejects.toThrow("exit:1");
-
-      // 1. Non-interactive conflict exits 1
-      await expect(
-        runWebCommand(
-          { port: occupiedPort, host: "127.0.0.1" },
-          { isInteractive: () => false },
-        ),
-      ).rejects.toThrow("exit:1");
-
-      // 2. Interactive conflict with no available port in range exits 1
-      await expect(
-        runWebCommand(
-          { port: occupiedPort, host: "127.0.0.1" },
-          {
-            isInteractive: () => true,
-            findNextAvailablePort: () => null,
+      const result = await runWebCommand(
+        { port: occupiedPort, host: "127.0.0.1" },
+        {
+          // Avoid hanging on @inquirer/prompts when test runner executes inside a PTY
+          confirm: async () => false,
+          output,
+          exit: (code = 1) => {
+            exitCodes.push(code);
           },
-        ),
-      ).rejects.toThrow("exit:1");
-
-      // 3. Interactive conflict declined by user exits 1
-      await expect(
-        runWebCommand(
-          { port: occupiedPort, host: "127.0.0.1" },
-          {
-            isInteractive: () => true,
-            confirm: async () => false,
-          },
-        ),
-      ).rejects.toThrow("exit:1");
-
-      // 4. Interactive conflict prompt error exits 1 with stderr diagnostic
-      errOutput = "";
-      await expect(
-        runWebCommand(
-          { port: occupiedPort, host: "127.0.0.1" },
-          {
-            isInteractive: () => true,
-            confirm: async () => {
-              throw new Error("prompt rejected");
-            },
-          },
-        ),
-      ).rejects.toThrow("exit:1");
-      expect(errOutput).toContain(
-        "Error: Interactive port conflict prompt failed",
+        },
       );
-      expect(errOutput).toContain("prompt rejected");
+      expect(result).toBeUndefined();
+      expect(exitCodes).toEqual([1]);
+      expect(output.stderr.length).toBeGreaterThan(0);
+    } finally {
+      await blocker.stop(true);
+    }
+  });
 
-      // 5. Interactive conflict accepted boots daemon on next available port
+  test("runWebCommand boots daemon on next available port when interactive conflict is accepted", async () => {
+    const blocker = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch: () => new Response("occupied"),
+    });
+    const occupiedPort = blocker.port ?? 0;
+    const output = createBufferOutput();
+    const signals = createMemorySignalSource();
+    const exitCodes: number[] = [];
+
+    try {
       const instance = await runWebCommand(
         { port: occupiedPort, host: "127.0.0.1" },
         {
           isInteractive: () => true,
           confirm: async () => true,
+          output,
+          signals,
+          exit: (code = 1) => {
+            exitCodes.push(code);
+          },
         },
       );
       expect(instance).toBeDefined();
       expect(instance?.port).not.toBe(occupiedPort);
+      expect(exitCodes).toEqual([]);
+      expect(output.stdout.join("\n")).toContain(
+        `DevTools daemon listening on http://127.0.0.1:${instance?.port}`,
+      );
       await instance?.stop();
     } finally {
-      console.log = origLog;
-      console.error = origErr;
-      process.exit = origExit;
-      blocker.stop(true);
+      await blocker.stop(true);
     }
   });
 
   test("runWebCommand registers shutdown handler and logs to stderr on signal", async () => {
-    const origErr = console.error;
-    const origExit = process.exit;
-    let logged = "";
-    console.error = (msg: string) => {
-      logged += msg;
-    };
-    let exitCalled = false;
-    process.exit = ((_code?: number) => {
-      exitCalled = true;
-      return undefined as never;
-    }) as unknown as typeof process.exit;
+    const signals = createMemorySignalSource();
+    const output = createBufferOutput();
+    const exitCodes: Array<number | undefined> = [];
 
-    try {
-      const instance = await runWebCommand({ port: 0, host: "127.0.0.1" });
-      expect(instance).toBeDefined();
+    const instance = await runWebCommand(
+      { port: 0, host: "127.0.0.1" },
+      {
+        signals,
+        output,
+        exit: (code) => {
+          exitCodes.push(code);
+        },
+      },
+    );
+    expect(instance).toBeDefined();
+    expect(signals.listenerCount("SIGINT")).toBe(1);
+    expect(signals.listenerCount("SIGTERM")).toBe(1);
+    expect(output.stdout.join("\n")).toContain(
+      "DevTools daemon listening on http://127.0.0.1:",
+    );
 
-      process.emit("SIGTERM", "SIGTERM");
-      await new Promise((r) => setTimeout(r, 50));
-      expect(logged).toContain("Received SIGTERM. Shutting down");
-      expect(exitCalled).toBe(true);
-    } finally {
-      console.error = origErr;
-      process.exit = origExit;
-    }
+    signals.emit("SIGTERM");
+    await Bun.sleep(20);
+    expect(output.stderr.join("\n")).toContain(
+      "Received SIGTERM. Shutting down",
+    );
+    expect(exitCodes).toEqual([0]);
+    expect(signals.listenerCount("SIGTERM")).toBe(0);
   });
 
-  test("runWebCommand resolves configuration through options.env seam without reading global process.env", async () => {
+  test("runWebCommand detaches default process signal handlers when stopped programmatically", async () => {
+    const beforeSigint = process.listenerCount("SIGINT");
+    const beforeSigterm = process.listenerCount("SIGTERM");
     const origLog = console.log;
     console.log = () => {};
     try {
-      const instance = await runWebCommand({
+      const instance = await runWebCommand({ port: 0, host: "127.0.0.1" });
+      expect(instance).toBeDefined();
+      expect(process.listenerCount("SIGINT")).toBe(beforeSigint + 1);
+      expect(process.listenerCount("SIGTERM")).toBe(beforeSigterm + 1);
+
+      await instance?.stop();
+      expect(process.listenerCount("SIGINT")).toBe(beforeSigint);
+      expect(process.listenerCount("SIGTERM")).toBe(beforeSigterm);
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  test("runWebCommand logs formatted error and exits 1 when shutdown coordinator rejects", async () => {
+    const signals = createMemorySignalSource();
+    const output = createBufferOutput();
+    const shutdown = createShutdownCoordinator();
+    shutdown.register("work", () => {
+      throw new Error("boom-work");
+    });
+    const exitCodes: Array<number | undefined> = [];
+
+    const instance = await runWebCommand(
+      { port: 0, host: "127.0.0.1" },
+      {
+        signals,
+        output,
+        shutdown,
+        exit: (code) => {
+          exitCodes.push(code);
+        },
+      },
+    );
+    expect(instance).toBeDefined();
+
+    signals.emit("SIGTERM");
+    await Bun.sleep(20);
+    expect(output.stderr.join("\n")).toContain(
+      "Error during daemon shutdown: boom-work",
+    );
+    expect(exitCodes).toEqual([1]);
+
+    const shutdownNonErr = createShutdownCoordinator();
+    shutdownNonErr.register("work", () => {
+      // oxlint-disable-next-line typescript/only-throw-error -- intentional non-Error throw test
+      throw "raw-shutdown-err";
+    });
+    const signals2 = createMemorySignalSource();
+    const output2 = createBufferOutput();
+    const exitCodes2: Array<number | undefined> = [];
+    await runWebCommand(
+      { port: 0, host: "127.0.0.1" },
+      {
+        signals: signals2,
+        output: output2,
+        shutdown: shutdownNonErr,
+        exit: (code) => {
+          exitCodes2.push(code);
+        },
+      },
+    );
+    signals2.emit("SIGINT");
+    await Bun.sleep(20);
+    expect(output2.stderr.join("\n")).toContain(
+      "Error during daemon shutdown: raw-shutdown-err",
+    );
+    expect(exitCodes2).toEqual([1]);
+  });
+
+  test("runWebCommand resolves configuration through options.env seam without reading global process.env", async () => {
+    const output = createBufferOutput();
+    const signals = createMemorySignalSource();
+    const instance = await runWebCommand(
+      {
         env: {
           PORT: "0",
           HOST: "127.0.0.1",
           NODE_ENV: "test",
         },
+      },
+      { output, signals },
+    );
+    expect(instance).toBeDefined();
+    expect(instance?.hostname).toBe("127.0.0.1");
+    await instance?.stop();
+  });
+
+  test("runWebCommand logs actionable config errors and calls deps.exit(1) without monkey-patching process.exit", async () => {
+    const cases = [
+      {
+        options: { env: { PORT: "99999" } },
+        expected:
+          'Invalid environment variable PORT="99999": must be an integer between 0 and 65535',
+      },
+      {
+        options: { host: "", port: 0, env: {} },
+        expected:
+          'Invalid --host "": must be a non-empty hostname or IP address',
+      },
+      {
+        options: { staticDir: "", port: 0, env: {} },
+        expected: "Invalid --static-dir: path must not be empty",
+      },
+    ];
+
+    for (const testCase of cases) {
+      let exitCode: number | undefined;
+      const output = createBufferOutput();
+      const result = await runWebCommand(testCase.options, {
+        output,
+        exit: (code) => {
+          exitCode = code;
+        },
       });
-      expect(instance).toBeDefined();
-      expect(instance?.hostname).toBe("127.0.0.1");
-      await instance?.stop();
-    } finally {
-      console.log = origLog;
-    }
-  });
-
-  test("runWebCommand exits 1 on invalid daemon configuration in-process", async () => {
-    const origErr = console.error;
-    const origExit = process.exit;
-    let errMessage = "";
-    console.error = (msg: string) => {
-      errMessage += msg;
-    };
-    process.exit = ((code?: number) => {
-      throw new Error(`exit:${code}`);
-    }) as unknown as typeof process.exit;
-
-    try {
-      await expect(
-        runWebCommand({
-          env: {
-            PORT: "99999",
-          },
-        }),
-      ).rejects.toThrow("exit:1");
-      expect(errMessage).toContain(
-        'Invalid environment variable PORT="99999": must be an integer between 0 and 65535',
-      );
-    } finally {
-      console.error = origErr;
-      process.exit = origExit;
-    }
-  });
-
-  test("runWebCommand routes exit calls through deps.exit seam without monkey-patching process.exit", async () => {
-    let exitCode: number | undefined;
-    const origErr = console.error;
-    console.error = () => {};
-
-    try {
-      await runWebCommand(
-        {
-          env: {
-            PORT: "99999",
-          },
-        },
-        {
-          exit: (code) => {
-            exitCode = code;
-          },
-        },
-      );
+      expect(result).toBeUndefined();
       expect(exitCode).toBe(1);
-    } finally {
-      console.error = origErr;
+      expect(output.stderr.join("\n")).toContain(testCase.expected);
     }
   });
 
@@ -246,8 +283,7 @@ describe("CLI Program Configuration & Seam Tests (Unit)", () => {
     });
     const occupiedPort = blocker.port ?? 0;
     let exitCode: number | undefined;
-    const origErr = console.error;
-    console.error = () => {};
+    const output = createBufferOutput();
 
     try {
       const result = await runWebCommand(
@@ -255,6 +291,7 @@ describe("CLI Program Configuration & Seam Tests (Unit)", () => {
         {
           isInteractive: () => true,
           confirm: async () => false,
+          output,
           exit: (code) => {
             exitCode = code;
           },
@@ -262,9 +299,9 @@ describe("CLI Program Configuration & Seam Tests (Unit)", () => {
       );
       expect(result).toBeUndefined();
       expect(exitCode).toBe(1);
+      expect(output.stderr.join("\n")).toContain("Aborted server start.");
     } finally {
-      console.error = origErr;
-      blocker.stop(true);
+      await blocker.stop(true);
     }
   });
 
@@ -278,8 +315,7 @@ describe("CLI Program Configuration & Seam Tests (Unit)", () => {
     });
     const occupiedPort = blocker.port ?? 0;
     let exitCode: number | undefined;
-    const origErr = console.error;
-    console.error = () => {};
+    const output = createBufferOutput();
 
     try {
       const result = await runWebCommand(
@@ -289,6 +325,7 @@ describe("CLI Program Configuration & Seam Tests (Unit)", () => {
           confirm: async () => {
             throw new Error("terminal aborted");
           },
+          output,
           exit: (code) => {
             exitCode = code;
           },
@@ -296,9 +333,11 @@ describe("CLI Program Configuration & Seam Tests (Unit)", () => {
       );
       expect(result).toBeUndefined();
       expect(exitCode).toBe(1);
+      expect(output.stderr.join("\n")).toContain(
+        "Error: Interactive port conflict prompt failed: terminal aborted",
+      );
     } finally {
-      console.error = origErr;
-      blocker.stop(true);
+      await blocker.stop(true);
     }
   });
 
@@ -312,14 +351,14 @@ describe("CLI Program Configuration & Seam Tests (Unit)", () => {
     });
     const occupiedPort = blocker.port ?? 0;
     let exitCode: number | undefined;
-    const origErr = console.error;
-    console.error = () => {};
+    const output = createBufferOutput();
 
     try {
       const result = await runWebCommand(
         { port: occupiedPort, host: "127.0.0.1" },
         {
           isInteractive: () => false,
+          output,
           exit: (code) => {
             exitCode = code;
           },
@@ -327,9 +366,11 @@ describe("CLI Program Configuration & Seam Tests (Unit)", () => {
       );
       expect(result).toBeUndefined();
       expect(exitCode).toBe(1);
+      expect(output.stderr.join("\n")).toContain(
+        `Port ${occupiedPort} is already in use`,
+      );
     } finally {
-      console.error = origErr;
-      blocker.stop(true);
+      await blocker.stop(true);
     }
   });
 
@@ -343,8 +384,7 @@ describe("CLI Program Configuration & Seam Tests (Unit)", () => {
     });
     const occupiedPort = blocker.port ?? 0;
     let exitCode: number | undefined;
-    const origErr = console.error;
-    console.error = () => {};
+    const output = createBufferOutput();
 
     try {
       const result = await runWebCommand(
@@ -352,6 +392,7 @@ describe("CLI Program Configuration & Seam Tests (Unit)", () => {
         {
           isInteractive: () => true,
           findNextAvailablePort: () => null,
+          output,
           exit: (code) => {
             exitCode = code;
           },
@@ -359,50 +400,206 @@ describe("CLI Program Configuration & Seam Tests (Unit)", () => {
       );
       expect(result).toBeUndefined();
       expect(exitCode).toBe(1);
+      expect(output.stderr.join("\n")).toContain(
+        "no available port was found in range",
+      );
     } finally {
-      console.error = origErr;
-      blocker.stop(true);
+      await blocker.stop(true);
     }
   });
 
   test("runWebCommand returns undefined and calls deps.exit(1) when startDaemon throws", async () => {
     let exitCode: number | undefined;
-    const origErr = console.error;
-    console.error = () => {};
+    const output = createBufferOutput();
 
-    try {
-      const result = await runWebCommand(
-        { port: 0, staticDir: "/path/that/does/not/exist/at/all" },
-        {
-          exit: (code) => {
-            exitCode = code;
-          },
+    const result = await runWebCommand(
+      { port: 0, staticDir: "/path/that/does/not/exist/at/all" },
+      {
+        output,
+        exit: (code) => {
+          exitCode = code;
         },
-      );
-      expect(result).toBeUndefined();
-      expect(exitCode).toBe(1);
+      },
+    );
+    expect(result).toBeUndefined();
+    expect(exitCode).toBe(1);
+    expect(output.stderr.join("\n")).toContain(
+      "Static assets directory not found",
+    );
+  });
+
+  test("runCli dispatches help, flag errors, and subcommands via deps seams without monkey-patching process globals", async () => {
+    const noArgSignals = createMemorySignalSource();
+    const noArgOutput = createBufferOutput();
+    await runCli(["bun", "devtools"], {
+      signals: noArgSignals,
+      output: noArgOutput,
+      exit: () => {},
+    });
+    expect(noArgOutput.stdout.join("\n")).toContain("Usage: devtools");
+    expect(noArgOutput.stdout.join("\n")).toContain("Commands:");
+    expect(noArgSignals.listenerCount("SIGINT")).toBe(0);
+    expect(noArgSignals.listenerCount("SIGTERM")).toBe(0);
+
+    const helpSignals = createMemorySignalSource();
+    const helpOutput = createBufferOutput();
+    const helpExitCodes: number[] = [];
+    await runCli(["bun", "devtools", "--help"], {
+      signals: helpSignals,
+      output: helpOutput,
+      exit: (code) => {
+        helpExitCodes.push(code);
+      },
+    });
+    expect(helpExitCodes).toEqual([0]);
+    expect(helpOutput.stdout.join("\n")).toContain("Usage: devtools");
+
+    const errSignals = createMemorySignalSource();
+    const errOutput = createBufferOutput();
+    const errExitCodes: number[] = [];
+    await runCli(["bun", "devtools", "--unknown-flag"], {
+      signals: errSignals,
+      output: errOutput,
+      exit: (code) => {
+        errExitCodes.push(code);
+      },
+    });
+    expect(errExitCodes).toEqual([1]);
+    expect(errOutput.stderr.join("\n")).toContain("unknown option");
+
+    await expect(
+      runCli(["bun", "devtools"], {
+        signals: createMemorySignalSource(),
+        output: {
+          writeStdout: () => {
+            throw new Error("stdout broken");
+          },
+          writeStderr: () => {},
+        },
+        exit: () => {},
+      }),
+    ).rejects.toThrow("stdout broken");
+
+    const origConsoleLog = console.log;
+    const listStdout: string[] = [];
+    console.log = (msg: string) => {
+      listStdout.push(msg);
+    };
+    const subSignals = createMemorySignalSource();
+    const subOutput = createBufferOutput();
+    const subExitCodes: number[] = [];
+    hostShutdown.resetForTesting();
+    try {
+      const cliPromise = runCli(["bun", "devtools", "lighthouse", "list"], {
+        signals: subSignals,
+        output: subOutput,
+        exit: (code) => {
+          subExitCodes.push(code);
+        },
+      });
+      subSignals.emit("SIGINT");
+      await Promise.all([cliPromise, Bun.sleep(10)]);
+      expect(listStdout.join("\n")).not.toContain("Usage: devtools [options]");
+      expect(hostShutdown.isShuttingDown).toBe(true);
+      expect(subExitCodes).toEqual([130]);
     } finally {
-      console.error = origErr;
+      console.log = origConsoleLog;
+      hostShutdown.resetForTesting();
     }
   });
 
-  test("runCli defaults to process.argv and outputs help when invoked with no arguments", async () => {
-    const origArgv = process.argv;
-    const origWrite = process.stdout.write;
-    process.argv = ["bun", "devtools"];
-    let output = "";
-    process.stdout.write = ((chunk: unknown) => {
-      output += String(chunk);
-      return true;
-    }) as unknown as typeof process.stdout.write;
+  test("executeCliMain and bin/devtools.js respect import.meta.main guard and fatal catch seam", async () => {
+    // @ts-expect-error Executable JS wrapper script intentionally has no TypeScript declaration file.
+    await import("../bin/devtools.js");
+    expect(executeCliMain(false)).toBeUndefined();
+
+    const okOutput = createBufferOutput();
+    const okExitCodes: number[] = [];
+    await executeCliMain(true, {
+      argv: ["bun", "devtools"],
+      signals: createMemorySignalSource(),
+      output: okOutput,
+      exit: (code) => {
+        okExitCodes.push(code);
+      },
+    });
+    expect(okOutput.stdout.join("\n")).toContain("Usage: devtools");
+    expect(okExitCodes).toEqual([]);
+
+    const fatalStderr: string[] = [];
+    const fatalExitCodes: number[] = [];
+    await executeCliMain(true, {
+      argv: ["bun", "devtools"],
+      signals: createMemorySignalSource(),
+      output: {
+        writeStdout: () => {
+          throw new Error("fatal cli boom");
+        },
+        writeStderr: (msg) => {
+          fatalStderr.push(msg);
+        },
+      },
+      exit: (code) => {
+        fatalExitCodes.push(code);
+      },
+    });
+    expect(fatalStderr.join("\n")).toContain("fatal cli boom");
+    expect(fatalExitCodes).toEqual([1]);
+  });
+
+  test("registerWebCommand dispatches parsed options to injected runWebCommand seam", async () => {
+    const program = new Command();
+    const calls: Array<
+      { port?: number; host?: string; staticDir?: string } | undefined
+    > = [];
+    registerWebCommand(program, {
+      runWebCommand: async (opts) => {
+        calls.push(opts);
+        return undefined;
+      },
+    });
+
+    await program.parseAsync(
+      [
+        "web",
+        "--port",
+        "4123",
+        "--host",
+        "127.0.0.1",
+        "--static-dir",
+        "/tmp/w",
+      ],
+      { from: "user" },
+    );
+    expect(calls).toEqual([
+      { port: 4123, host: "127.0.0.1", staticDir: "/tmp/w" },
+    ]);
+  });
+
+  test("runWebCommand falls back to process.exit(1) when deps.exit is omitted", async () => {
+    const blocker = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      routes: { "/": new Response("occupied") },
+    });
+    const output = createBufferOutput();
+    const exitSpy = spyOn(process, "exit").mockImplementation(
+      (() => undefined) as never,
+    );
 
     try {
-      await runCli();
-      expect(output).toContain("Usage: devtools");
-      expect(output).toContain("Commands:");
+      const result = await runWebCommand(
+        { port: blocker.port ?? 0, host: "127.0.0.1" },
+        {
+          confirm: async () => false,
+          output,
+        },
+      );
+      expect(result).toBeUndefined();
+      expect(exitSpy).toHaveBeenCalledWith(1);
     } finally {
-      process.argv = origArgv;
-      process.stdout.write = origWrite;
+      exitSpy.mockRestore();
+      await blocker.stop(true);
     }
   });
 });

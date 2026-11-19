@@ -1,6 +1,6 @@
-import type { LighthouseRunRow } from "@devtools/db";
 import type {
   LighthouseFormFactor,
+  LighthouseRunRecord,
   NormalizedLighthouseRun,
 } from "@devtools/lighthouse";
 
@@ -25,23 +25,28 @@ function formatFloat(val: number | null | undefined, digits = 3): string {
   return val.toFixed(digits);
 }
 
+const CWV_THRESHOLDS: Record<
+  "lcp" | "cls" | "tbt" | "fcp" | "ttfb",
+  readonly [goodMax: number, poorMax: number]
+> = {
+  lcp: [2500, 4000],
+  cls: [0.1, 0.25],
+  tbt: [200, 600],
+  fcp: [1800, 3000],
+  ttfb: [800, 1800],
+};
+
 function getCwvStatus(
   metric: "lcp" | "cls" | "tbt" | "fcp" | "ttfb",
   val: number | null | undefined,
 ): "GOOD" | "NEEDS IMPROVEMENT" | "POOR" | "N/A" {
   if (val === null || val === undefined) return "N/A";
-  switch (metric) {
-    case "lcp":
-      return val <= 2500 ? "GOOD" : val <= 4000 ? "NEEDS IMPROVEMENT" : "POOR";
-    case "cls":
-      return val <= 0.1 ? "GOOD" : val <= 0.25 ? "NEEDS IMPROVEMENT" : "POOR";
-    case "tbt":
-      return val <= 200 ? "GOOD" : val <= 600 ? "NEEDS IMPROVEMENT" : "POOR";
-    case "fcp":
-      return val <= 1800 ? "GOOD" : val <= 3000 ? "NEEDS IMPROVEMENT" : "POOR";
-    case "ttfb":
-      return val <= 800 ? "GOOD" : val <= 1800 ? "NEEDS IMPROVEMENT" : "POOR";
-  }
+  const [goodMax, poorMax] = CWV_THRESHOLDS[metric];
+  return val <= goodMax
+    ? "GOOD"
+    : val <= poorMax
+      ? "NEEDS IMPROVEMENT"
+      : "POOR";
 }
 
 /**
@@ -53,7 +58,7 @@ function getCwvStatus(
  * @returns Clean GitHub Flavored Markdown with zero ANSI escape codes.
  */
 export function formatAgentMarkdown(
-  run: NormalizedLighthouseRun | LighthouseRunRow,
+  run: NormalizedLighthouseRun | LighthouseRunRecord,
   formFactor?: LighthouseFormFactor,
 ): string {
   const isRow = "summaryJson" in run;

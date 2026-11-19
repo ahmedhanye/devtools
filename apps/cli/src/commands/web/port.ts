@@ -23,11 +23,9 @@ export function isPortAvailable(
     const server = Bun.serve({
       port,
       hostname,
-      fetch() {
-        return new Response();
-      },
+      routes: { "/": new Response() },
     });
-    server.stop(true);
+    void server.stop(true);
     return true;
   } catch {
     return false;

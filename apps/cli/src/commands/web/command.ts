@@ -1,8 +1,14 @@
-import { APP_VERSION, type EnvMap } from "@devtools/core";
-import { Command, InvalidArgumentError } from "commander";
-import { getColors } from "./colors";
-import { registerBrowserCommands } from "./browser";
-import { registerLighthouseCommands } from "./lighthouse";
+import type { EnvMap } from "@devtools/core";
+import {
+  attachHostSignals,
+  createConsoleOutput,
+  createShutdownCoordinator,
+  type OutputPort,
+  type ShutdownCoordinator,
+  type SignalSourcePort,
+} from "@devtools/core/node";
+import { InvalidArgumentError, type Command } from "commander";
+import { getColors, isStreamTTY } from "../../shared/terminal";
 import type { DaemonInstance } from "./daemon";
 import { findNextAvailablePort, isPortAvailable } from "./port";
 
@@ -34,6 +40,12 @@ export interface WebCommandDeps {
   findNextAvailablePort?: typeof findNextAvailablePort;
   /** Override process exit handler for programmatic and hermetic testing. */
   exit?: (code?: number) => void;
+  /** Override signal source port (`process` by default). */
+  signals?: SignalSourcePort;
+  /** Override stdout/stderr output port (`createConsoleOutput()` by default). */
+  output?: OutputPort;
+  /** Override 3-phase daemon shutdown coordinator. */
+  shutdown?: ShutdownCoordinator;
 }
 
 function exitProcess(code = 1, deps?: WebCommandDeps): void {
@@ -48,12 +60,13 @@ function checkInteractive(deps?: WebCommandDeps): boolean {
   if (deps && deps.isInteractive) {
     return deps.isInteractive();
   }
-  return Boolean(process.stdin.isTTY && process.stdout.isTTY);
+  return isStreamTTY(process.stdin) && isStreamTTY(process.stdout);
 }
 
 async function promptPortChange(
   targetPort: number,
   nextPort: number,
+  output: OutputPort,
   deps?: WebCommandDeps,
 ): Promise<number | null> {
   const confirm = deps?.confirm ?? (await import("@inquirer/prompts")).confirm;
@@ -63,13 +76,13 @@ async function promptPortChange(
       default: true,
     });
     if (!accepted) {
-      console.error(pc.yellow("Aborted server start."));
+      output.writeStderr(pc.yellow("Aborted server start."));
       exitProcess(1, deps);
       return null;
     }
     return nextPort;
   } catch (error) {
-    console.error(
+    output.writeStderr(
       pc.red(
         `Error: Interactive port conflict prompt failed: ${error instanceof Error ? error.message : String(error)}`,
       ),
@@ -86,10 +99,11 @@ async function promptPortChange(
 async function resolvePortConflict(
   targetPort: number,
   targetHost: string,
+  output: OutputPort,
   deps?: WebCommandDeps,
 ): Promise<number | null> {
   if (!checkInteractive(deps)) {
-    console.error(
+    output.writeStderr(
       pc.red(
         `Port ${targetPort} is already in use. Use --port <port> or set PORT=<port> to specify a different port.`,
       ),
@@ -102,7 +116,7 @@ async function resolvePortConflict(
     (deps && deps.findNextAvailablePort) || findNextAvailablePort;
   const nextPort = findNext(targetPort, targetHost);
   if (!nextPort) {
-    console.error(
+    output.writeStderr(
       pc.red(
         `Port ${targetPort} is in use and no available port was found in range.`,
       ),
@@ -111,7 +125,7 @@ async function resolvePortConflict(
     return null;
   }
 
-  return promptPortChange(targetPort, nextPort, deps);
+  return promptPortChange(targetPort, nextPort, output, deps);
 }
 
 /**
@@ -126,13 +140,14 @@ export async function runWebCommand(
   options: WebCommandOptions = {},
   deps?: WebCommandDeps,
 ): Promise<DaemonInstance | undefined> {
+  const output = deps?.output ?? createConsoleOutput();
   const { resolveDaemonConfig, startDaemon } = await import("./daemon");
   let config: ReturnType<typeof resolveDaemonConfig>;
   try {
     config = resolveDaemonConfig(options);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error(pc.red(message));
+    output.writeStderr(pc.red(message));
     exitProcess(1, deps);
     return undefined;
   }
@@ -145,6 +160,7 @@ export async function runWebCommand(
     const resolvedPort = await resolvePortConflict(
       targetPort,
       targetHost,
+      output,
       deps,
     );
     if (resolvedPort === null) {
@@ -153,6 +169,8 @@ export async function runWebCommand(
     targetPort = resolvedPort;
   }
 
+  const coordinator = deps?.shutdown ?? createShutdownCoordinator();
+
   let instance: DaemonInstance;
   try {
     instance = startDaemon({
@@ -160,57 +178,66 @@ export async function runWebCommand(
       port: targetPort,
       host: targetHost,
       staticDir,
+      shutdown: coordinator,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error(pc.red(message));
+    output.writeStderr(pc.red(message));
     exitProcess(1, deps);
     return undefined;
   }
 
-  console.log(
+  output.writeStdout(
     pc.green(
       `DevTools daemon listening on http://${instance.hostname}:${instance.port}`,
     ),
   );
-  console.log(pc.dim(`Serving static assets from ${instance.staticDir}`));
-  console.log(
+  output.writeStdout(
+    pc.dim(`Serving static assets from ${instance.staticDir}`),
+  );
+  output.writeStdout(
     pc.dim(
       `API health available at http://${instance.hostname}:${instance.port}/api/health`,
     ),
   );
 
-  let shuttingDown = false;
-  const handleShutdown = async (signal: string) => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    console.error(
+  const signalHandle = attachHostSignals({
+    coordinator,
+    signals: deps?.signals,
+    output,
+    exit: deps?.exit,
+    exitCodeOnSignal: 0,
+    forceExitOnSecondSignal: true,
+    formatFirstSignalMessage: (signal) =>
       pc.yellow(`\nReceived ${signal}. Shutting down DevTools daemon...`),
-    );
-    await instance.stop();
-    process.exit(0);
+    formatErrorMessage: (err) =>
+      pc.red(
+        `Error during daemon shutdown: ${err instanceof Error ? err.message : String(err)}`,
+      ),
+  });
+
+  return {
+    ...instance,
+    stop: async () => {
+      signalHandle.detach();
+      await instance.stop();
+    },
   };
-
-  process.on("SIGINT", () => handleShutdown("SIGINT"));
-  process.on("SIGTERM", () => handleShutdown("SIGTERM"));
-
-  return instance;
 }
 
 /**
- * Constructs the root Commander CLI program with `web` and `browser` command hierarchies.
+ * Registers the `devtools web` subcommand on a root Commander program.
  *
- * @returns Configured Commander `Command` instance.
+ * @param program - Root Commander `Command` instance.
+ * @param deps - Optional action handler overrides for hermetic testing.
+ * @returns Configured `web` subcommand instance.
  */
-export function createProgram(): Command {
-  const program = new Command();
-
-  program
-    .name("devtools")
-    .description("DevTools Developer CLI")
-    .version(APP_VERSION);
-
-  program
+export function registerWebCommand(
+  program: Command,
+  deps?: { runWebCommand?: typeof runWebCommand },
+): Command {
+  const doWeb = deps?.runWebCommand ?? runWebCommand;
+  return program
     .command("web")
     .description("Start the unified local loopback daemon")
     .option("-p, --port <number>", "Port to bind (default: 4000)", (val) => {
@@ -218,40 +245,11 @@ export function createProgram(): Command {
       if (!/^-?\d+$/.test(trimmed)) {
         throw new InvalidArgumentError(`Invalid port number: "${val}"`);
       }
-      const parsed = Number.parseInt(trimmed, 10);
-      return parsed;
+      return Number.parseInt(trimmed, 10);
     })
     .option("-H, --host <string>", "Host to bind (default: 127.0.0.1)")
     .option("-s, --static-dir <path>", "Static asset directory")
     .action(async (options: WebCommandOptions) => {
-      await runWebCommand(options);
+      await doWeb(options);
     });
-
-  registerBrowserCommands(program);
-  registerLighthouseCommands(program);
-
-  return program;
-}
-
-/**
- * Parses CLI arguments and dispatches the matched command, displaying help when invoked with no subcommand.
- *
- * @param argv - Process argument vector (`process.argv`).
- */
-export async function runCli(argv: string[] = process.argv): Promise<void> {
-  const program = createProgram();
-
-  if (argv.length <= 2) {
-    program.outputHelp();
-    return;
-  }
-
-  await program.parseAsync(argv);
-}
-
-if (import.meta.main) {
-  runCli().catch((err) => {
-    console.error(pc.red(String(err)));
-    process.exit(1);
-  });
 }

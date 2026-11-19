@@ -2,7 +2,7 @@ import type {
   LighthouseCategoryScores,
   LighthouseCoreWebVitals,
 } from "@devtools/lighthouse";
-import { type ColorOptions, getColors } from "../colors";
+import { type ColorOptions, getColors } from "../../shared/terminal";
 import { InvalidBudgetRuleError } from "./errors";
 import type {
   BudgetEvaluationResult,
@@ -268,13 +268,13 @@ export function evaluateBudgets(
   const evaluations: BudgetRuleEvaluation[] = [];
   const failures: BudgetRuleEvaluation[] = [];
 
+  const metricValues = new Map<string, number | null>([
+    ...Object.entries(scores),
+    ...Object.entries(metrics),
+  ]);
+
   for (const rule of rules) {
-    let actual: number | null = null;
-    if (rule.key in scores) {
-      actual = scores[rule.key as keyof LighthouseCategoryScores];
-    } else if (rule.key in metrics) {
-      actual = metrics[rule.key as keyof LighthouseCoreWebVitals];
-    }
+    const actual = metricValues.get(rule.key) ?? null;
 
     let passed = false;
     if (actual !== null && actual !== undefined) {

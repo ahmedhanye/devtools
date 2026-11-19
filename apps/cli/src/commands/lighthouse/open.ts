@@ -1,12 +1,8 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
-import type { LighthouseRunRow } from "@devtools/db";
+import type { LighthouseRunRecord } from "@devtools/lighthouse";
 import {
-  getLatestLighthouseRun,
-  resolveLighthouseRun,
-} from "@devtools/lighthouse";
-import {
-  connectRequiredLighthouseDb,
+  connectRequiredLighthouseStore,
   createLighthouseCliContext,
 } from "./context";
 import { LighthouseOpenerError } from "./errors";
@@ -55,6 +51,7 @@ export async function defaultSpawnOpener(
 
   return new Promise<void>((resolve, reject) => {
     try {
+      // fallow-ignore-next-line security-sink -- cmd is selected from a fixed OS opener allowlist with shell:false and filePath is verified via fileExists
       const child = spawn(cmd, args, { detached: true, stdio: "ignore" });
       if (typeof child.on === "function") {
         child.on("error", (err) => {
@@ -104,54 +101,55 @@ export async function runLighthouseOpenCommand(
   const isHeadless = deps?.isHeadless ?? defaultIsHeadless;
   const spawnOpener = deps?.spawnOpener ?? defaultSpawnOpener;
 
-  const db = await connectRequiredLighthouseDb(ctx);
-  if (!db) {
+  const store = await connectRequiredLighthouseStore(ctx);
+  if (!store) {
     return;
   }
 
-  let run: LighthouseRunRow;
+  let run: LighthouseRunRecord;
   try {
-    run =
-      id !== undefined
-        ? resolveLighthouseRun(db, id)
-        : getLatestLighthouseRun(db);
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    error(pc.red(message));
-    exit(1);
-    return;
-  }
+    try {
+      run = store.getRun(id);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      error(pc.red(message));
+      exit(1);
+      return;
+    }
 
-  if (!fileExists(run.htmlReportPath)) {
-    error(
-      pc.red(
-        `Report artifact file not found at: ${run.htmlReportPath}. The file may have been moved or cleaned up.`,
-      ),
-    );
-    exit(1);
-    return;
-  }
+    if (!fileExists(run.htmlReportPath)) {
+      error(
+        pc.red(
+          `Report artifact file not found at: ${run.htmlReportPath}. The file may have been moved or cleaned up.`,
+        ),
+      );
+      exit(1);
+      return;
+    }
 
-  if (isHeadless(options.env)) {
-    log(`file://${run.htmlReportPath}`);
-    exit(0);
-    return;
-  }
+    if (isHeadless(options.env)) {
+      log(`file://${run.htmlReportPath}`);
+      exit(0);
+      return;
+    }
 
-  try {
-    await spawnOpener(run.htmlReportPath);
-    log(
-      pcStdout.green(
-        `Opening Lighthouse HTML report at:\n  ${run.htmlReportPath}`,
-      ),
-    );
-  } catch (err: unknown) {
-    const cause = err instanceof Error ? err : undefined;
-    const openerErr = new LighthouseOpenerError(
-      `Failed to launch browser viewer: ${cause ? cause.message : String(err)}`,
-      cause ? { cause } : undefined,
-    );
-    error(pc.red(openerErr.message));
-    exit(openerErr.exitCode);
+    try {
+      await spawnOpener(run.htmlReportPath);
+      log(
+        pcStdout.green(
+          `Opening Lighthouse HTML report at:\n  ${run.htmlReportPath}`,
+        ),
+      );
+    } catch (err: unknown) {
+      const cause = err instanceof Error ? err : undefined;
+      const openerErr = new LighthouseOpenerError(
+        `Failed to launch browser viewer: ${cause ? cause.message : String(err)}`,
+        cause ? { cause } : undefined,
+      );
+      error(pc.red(openerErr.message));
+      exit(openerErr.exitCode);
+    }
+  } finally {
+    ctx.closeStore();
   }
 }

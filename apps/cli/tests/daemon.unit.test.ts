@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { resolveDaemonConfig, resolveStaticDir } from "../src/daemon";
+import {
+  resolveDaemonConfig,
+  resolveStaticDir,
+} from "../src/commands/web/daemon";
 
 describe("Daemon Configuration & Static Directory Resolution", () => {
   test("resolveDaemonConfig returns defaults when options and env are empty", () => {
@@ -66,11 +69,24 @@ describe("Daemon Configuration & Static Directory Resolution", () => {
     expect(config.host).toBe("127.0.0.1");
   });
 
-  test("resolveDaemonConfig uniformly validates host even with port 0", () => {
-    expect(() => resolveDaemonConfig({ port: 0, host: "" })).toThrow();
+  test("resolveDaemonConfig uniformly validates host and staticDir with actionable errors", () => {
+    expect(() => resolveDaemonConfig({ port: 0, host: "", env: {} })).toThrow(
+      'Invalid --host "": must be a non-empty hostname or IP address',
+    );
+    expect(() => resolveDaemonConfig({ port: 0, env: { HOST: "" } })).toThrow(
+      'Invalid environment variable HOST="": must be a non-empty hostname or IP address',
+    );
+    expect(() =>
+      resolveDaemonConfig({ port: 0, staticDir: "", env: {} }),
+    ).toThrow("Invalid --static-dir: path must not be empty");
+    expect(() =>
+      resolveDaemonConfig({ port: 0, env: { DEVTOOLS_STATIC_DIR: "   " } }),
+    ).toThrow(
+      "Invalid environment variable DEVTOOLS_STATIC_DIR: path must not be empty",
+    );
   });
 
-  test("resolveStaticDir resolves explicit custom path and env overrides", () => {
+  test("resolveStaticDir resolves explicit custom path and rejects empty overrides", () => {
     const custom = resolveStaticDir("/custom/test/dir", {});
     expect(custom).toContain("custom/test/dir");
 
@@ -78,11 +94,26 @@ describe("Daemon Configuration & Static Directory Resolution", () => {
       DEVTOOLS_STATIC_DIR: "/env/static/dir",
     });
     expect(fromEnv).toContain("env/static/dir");
+
+    expect(() => resolveStaticDir("", {})).toThrow(
+      "Invalid --static-dir: path must not be empty",
+    );
+    expect(() => resolveStaticDir("   ", {})).toThrow(
+      "Invalid --static-dir: path must not be empty",
+    );
+    expect(() =>
+      resolveStaticDir(undefined, { DEVTOOLS_STATIC_DIR: "" }),
+    ).toThrow(
+      "Invalid environment variable DEVTOOLS_STATIC_DIR: path must not be empty",
+    );
   });
 
-  test("resolveStaticDir resolves default directory when called with no arguments", () => {
+  test("resolveStaticDir resolves default directory when called with no arguments or missing candidates", () => {
     const defaultDir = resolveStaticDir();
     expect(typeof defaultDir).toBe("string");
     expect(defaultDir.length).toBeGreaterThan(0);
+
+    const fallbackDir = resolveStaticDir(undefined, {}, () => false);
+    expect(fallbackDir.endsWith("frontend/dist")).toBe(true);
   });
 });

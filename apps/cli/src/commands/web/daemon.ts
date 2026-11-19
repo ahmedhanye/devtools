@@ -4,17 +4,15 @@ import { createApp } from "@devtools/api";
 import {
   type EnvMap,
   RuntimeConfigSchema,
+  formatRuntimeConfigError,
   parsePortFromEnv,
 } from "@devtools/core";
 import {
-  closeDb,
-  type DevtoolsDb,
-  getDb,
-  resolveDatabasePath,
-  runMigrations,
-} from "@devtools/db";
+  createShutdownCoordinator,
+  type ShutdownCoordinator,
+} from "@devtools/core/node";
+import type { LighthouseStore } from "@devtools/lighthouse";
 import type { Server } from "bun";
-import { getColors } from "./colors";
 
 /**
  * Configuration options for starting the unified loopback daemon via {@link startDaemon}.
@@ -26,6 +24,10 @@ export interface StartDaemonOptions {
   host?: string;
   /** Explicit filesystem path to the pre-rendered frontend static asset directory. */
   staticDir?: string;
+  /** Optional injected {@link LighthouseStore} forwarded to `@devtools/api`. */
+  store?: LighthouseStore;
+  /** Optional 3-phase {@link ShutdownCoordinator} orchestrating daemon shutdown. */
+  shutdown?: ShutdownCoordinator;
   /** Optional environment variable map overriding `process.env`. */
   env?: EnvMap;
 }
@@ -42,7 +44,7 @@ export interface DaemonInstance {
   hostname: string;
   /** Resolved absolute path to the static asset root directory. */
   staticDir: string;
-  /** Stops the HTTP server and cleanly closes the SQLite persistence handle. */
+  /** Stops the HTTP server, drains active jobs, and closes persistence handles cleanly. */
   stop: () => Promise<void> | void;
 }
 
@@ -56,25 +58,34 @@ export interface DaemonInstance {
 export function resolveStaticDir(
   customPath?: string,
   env: EnvMap = process.env,
+  exists: (dirPath: string) => boolean = existsSync,
 ): string {
   const explicit = customPath ?? env.DEVTOOLS_STATIC_DIR;
-  if (explicit) {
+  if (explicit !== undefined) {
+    if (explicit.trim() === "") {
+      const source =
+        customPath !== undefined
+          ? "--static-dir"
+          : "environment variable DEVTOOLS_STATIC_DIR";
+      throw new Error(`Invalid ${source}: path must not be empty`);
+    }
     return resolve(process.cwd(), explicit);
   }
 
+  const cliRoot = resolve(import.meta.dir, "../../..");
   const candidates = [
-    resolve(import.meta.dir, "../static"),
-    resolve(import.meta.dir, "../../frontend/dist"),
-    resolve(import.meta.dir, "../../../apps/frontend/dist"),
+    resolve(cliRoot, "static"),
+    resolve(cliRoot, "../frontend/dist"),
+    resolve(cliRoot, "../../apps/frontend/dist"),
   ];
 
   for (const candidate of candidates) {
-    if (existsSync(candidate)) {
+    if (exists(candidate)) {
       return candidate;
     }
   }
 
-  return resolve(import.meta.dir, "../../frontend/dist");
+  return resolve(cliRoot, "../frontend/dist");
 }
 
 type ConfigValidationError = Extract<
@@ -84,23 +95,29 @@ type ConfigValidationError = Extract<
 
 function formatDaemonValidationError(
   error: ConfigValidationError,
-  portOverride: number | undefined,
-  envPort: string | undefined,
+  options: StartDaemonOptions,
+  currentEnv: EnvMap,
 ): Error {
-  const portIssue = error.issues.find((issue) => issue.path.includes("port"));
-  if (portIssue) {
-    const label =
-      portOverride !== undefined
-        ? `port number "${portOverride}"`
-        : `environment variable PORT="${String(envPort)}"`;
-    return new Error(
-      `Invalid ${label}: must be an integer between 0 and 65535`,
-      { cause: error },
-    );
+  const staticDirIssue = error.issues.find((issue) =>
+    issue.path.includes("staticDir"),
+  );
+  if (staticDirIssue) {
+    const source =
+      options.staticDir !== undefined
+        ? "--static-dir"
+        : "environment variable DEVTOOLS_STATIC_DIR";
+    return new Error(`Invalid ${source}: path must not be empty`, {
+      cause: error,
+    });
   }
-  const firstIssue = error.issues[0];
-  return new Error(firstIssue?.message ?? "Invalid daemon configuration", {
-    cause: error,
+
+  return formatRuntimeConfigError(error, {
+    portOverride: options.port,
+    envPort: currentEnv.PORT,
+    hostOverride: options.host,
+    envHost: currentEnv.HOST,
+    hostOptionLabel: "--host",
+    fallbackMessage: "Invalid daemon configuration",
   });
 }
 
@@ -110,7 +127,7 @@ function formatDaemonValidationError(
  *
  * @param options - Explicit daemon options and optional `env` seam override.
  * @returns Validated `{ host, port, staticDir }` configuration.
- * @throws {@link Error} When `port` or `host` fails {@link RuntimeConfigSchema} validation.
+ * @throws {@link Error} When `port`, `host`, or `staticDir` fails {@link RuntimeConfigSchema} validation.
  */
 export function resolveDaemonConfig(options: StartDaemonOptions = {}): {
   host: string;
@@ -129,11 +146,7 @@ export function resolveDaemonConfig(options: StartDaemonOptions = {}): {
   });
 
   if (!result.success) {
-    throw formatDaemonValidationError(
-      result.error,
-      options.port,
-      currentEnv.PORT,
-    );
+    throw formatDaemonValidationError(result.error, options, currentEnv);
   }
 
   const validated = result.data;
@@ -232,12 +245,12 @@ export async function serveStaticAsset(
 }
 
 /**
- * Starts the unified single-process loopback daemon co-locating SQLite migrations,
+ * Starts the unified single-process loopback daemon co-locating lazy SQLite persistence,
  * in-process `@devtools/api` routing (`/api/*`), and frontend static asset serving (`/*`).
  *
- * @param options - Optional port, host, static directory, and environment overrides.
+ * @param options - Optional port, host, static directory, store, shutdown, and env overrides.
  * @returns Running {@link DaemonInstance} handle.
- * @throws {@link Error} When the static asset directory does not exist or SQLite migrations fail.
+ * @throws {@link Error} When configuration validation fails or the static asset directory is missing.
  */
 export function startDaemon(options: StartDaemonOptions = {}): DaemonInstance {
   const config = resolveDaemonConfig(options);
@@ -249,25 +262,11 @@ export function startDaemon(options: StartDaemonOptions = {}): DaemonInstance {
     );
   }
 
-  const dbPath = resolveDatabasePath({ env: options.env });
-  let daemonDb: DevtoolsDb;
-  try {
-    daemonDb = getDb({ path: dbPath, env: options.env });
-    runMigrations(daemonDb);
-  } catch (error) {
-    closeDb();
-    throw new Error(
-      `Fatal: failed to initialize persistence database: ${error instanceof Error ? error.message : String(error)}`,
-      { cause: error },
-    );
-  }
-
-  const pc = getColors({ env: options.env as NodeJS.ProcessEnv });
-  console.error(pc.dim(`Persistence initialized: SQLite (${dbPath})`));
-
+  const coordinator = options.shutdown ?? createShutdownCoordinator();
   const api = createApp({
     basePath: "/api",
-    db: daemonDb,
+    store: options.store,
+    shutdown: coordinator,
     env: options.env,
   });
 
@@ -285,14 +284,26 @@ export function startDaemon(options: StartDaemonOptions = {}): DaemonInstance {
       },
     });
   } catch (error) {
-    closeDb();
+    void api.shutdown();
     throw error;
   }
 
+  const disposeIngress = coordinator.register(
+    "ingress",
+    () => server.stop(true),
+    { id: "daemon-http-ingress" },
+  );
+  const disposeWork = coordinator.register("work", () => api.shutdown(), {
+    id: "daemon-api-work",
+  });
+
   const stop = async () => {
-    await server.stop(true);
-    await api.shutdown();
-    closeDb();
+    try {
+      await coordinator.shutdown("stop");
+    } finally {
+      disposeIngress();
+      disposeWork();
+    }
   };
 
   return {

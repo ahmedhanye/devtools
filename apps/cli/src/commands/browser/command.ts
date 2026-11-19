@@ -4,8 +4,8 @@ import type {
   installBrowser as InstallBrowserFn,
 } from "@devtools/browser";
 import type { EnvMap } from "@devtools/core";
-import { Command } from "commander";
-import { getColors } from "./colors";
+import type { Command } from "commander";
+import { getColors, isStreamTTY } from "../../shared/terminal";
 
 /**
  * CLI flag options for `devtools browser status`.
@@ -19,6 +19,8 @@ export interface BrowserStatusOptions {
   path?: string;
   /** Optional environment variable map seam for hermetic testing. */
   env?: EnvMap;
+  /** Optional cancellation signal forwarded to browser discovery. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -63,18 +65,19 @@ export async function runBrowserStatusCommand(
     chromePath: options.chromePath,
     cacheDir: options.path,
     env: options.env,
+    ...(options.signal ? { signal: options.signal } : {}),
   });
 
   const isStderrTTY =
-    deps?.isStderrTTY ?? deps?.isTTY ?? Boolean(process.stderr.isTTY);
+    deps?.isStderrTTY ?? deps?.isTTY ?? isStreamTTY(process.stderr);
   const isStdoutTTY =
-    deps?.isStdoutTTY ?? deps?.isTTY ?? Boolean(process.stdout.isTTY);
+    deps?.isStdoutTTY ?? deps?.isTTY ?? isStreamTTY(process.stdout);
   const pcStderr = getColors({
-    env: options.env as NodeJS.ProcessEnv,
+    env: options.env,
     isTTY: isStderrTTY,
   });
   const pcStdout = getColors({
-    env: options.env as NodeJS.ProcessEnv,
+    env: options.env,
     isTTY: isStdoutTTY,
   });
 
@@ -144,15 +147,15 @@ export async function runBrowserInstallCommand(
   };
 
   const isStderrTTY =
-    deps?.isStderrTTY ?? deps?.isTTY ?? Boolean(process.stderr.isTTY);
+    deps?.isStderrTTY ?? deps?.isTTY ?? isStreamTTY(process.stderr);
   const isStdoutTTY =
-    deps?.isStdoutTTY ?? deps?.isTTY ?? Boolean(process.stdout.isTTY);
+    deps?.isStdoutTTY ?? deps?.isTTY ?? isStreamTTY(process.stdout);
   const pcStderr = getColors({
-    env: options.env as NodeJS.ProcessEnv,
+    env: options.env,
     isTTY: isStderrTTY,
   });
   const pcStdout = getColors({
-    env: options.env as NodeJS.ProcessEnv,
+    env: options.env,
     isTTY: isStdoutTTY,
   });
   const writeStderr =

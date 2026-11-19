@@ -1,10 +1,12 @@
-import type { LighthouseRunRow } from "@devtools/db";
-import type { NormalizedLighthouseRun } from "@devtools/lighthouse";
+import type {
+  LighthouseRunRecord,
+  NormalizedLighthouseRun,
+} from "@devtools/lighthouse";
 import {
   type ColorOptions,
   type TerminalColors,
   getColors,
-} from "../../colors";
+} from "../../../shared/terminal";
 
 function formatScoreBadge(score: number | null, c: TerminalColors): string {
   if (score === null || score === undefined) return c.dim("N/A");
@@ -60,7 +62,7 @@ function formatMetricDelta(
         : delta.toFixed(digits)
       : delta > 0
         ? `+${Math.round(delta).toLocaleString("en-US")}`
-        : `${Math.round(delta).toLocaleString("en-US")}`;
+        : Math.round(delta).toLocaleString("en-US");
 
   const str = unit ? `${formattedNum} ${unit}` : formattedNum;
   if (delta < 0) return c.green(`(${str})`);
@@ -139,7 +141,7 @@ function getRatingBadge(
  */
 export function formatTerminalSummary(
   run: NormalizedLighthouseRun,
-  previousRun?: LighthouseRunRow | null,
+  previousRun?: LighthouseRunRecord | null,
   options: ColorOptions = {},
 ): string {
   const c = getColors(options);
@@ -291,7 +293,7 @@ export function formatTerminalSummary(
  * @returns Formatted table or empty notice.
  */
 export function formatTerminalList(
-  runs: LighthouseRunRow[],
+  runs: LighthouseRunRecord[],
   options: ColorOptions = {},
 ): string {
   const c = getColors(options);
@@ -347,8 +349,8 @@ export function formatTerminalList(
  * @returns Formatted delta table string.
  */
 export function formatTerminalDiff(
-  run1: LighthouseRunRow,
-  run2: LighthouseRunRow,
+  run1: LighthouseRunRecord,
+  run2: LighthouseRunRecord,
   insightDiff?: {
     resolved: Array<{ id: string; title: string }>;
     regressed: Array<{ id: string; title: string }>;

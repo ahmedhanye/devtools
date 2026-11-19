@@ -1,6 +1,6 @@
 import { LighthouseFormFactorSchema } from "@devtools/lighthouse/schemas";
 import {
-  connectRequiredLighthouseDb,
+  connectRequiredLighthouseStore,
   createLighthouseCliContext,
   type LighthouseCliContext,
 } from "./context";
@@ -55,16 +55,17 @@ export async function runLighthouseListCommand(
   deps?: LighthouseListCommandDeps,
 ): Promise<void> {
   const ctx = createLighthouseCliContext(options, deps);
-  const db = await connectRequiredLighthouseDb(ctx);
-  if (!db || !validateListOptions(options, ctx)) {
+  const store = await connectRequiredLighthouseStore(ctx);
+  if (!store) {
     return;
   }
 
-  const listRuns =
-    deps?.listRuns ?? (await import("@devtools/lighthouse")).listLighthouseRuns;
-
   try {
-    const runs = listRuns(db, {
+    if (!validateListOptions(options, ctx)) {
+      return;
+    }
+
+    const runs = store.listRuns({
       url: options.url,
       formFactor: options.formFactor,
       limit: options.limit ?? 10,
@@ -75,5 +76,7 @@ export async function runLighthouseListCommand(
     const message = err instanceof Error ? err.message : String(err);
     ctx.error(ctx.pc.red(`Error retrieving audit runs: ${message}`));
     ctx.exit(1);
+  } finally {
+    ctx.closeStore();
   }
 }

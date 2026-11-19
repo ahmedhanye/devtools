@@ -1,10 +1,11 @@
 /**
- * DevTools CLI command tree, loopback daemon runner, and browser management commands.
+ * DevTools CLI command tree and loopback daemon runner.
  *
  * @packageDocumentation
  */
-export * from "./port";
-export * from "./daemon";
-export * from "./cli";
-export * from "./browser";
-export * from "./lighthouse";
+export { createProgram, runCli } from "./app";
+export {
+  startDaemon,
+  type DaemonInstance,
+  type StartDaemonOptions,
+} from "./commands/web";

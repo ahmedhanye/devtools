@@ -1,4 +1,4 @@
 #!/usr/bin/env bun
-import { runCli } from "../src/cli";
+import { executeCliMain } from "../src/app";
 
-await runCli();
+await executeCliMain(import.meta.main);

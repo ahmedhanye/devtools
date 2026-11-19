@@ -1,12 +1,14 @@
 import type { EnvMap } from "@devtools/core";
-import type { DevtoolsDb } from "@devtools/db";
-import { getColors } from "../colors";
+import type { LighthouseStore } from "@devtools/lighthouse";
+import { getColors, isStreamTTY } from "../../shared/terminal";
 
 /**
  * Shared dependency injection seams across Lighthouse CLI commands (`audit`, `diff`, `list`, `open`).
  */
 export interface LighthouseCliContextDeps {
-  getDb?: (options?: { env?: EnvMap }) => DevtoolsDb;
+  openStore?: (options?: {
+    env?: EnvMap;
+  }) => Promise<LighthouseStore> | LighthouseStore;
   log?: (chunk: string) => void;
   error?: (chunk: string) => void;
   writeStderr?: (chunk: string) => void;
@@ -17,7 +19,7 @@ export interface LighthouseCliContextDeps {
 }
 
 /**
- * Resolved I/O, colorization, exit, and lazy database helpers for a Lighthouse CLI command.
+ * Resolved I/O, colorization, exit, and lazy store helpers for a Lighthouse CLI command.
  */
 export interface LighthouseCliContext {
   pc: ReturnType<typeof getColors>;
@@ -26,11 +28,12 @@ export interface LighthouseCliContext {
   error: (chunk: string) => void;
   writeStderr: (chunk: string) => void;
   exit: (code?: number) => void;
-  getDb: () => Promise<DevtoolsDb>;
+  openStore: () => Promise<LighthouseStore>;
+  closeStore: () => void;
 }
 
 /**
- * Resolves terminal colorization, output/error streams, exit handler, and lazy DB loader
+ * Resolves terminal colorization, output/error streams, exit handler, and lazy store loader
  * for Lighthouse CLI commands.
  *
  * @param options - Command options carrying optional `env` seam.
@@ -42,15 +45,15 @@ export function createLighthouseCliContext(
   deps?: LighthouseCliContextDeps,
 ): LighthouseCliContext {
   const isStderrTTY =
-    deps?.isStderrTTY ?? deps?.isTTY ?? Boolean(process.stderr.isTTY);
+    deps?.isStderrTTY ?? deps?.isTTY ?? isStreamTTY(process.stderr);
   const isStdoutTTY =
-    deps?.isStdoutTTY ?? deps?.isTTY ?? Boolean(process.stdout.isTTY);
+    deps?.isStdoutTTY ?? deps?.isTTY ?? isStreamTTY(process.stdout);
   const pc = getColors({
-    env: options.env as NodeJS.ProcessEnv,
+    env: options.env,
     isTTY: isStderrTTY,
   });
   const pcStdout = getColors({
-    env: options.env as NodeJS.ProcessEnv,
+    env: options.env,
     isTTY: isStdoutTTY,
   });
   const exit = (code = 1) => {
@@ -61,6 +64,8 @@ export function createLighthouseCliContext(
     process.exit(code);
   };
 
+  let ownedStore: LighthouseStore | null = null;
+
   return {
     pc,
     pcStdout,
@@ -69,24 +74,36 @@ export function createLighthouseCliContext(
     writeStderr:
       deps?.writeStderr ?? ((chunk: string) => process.stderr.write(chunk)),
     exit,
-    getDb: async () =>
-      (deps?.getDb ?? (await import("@devtools/db")).getDb)({
-        env: options.env,
-      }),
+    openStore: async () => {
+      if (deps?.openStore) {
+        return await deps.openStore({ env: options.env });
+      }
+      if (!ownedStore) {
+        const { openLighthouseStore } = await import("@devtools/lighthouse");
+        ownedStore = openLighthouseStore({ env: options.env });
+      }
+      return ownedStore;
+    },
+    closeStore: () => {
+      if (ownedStore) {
+        ownedStore.close();
+        ownedStore = null;
+      }
+    },
   };
 }
 
 /**
- * Connects to the SQLite database or prints a formatted connection error and exits with `1`.
+ * Opens the lazy {@link LighthouseStore} or prints a formatted connection error and exits with `1`.
  *
  * @param ctx - Active {@link LighthouseCliContext}.
- * @returns Active {@link DevtoolsDb} instance or `null` after exiting on error.
+ * @returns Active {@link LighthouseStore} instance or `null` after exiting on error.
  */
-export async function connectRequiredLighthouseDb(
+export async function connectRequiredLighthouseStore(
   ctx: LighthouseCliContext,
-): Promise<DevtoolsDb | null> {
+): Promise<LighthouseStore | null> {
   try {
-    return await ctx.getDb();
+    return await ctx.openStore();
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     ctx.error(ctx.pc.red(`Error connecting to database: ${message}`));

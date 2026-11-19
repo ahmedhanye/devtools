@@ -1,15 +1,23 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ApiErrorResponseSchema, HealthResponseSchema } from "@devtools/core";
-import { db, resetDb, systemMetadata } from "@devtools/db";
-import { TriggerLighthouseAuditResponseSchema } from "@devtools/lighthouse/schemas";
+import {
+  ListLighthouseRunsResponseSchema,
+  TriggerLighthouseAuditResponseSchema,
+} from "@devtools/lighthouse/schemas";
 import {
   type DaemonInstance,
   serveStaticAsset,
   startDaemon,
-} from "../src/daemon";
+} from "../src/commands/web/daemon";
 
 describe("Unified Loopback Daemon Lifecycle and Routing", () => {
   let activeDaemon: DaemonInstance | null = null;
@@ -19,56 +27,71 @@ describe("Unified Loopback Daemon Lifecycle and Routing", () => {
       await activeDaemon.stop();
       activeDaemon = null;
     }
-    resetDb();
   });
 
-  test("initializes persistence database migrations on daemon startup", async () => {
-    resetDb();
-    activeDaemon = startDaemon({
-      port: 0,
-      host: "127.0.0.1",
-      env: { DEVTOOLS_DB_PATH: ":memory:" },
-    });
-    const records = await db.select().from(systemMetadata);
-    expect(Array.isArray(records)).toBe(true);
-  });
-
-  test("throws and attaches cause when database initialization fails regardless of user privileges", async () => {
-    resetDb();
-    const tmpDir = mkdtempSync(join(tmpdir(), "devtools-daemon-corrupt-"));
-    const corruptDbPath = join(tmpDir, "corrupt.db");
-    writeFileSync(corruptDbPath, "not-a-sqlite-database\n");
-    let unexpectedDaemon: DaemonInstance | undefined;
-
+  test("defers SQLite initialization until the first database-backed API request", async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "devtools-daemon-lazy-"));
+    const lazyDbPath = join(tmpDir, "lazy.db");
     try {
-      let caughtError: unknown;
-      try {
-        unexpectedDaemon = startDaemon({
-          port: 0,
-          host: "127.0.0.1",
-          env: { DEVTOOLS_DB_PATH: corruptDbPath },
-        });
-      } catch (err) {
-        caughtError = err;
-      }
+      activeDaemon = startDaemon({
+        port: 0,
+        host: "127.0.0.1",
+        env: { DEVTOOLS_DB_PATH: lazyDbPath },
+      });
+      const baseUrl = `http://127.0.0.1:${activeDaemon.port}`;
 
-      expect(caughtError).toBeInstanceOf(Error);
-      expect((caughtError as Error).message).toMatch(
-        /^Fatal: failed to initialize persistence database: /,
-      );
-      expect((caughtError as Error).cause).toBeInstanceOf(Error);
+      const healthRes = await fetch(`${baseUrl}/api/health`);
+      expect(healthRes.status).toBe(200);
+      expect(existsSync(lazyDbPath)).toBe(false);
+
+      const runsRes = await fetch(`${baseUrl}/api/lighthouse/runs`);
+      expect(runsRes.status).toBe(200);
+      expect(
+        ListLighthouseRunsResponseSchema.parse(await runsRes.json()).total,
+      ).toBe(0);
+      expect(existsSync(lazyDbPath)).toBe(true);
     } finally {
-      if (unexpectedDaemon) {
-        await unexpectedDaemon.stop();
+      if (activeDaemon) {
+        await activeDaemon.stop();
+        activeDaemon = null;
       }
       rmSync(tmpDir, { recursive: true, force: true });
-      resetDb();
     }
   });
 
-  test("closes opened database handle when port binding fails on an occupied port", async () => {
-    resetDb();
+  test("keeps daemon healthy and reports API 500 when lazy database file is corrupt", async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "devtools-daemon-corrupt-"));
+    const corruptDbPath = join(tmpDir, "corrupt.db");
+    writeFileSync(corruptDbPath, "not-a-sqlite-database\n");
+
+    try {
+      activeDaemon = startDaemon({
+        port: 0,
+        host: "127.0.0.1",
+        env: { DEVTOOLS_DB_PATH: corruptDbPath },
+      });
+      const baseUrl = `http://127.0.0.1:${activeDaemon.port}`;
+
+      const healthRes = await fetch(`${baseUrl}/api/health`);
+      expect(healthRes.status).toBe(200);
+
+      const runsRes = await fetch(`${baseUrl}/api/lighthouse/runs`);
+      expect(runsRes.status).toBe(500);
+      expect(
+        ApiErrorResponseSchema.parse(await runsRes.json()).error.code,
+      ).toBe("INTERNAL_ERROR");
+    } finally {
+      if (activeDaemon) {
+        await activeDaemon.stop();
+        activeDaemon = null;
+      }
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  test("does not open or create SQLite files when port binding fails on an occupied port", async () => {
     const tmpDir = mkdtempSync(join(tmpdir(), "devtools-daemon-port-"));
+    const blockedDbPath = join(tmpDir, "blocked.db");
     const blocker = Bun.serve({
       port: 0,
       hostname: "127.0.0.1",
@@ -82,25 +105,24 @@ describe("Unified Loopback Daemon Lifecycle and Routing", () => {
         unexpectedDaemon = startDaemon({
           port: blocker.port,
           host: "127.0.0.1",
-          env: { DEVTOOLS_DB_PATH: join(tmpDir, "blocked.db") },
+          env: { DEVTOOLS_DB_PATH: blockedDbPath },
         });
       } catch (err) {
         caughtError = err;
       }
 
       expect(caughtError).toBeInstanceOf(Error);
+      expect(existsSync(blockedDbPath)).toBe(false);
     } finally {
       if (unexpectedDaemon) {
         await unexpectedDaemon.stop();
       }
       await blocker.stop(true);
       rmSync(tmpDir, { recursive: true, force: true });
-      resetDb();
     }
   });
 
   test("stop() cancels active Lighthouse audit via api.shutdown() before closing database", async () => {
-    resetDb();
     const artifactsDir = mkdtempSync(
       join(tmpdir(), "devtools-daemon-lh-stop-"),
     );
@@ -138,7 +160,6 @@ describe("Unified Loopback Daemon Lifecycle and Routing", () => {
         }
       } finally {
         rmSync(artifactsDir, { recursive: true, force: true });
-        resetDb();
       }
     }
   });
@@ -282,6 +303,12 @@ describe("Unified Loopback Daemon Lifecycle and Routing", () => {
       expect(res.status).toBe(200);
       const text = await res.text();
       expect(text).toContain("Custom Static");
+
+      const missingRes = await fetch(
+        `http://127.0.0.1:${activeDaemon.port}/missing-route`,
+      );
+      expect(missingRes.status).toBe(404);
+      expect(await missingRes.text()).toContain("Not Found");
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
     }

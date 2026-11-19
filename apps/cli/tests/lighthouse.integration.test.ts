@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Command } from "commander";
-import { registerLighthouseCommands } from "../src/lighthouse/index";
-import type {
-  LighthouseAuditCommandOptions,
-  LighthouseListCommandOptions,
-} from "../src/lighthouse/types";
+import {
+  type LighthouseAuditCommandOptions,
+  type LighthouseListCommandOptions,
+  registerLighthouseCommands,
+} from "../src/commands/lighthouse";
 
 function setupCommandForTesting(program: Command): {
   getOutput: () => string;

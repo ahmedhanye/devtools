@@ -1,9 +1,10 @@
 import type { EnvMap } from "@devtools/core";
-import type { DevtoolsDb, LighthouseRunRow } from "@devtools/db";
+import type { ShutdownRegistry } from "@devtools/core/node";
 import type {
   LighthouseAuditExecutionResult,
   LighthouseFormFactor,
   LighthouseIterationExecutor,
+  LighthouseStore,
   LighthouseThrottlingMethod,
   RunLighthouseAuditOptions,
 } from "@devtools/lighthouse";
@@ -75,25 +76,22 @@ export interface LighthouseAuditCommandOptions {
   artifactsDir?: string;
   categories?: string;
   env?: EnvMap;
+  signal?: AbortSignal;
 }
 
 /**
  * Dependency injection seam for `devtools lighthouse <url>`.
  */
 export interface LighthouseAuditCommandDeps {
-  runLighthouseAudit?: (
+  runAudit?: (
     options: RunLighthouseAuditOptions,
   ) => Promise<LighthouseAuditExecutionResult>;
-  getDb?: (options?: { env?: EnvMap }) => DevtoolsDb;
-  findPreviousLighthouseRun?: (
-    db: DevtoolsDb,
-    options: {
-      url: string;
-      formFactor: LighthouseFormFactor;
-      excludeId?: string;
-    },
-  ) => LighthouseRunRow | null;
+  openStore?: (options?: {
+    env?: EnvMap;
+  }) => Promise<LighthouseStore> | LighthouseStore;
+  shutdown?: ShutdownRegistry;
   log?: (chunk: string) => void;
+  error?: (chunk: string) => void;
   writeStderr?: (chunk: string) => void;
   exit?: (code?: number) => void;
   isStderrTTY?: boolean;
@@ -116,8 +114,9 @@ export interface LighthouseListCommandOptions {
  * Dependency injection seam for `devtools lighthouse list`.
  */
 export interface LighthouseListCommandDeps {
-  getDb?: (options?: { env?: EnvMap }) => DevtoolsDb;
-  listRuns?: typeof import("@devtools/lighthouse").listLighthouseRuns;
+  openStore?: (options?: {
+    env?: EnvMap;
+  }) => Promise<LighthouseStore> | LighthouseStore;
   log?: (chunk: string) => void;
   error?: (chunk: string) => void;
   exit?: (code?: number) => void;
@@ -137,7 +136,9 @@ export interface LighthouseDiffCommandOptions {
  * Dependency injection seam for `devtools lighthouse diff`.
  */
 export interface LighthouseDiffCommandDeps {
-  getDb?: (options?: { env?: EnvMap }) => DevtoolsDb;
+  openStore?: (options?: {
+    env?: EnvMap;
+  }) => Promise<LighthouseStore> | LighthouseStore;
   log?: (chunk: string) => void;
   error?: (chunk: string) => void;
   exit?: (code?: number) => void;
@@ -156,7 +157,9 @@ export interface LighthouseOpenCommandOptions {
  * Dependency injection seam for `devtools lighthouse open`.
  */
 export interface LighthouseOpenCommandDeps {
-  getDb?: (options?: { env?: EnvMap }) => DevtoolsDb;
+  openStore?: (options?: {
+    env?: EnvMap;
+  }) => Promise<LighthouseStore> | LighthouseStore;
   log?: (chunk: string) => void;
   error?: (chunk: string) => void;
   exit?: (code?: number) => void;
