@@ -3,13 +3,11 @@ import path from "node:path";
 import type { Page } from "fumadocs-core/source";
 import type { StructuredData } from "fumadocs-core/mdx-plugins";
 
-export interface ResolvedPageDetails {
+export function parseMarkdownMetadata(raw: string): {
   title: string;
   description?: string;
   content: string;
-}
-
-export function parseMarkdownMetadata(raw: string): ResolvedPageDetails {
+} {
   const emptyMatch = raw.match(/^---\r?\n---\r?\n([\s\S]*)$/);
   if (emptyMatch && emptyMatch[1] !== undefined) {
     return {
@@ -51,7 +49,48 @@ export function parseMarkdownMetadata(raw: string): ResolvedPageDetails {
   };
 }
 
-export function resolvePageDetails(page: Page): ResolvedPageDetails {
+function readConfinedDocFile(
+  candidatePath: string,
+  docsRoot: string,
+): string | null {
+  try {
+    const canonicalRoot = fs.realpathSync(docsRoot);
+    const canonicalTarget = fs.realpathSync(candidatePath);
+    if (
+      canonicalTarget !== canonicalRoot &&
+      !canonicalTarget.startsWith(`${canonicalRoot}${path.sep}`)
+    ) {
+      return null;
+    }
+    if (!fs.statSync(canonicalTarget).isFile()) {
+      return null;
+    }
+    // fallow-ignore-next-line security-sink -- canonical realpath is confined within canonical docsRoot
+    return fs.readFileSync(canonicalTarget, "utf-8");
+  } catch {
+    return null;
+  }
+}
+
+function isStructuredData(value: unknown): value is StructuredData {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "headings" in value &&
+    Array.isArray(value.headings) &&
+    "contents" in value &&
+    Array.isArray(value.contents)
+  );
+}
+
+export function resolvePageDetails(
+  page: Page,
+  options?: { docsRoot?: string },
+): {
+  title: string;
+  description?: string;
+  content: string;
+} {
   const title = (page.data as { title?: string }).title;
   const description = (page.data as { description?: string }).description;
 
@@ -63,22 +102,30 @@ export function resolvePageDetails(page: Page): ResolvedPageDetails {
     };
   }
 
-  const rawBody = (page.data as { body?: unknown }).body;
-  if (typeof rawBody === "string" && fs.existsSync(rawBody)) {
-    const raw = fs.readFileSync(rawBody, "utf-8");
-    return parseMarkdownMetadata(raw);
+  const docsRoot =
+    options?.docsRoot ?? path.resolve(process.cwd(), "content/docs");
+  const rawBody = "body" in page.data ? page.data.body : undefined;
+  if (typeof rawBody === "string") {
+    const raw = readConfinedDocFile(rawBody, docsRoot);
+    if (raw !== null) {
+      return parseMarkdownMetadata(raw);
+    }
   }
 
-  const infoPath = (page.data as { info?: { fullPath?: string } }).info
-    ?.fullPath;
+  const rawInfo = "info" in page.data ? page.data.info : undefined;
+  const infoPath =
+    typeof rawInfo === "object" &&
+    rawInfo !== null &&
+    "fullPath" in rawInfo &&
+    typeof rawInfo.fullPath === "string"
+      ? rawInfo.fullPath
+      : undefined;
   if (infoPath) {
-    const candidatePath = path.resolve(
-      process.cwd(),
-      "content/docs",
-      page.path,
+    const raw = readConfinedDocFile(
+      path.resolve(docsRoot, page.path),
+      docsRoot,
     );
-    if (fs.existsSync(candidatePath)) {
-      const raw = fs.readFileSync(candidatePath, "utf-8");
+    if (raw !== null) {
       return parseMarkdownMetadata(raw);
     }
   }
@@ -92,22 +139,26 @@ export function resolvePageDetails(page: Page): ResolvedPageDetails {
 
 export async function buildSearchIndex(page: Page) {
   const details = resolvePageDetails(page);
-  const data = page.data as {
-    structuredData?: unknown;
-    load?: () => Promise<{ structuredData?: unknown }>;
-  };
 
-  let structuredData: StructuredData | undefined;
-  if (data.structuredData) {
-    structuredData =
-      typeof data.structuredData === "function"
-        ? ((await (
-            data.structuredData as () => Promise<unknown>
-          )()) as StructuredData)
-        : (data.structuredData as StructuredData);
-  } else if (typeof data.load === "function") {
-    structuredData = (await data.load()).structuredData as StructuredData;
+  let rawStructured: unknown;
+  if ("structuredData" in page.data) {
+    const candidate = page.data.structuredData;
+    rawStructured =
+      typeof candidate === "function" ? await candidate() : candidate;
+  } else if ("load" in page.data && typeof page.data.load === "function") {
+    const loaded: unknown = await page.data.load();
+    if (
+      typeof loaded === "object" &&
+      loaded !== null &&
+      "structuredData" in loaded
+    ) {
+      rawStructured = loaded.structuredData;
+    }
   }
+
+  let structuredData = isStructuredData(rawStructured)
+    ? rawStructured
+    : undefined;
 
   if (!structuredData) {
     structuredData = {

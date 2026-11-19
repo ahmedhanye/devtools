@@ -42,16 +42,16 @@ const MDX_COMPONENTS = {
 const SECTION_STYLES: Record<string, React.CSSProperties> = {
   explanation: {
     "--color-fd-primary": "var(--explanation-color)",
-  } as React.CSSProperties,
+  },
   "how-to": {
     "--color-fd-primary": "var(--how-to-color)",
-  } as React.CSSProperties,
+  },
   reference: {
     "--color-fd-primary": "var(--reference-color)",
-  } as React.CSSProperties,
+  },
   tutorials: {
     "--color-fd-primary": "var(--tutorials-color)",
-  } as React.CSSProperties,
+  },
 };
 
 interface PageProps {
@@ -91,7 +91,7 @@ export default async function Page({ params }: PageProps) {
   }
 
   const { title, description, fallbackText } = resolvePageMetadataText(page);
-  const MDX = page.data.body;
+  const MdxContent = page.data.body;
   const section = resolveDocSection(page.path, slug);
   const pageStyle = section ? SECTION_STYLES[section] : undefined;
 
@@ -108,8 +108,8 @@ export default async function Page({ params }: PageProps) {
       <DocsTitle>{title}</DocsTitle>
       {description ? <DocsDescription>{description}</DocsDescription> : null}
       <DocsBody>
-        {typeof MDX === "function" ? (
-          <MDX components={MDX_COMPONENTS} />
+        {typeof MdxContent === "function" ? (
+          <MdxContent components={MDX_COMPONENTS} />
         ) : (
           <div>
             <p>{fallbackText}</p>

@@ -66,9 +66,9 @@ export default function RootDocsLayout({ children }: { children: ReactNode }) {
     () => ({
       className: section ? `${section} group-${section}` : "",
       style: section
-        ? ({
+        ? {
             "--color-fd-primary": `var(--${section}-color)`,
-          } as CSSProperties)
+          }
         : undefined,
     }),
     [section],

@@ -41,9 +41,9 @@ For architectural details on SQLite Write-Ahead Logging and WAL coordination fil
 
 ## Run schema migrations
 
-DevTools applies pending schema migrations automatically when the daemon starts up. When developing schema changes in `packages/db`, you can generate and apply migration files directly:
+DevTools lazily initializes and verifies the baseline schema automatically on the first database-backed operation. When developing schema changes in `packages/db`, you can generate migration SQL files and trigger initialization directly:
 
-<Tabs items={["Generate migration", "Apply migrations"]} groupId="migration-flow" persist>
+<Tabs items={["Generate migration", "Initialize database"]} groupId="migration-flow" persist>
   <Tab value="Generate migration">
     When modifying schema files under `packages/db/src/schema/`, compile a new SQL migration snapshot with Drizzle Kit:
 
@@ -67,14 +67,14 @@ DevTools applies pending schema migrations automatically when the daemon starts 
 
   </Tab>
 
-  <Tab value="Apply migrations">
-    To execute migrations programmatically without launching the full web daemon, execute the migration runner:
+  <Tab value="Initialize database">
+    To open and initialize the local SQLite database programmatically without launching the full web daemon, invoke `openDb`:
 
     ```bash title="terminal"
-    bun -e "import { db, runMigrations } from '@devtools/db'; runMigrations(db);"
+    bun -e "import { openDb } from '@devtools/db'; using handle = openDb(); handle.ensureReady();"
     ```
 
-    If all migrations are up to date, the runner exits cleanly without output.
+    If the schema is already initialized, `ensureReady()` returns cleanly without modifying existing tables.
 
   </Tab>
 </Tabs>
@@ -88,7 +88,7 @@ The core database foundation establishes the `system_metadata` table for persist
 Query the local SQLite database using Bun:
 
 ```bash title="terminal"
-bun -e "import { db, systemMetadata } from '@devtools/db'; console.log(db.select().from(systemMetadata).all());"
+bun -e "import { openDb, systemMetadata } from '@devtools/db'; using handle = openDb(); console.log(handle.read((db) => db.select().from(systemMetadata).all()));"
 ```
 
 Expected output on an unseeded database:
@@ -99,10 +99,10 @@ Expected output on an unseeded database:
 
 ### Seed initial keys
 
-To insert or update a metadata record, use Drizzle insert statements:
+To insert or update a metadata record, use a write transaction on the pooled handle:
 
 ```bash title="terminal"
-bun -e "import { db, systemMetadata } from '@devtools/db'; db.insert(systemMetadata).values({ key: 'cluster_node', value: 'primary' }).onConflictDoUpdate({ target: systemMetadata.key, set: { value: 'primary' } }).run();"
+bun -e "import { openDb, systemMetadata } from '@devtools/db'; using handle = openDb(); handle.write((tx) => tx.insert(systemMetadata).values({ key: 'cluster_node', value: 'primary' }).onConflictDoUpdate({ target: systemMetadata.key, set: { value: 'primary' } }).run());"
 ```
 
 Re-querying the metadata table returns the seeded record:
@@ -133,48 +133,24 @@ When you need a clean state during local testing, you can reset the development 
 rm -rf .devtools
 ```
 
-3. Restart the daemon to trigger a fresh database initialization:
+3. Restart the daemon and query any database-backed endpoint (or run a Lighthouse audit) to trigger lazy database initialization:
 
 ```bash title="terminal"
 bun run devtools web
 ```
 
-The daemon recreates the `.devtools/` directory, initializes `devtools.db`, and executes all migrations automatically.
+The daemon creates the `.devtools/` directory, initializes `devtools.db`, and applies the baseline schema on the first persistence operation.
 
 ## Verification
 
-Verify that the database initialized successfully by inspecting the daemon startup output:
+Confirm that the database initializes lazily by querying the runs endpoint against the running daemon:
 
-```text
-Persistence initialized: SQLite (.devtools/devtools.db)
+```bash title="terminal"
+curl -s http://127.0.0.1:4000/api/lighthouse/runs
 ```
 
-Run the database package test suite to verify connection safeguards, WAL concurrency, and migration integrity:
+Run the database package test suite to verify lazy initialization, `openDb()` pooling, WAL concurrency, and `SQLITE_BUSY` retry handling:
 
 ```bash title="terminal"
 bun --filter @devtools/db test
-```
-
-Expected output:
-
-```text
-bun test v1.4.2
-
-tests/db.test.ts:
-✓ Database Configuration & Path Resolution > resolves to :memory: in test environment by default
-✓ Database Configuration & Path Resolution > respects explicit custom path argument
-✓ Database Configuration & Path Resolution > respects DEVTOOLS_DB_PATH environment variable override
-✓ Database Configuration & Path Resolution > returns :memory: if DEVTOOLS_DB_PATH is :memory:
-✓ Database Configuration & Path Resolution > resolves to in-repo .devtools/devtools.db in development environment
-✓ Database Configuration & Path Resolution > findWorkspaceRoot discovers monorepo root from nested subdirectories
-✓ Database Configuration & Path Resolution > anchors development database to workspace root even when running from nested cwd
-✓ SQLite Connection & Concurrency PRAGMAs > initializes an in-memory connection with correct PRAGMAs
-✓ SQLite Connection & Concurrency PRAGMAs > enables WAL mode on file-backed connections
-✓ Migrations & Database Client Operations > applies migrations programmatically and performs CRUD operations
-✓ Migrations & Database Client Operations > supports getDb() singleton and resetDb()
-✓ Migrations & Database Client Operations > proxies db export dynamically and re-instantiates cleanly after resetDb()
-✓ Re-exported Primitives & Operators > exports essential Drizzle schema primitives and query operators
-
- 13 pass
- 0 fail
 ```

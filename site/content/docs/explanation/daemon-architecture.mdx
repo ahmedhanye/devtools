@@ -82,18 +82,16 @@ The daemon manages startup initialization and termination through explicit lifec
   <Accordion id="startup-sequence" title="Startup initialization sequence">
     1. **Configuration validation**: The CLI validates options against `RuntimeConfigSchema`.
     2. **Port availability check**: The runtime confirms that the requested TCP port is unoccupied. If occupied in an interactive session, it prompts the operator with the next available port.
-    3. **Database initialization and migration**: The daemon resolves the SQLite path according to execution context and applies pending Drizzle migrations.
+    3. **Lazy store registration**: The daemon wires `openLighthouseStore` and a 3-phase `ShutdownCoordinator` without touching SQLite files until the first database-backed API request arrives.
     4. **Socket binding**: The Bun HTTP server binds to the validated interface and port.
   </Accordion>
 
   <Accordion id="graceful-shutdown" title="Graceful shutdown teardown">
-    When the daemon process receives termination signals (`SIGINT` or `SIGTERM`), it initiates a clean teardown:
+    When the daemon process receives termination signals (`SIGINT` or `SIGTERM`), `attachHostSignals` initiates a deterministic 3-phase teardown:
 
-    1. The signal listener intercepts the operating system event.
-    2. In-flight requests are allowed to complete.
-    3. The server socket stops accepting new incoming connections.
-    4. SQLite WAL journals are synchronized and database handles are closed cleanly.
-    5. The process terminates with exit code 0.
+    1. **Ingress**: The server socket stops accepting new incoming connections (`server.stop(true)`) while `POST /api/lighthouse/audits` rejects new jobs with HTTP `503`.
+    2. **Work**: The shared `AbortSignal` cancels active Lighthouse audits, awaits SSE stream settlement, and closes owned stores.
+    3. **Persistence**: Pooled SQLite handles flush WAL checkpoints and close cleanly before the process exits with code `0`.
 
   </Accordion>
 </Accordions>

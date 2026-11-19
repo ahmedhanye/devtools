@@ -1,9 +1,9 @@
+// fallow-ignore-file security-sink -- SVG is produced with securityLevel="strict" and sanitized via sanitizeMermaidSvg
 "use client";
 
 import React, { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTheme } from "next-themes";
-import type mermaidType from "mermaid";
-import { getMermaidThemeConfig } from "../lib/mermaid";
+import { getMermaidThemeConfig, sanitizeMermaidSvg } from "../lib/mermaid";
 
 export interface MermaidProps {
   chart: string;
@@ -49,7 +49,7 @@ export function Mermaid({
   const { resolvedTheme } = useTheme();
 
   const innerHtml = useMemo(
-    () => (svgContent ? { __html: svgContent } : undefined),
+    () => (svgContent ? { __html: sanitizeMermaidSvg(svgContent) } : undefined),
     [svgContent],
   );
 
@@ -60,8 +60,7 @@ export function Mermaid({
       if (typeof window === "undefined" || !chart) return;
 
       try {
-        const mermaidModule = (await import("mermaid"))
-          .default as typeof mermaidType;
+        const mermaidModule = (await import("mermaid")).default;
         const config = getMermaidThemeConfig(resolvedTheme);
 
         mermaidModule.initialize({
@@ -77,15 +76,14 @@ export function Mermaid({
           setSvgContent(svg);
           setHasError(false);
         }
-      } catch (err) {
+      } catch {
         if (isMounted) {
-          console.error("Failed to render Mermaid diagram:", err);
           setHasError(true);
         }
       }
     }
 
-    renderChart();
+    void renderChart();
 
     return () => {
       isMounted = false;
@@ -115,6 +113,7 @@ export function Mermaid({
         <div
           ref={containerRef}
           className="flex w-full justify-center [&>svg]:h-auto [&>svg]:max-w-full"
+          // oxlint-disable-next-line react/no-danger, react-doctor/no-danger -- SVG is produced with securityLevel="strict" and sanitized via sanitizeMermaidSvg
           dangerouslySetInnerHTML={innerHtml}
         />
       ) : (

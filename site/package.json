@@ -7,13 +7,13 @@
     "dev": "next dev --port 3001",
     "build": "next build",
     "start": "next start --port 3001",
-    "typecheck": "fumadocs-mdx && tsc --noEmit",
+    "typecheck": "fumadocs-mdx && next typegen && tsc --noEmit",
     "pretest": "fumadocs-mdx",
     "test": "fumadocs-mdx && bun test",
     "test:unit": "bun test tests/*.unit.test.ts",
     "test:integration": "fumadocs-mdx && bun test tests/*.integration.test.ts tests/*.integration.test.tsx",
     "test:e2e": "fumadocs-mdx && bun test tests/*.e2e.test.tsx",
-    "test:coverage": "fumadocs-mdx && bun test --coverage"
+    "test:coverage": "fumadocs-mdx && bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage"
   },
   "dependencies": {
     "fumadocs-core": "^16.18.3",

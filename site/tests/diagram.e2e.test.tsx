@@ -52,4 +52,28 @@ sequenceDiagram
     );
     expect(html).toContain('data-testid="rendered-mermaid"');
   });
+
+  it("sanitizes dangerous scripts, slash-separated event handlers, and non-SVG initialSvg payloads", () => {
+    const sanitizedHtml = renderToStaticMarkup(
+      React.createElement(Mermaid, {
+        chart: "graph TD; A-->B;",
+        initialSvg:
+          '<svg/onload=alert(1)><script>alert(2)</script ><foreignObject><img/src=x/onerror=alert(3)></foreignObject><a href="&#106;avascript:alert(4)"><g></g></a></svg>',
+      }),
+    );
+    expect(sanitizedHtml).toContain("<svg>");
+    expect(sanitizedHtml).not.toContain("<script");
+    expect(sanitizedHtml).not.toContain("onload=");
+    expect(sanitizedHtml).not.toContain("onerror=");
+    expect(sanitizedHtml).not.toContain("<img");
+    expect(sanitizedHtml).not.toContain("avascript:");
+
+    const nonSvgHtml = renderToStaticMarkup(
+      React.createElement(Mermaid, {
+        chart: "graph TD; A-->B;",
+        initialSvg: "<svgx>not svg</svgx>",
+      }),
+    );
+    expect(nonSvgHtml).not.toContain("not svg");
+  });
 });

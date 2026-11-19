@@ -3,9 +3,12 @@ import Link from "next/link";
 import { GITHUB_REPO_URL } from "../../lib/landing-data";
 import { GithubIcon } from "../icons";
 
-const CURRENT_YEAR = new Date().getFullYear();
+function getCurrentYear(): number {
+  return new Date().getFullYear();
+}
 
 export function LandingFooter() {
+  const currentYear = getCurrentYear();
   return (
     <footer className="border-t border-border/60 bg-muted/20 py-8 text-xs text-muted-foreground">
       <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-4 px-4 sm:flex-row sm:px-6">
@@ -38,7 +41,7 @@ export function LandingFooter() {
           </a>
         </div>
 
-        <p>© {CURRENT_YEAR} DevTools. All rights reserved.</p>
+        <p>© {currentYear} DevTools. All rights reserved.</p>
       </div>
     </footer>
   );

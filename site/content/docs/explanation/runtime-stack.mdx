@@ -12,15 +12,15 @@ DevTools is structured as a monorepo workspace designed with strict architectura
 
 The codebase separates runtime applications from reusable packages. Each leaf workspace defines its own package manifest, dependencies, and build lifecycle:
 
-| Workspace directory | Package name         | Classification | Responsibility                                                                               |
-| ------------------- | -------------------- | -------------- | -------------------------------------------------------------------------------------------- |
-| `apps/cli`          | `@devtools/cli`      | Application    | Developer command-line interface, daemon lifecycle management, and port conflict resolution. |
-| `apps/api`          | `@devtools/api`      | Application    | Hono REST API routing, loopback security boundaries, and HTTP response schemas.              |
-| `apps/frontend`     | `@devtools/frontend` | Application    | React dashboard user interface built with Next.js and exported as static HTML/JS.            |
-| `site`              | `@devtools/site`     | Application    | Fumadocs documentation platform and developer guide engine.                                  |
-| `packages/core`     | `@devtools/core`     | Shared package | Shared Zod schemas, error definitions, and platform domain models.                           |
-| `packages/db`       | `@devtools/db`       | Shared package | Embedded SQLite connection management, Drizzle schemas, and migration runners.               |
-| `packages/browser`  | `@devtools/browser`  | Shared package | Chromium provisioning, resolution waterfall algorithm, and managed cache management.         |
+| Workspace directory | Package name         | Classification | Responsibility                                                                                    |
+| ------------------- | -------------------- | -------------- | ------------------------------------------------------------------------------------------------- |
+| `apps/cli`          | `@devtools/cli`      | Application    | Developer command-line interface, daemon lifecycle management, and port conflict resolution.      |
+| `apps/api`          | `@devtools/api`      | Application    | Hono REST API routing, loopback security boundaries, and HTTP response schemas.                   |
+| `apps/frontend`     | `@devtools/frontend` | Application    | React dashboard user interface built with Next.js and exported as static HTML/JS.                 |
+| `site`              | `@devtools/site`     | Application    | Fumadocs documentation platform and developer guide engine.                                       |
+| `packages/core`     | `@devtools/core`     | Shared package | Shared Zod schemas, error definitions, and Node/Bun runtime utilities (`@devtools/core/node`).    |
+| `packages/db`       | `@devtools/db`       | Shared package | Embedded SQLite connection pooling (`openDb`), Drizzle schemas, and lazy baseline initialization. |
+| `packages/browser`  | `@devtools/browser`  | Shared package | Chromium provisioning, resolution waterfall algorithm, and managed cache management.              |
 
 ## Package boundaries and contracts
 
@@ -29,12 +29,14 @@ To prevent circular dependencies and tangled coupling, the monorepo enforces an 
 ```mermaid
 flowchart TD
   CLI["@devtools/cli"] --> Core["@devtools/core"]
-  CLI --> DB["@devtools/db"]
   CLI --> API["@devtools/api"]
+  CLI --> Lighthouse["@devtools/lighthouse"]
   CLI --> Browser["@devtools/browser"]
 
   API --> Core
+  API --> Lighthouse
 
+  Lighthouse --> DB["@devtools/db"]
   Frontend["@devtools/frontend"] --> Core
 
   DB --> SQLite[("bun:sqlite / Drizzle")]
@@ -43,8 +45,8 @@ flowchart TD
 
 ### Boundary invariants
 
-1. **Shared core isolation**: `@devtools/core` contains pure TypeScript types and Zod schemas. It maintains zero dependencies on I/O, database drivers, or web framework runtimes.
-2. **Generic persistence infrastructure**: `@devtools/db` manages connections, SQLite pragmas, and schema migrations. It does not house application-specific business logic.
+1. **Shared core isolation**: `@devtools/core` exposes a browser-safe root entrypoint containing pure TypeScript types and Zod schemas with zero runtime I/O, alongside `@devtools/core/node` for Node/Bun shutdown coordination, signal binding, and workspace detection.
+2. **Domain-encapsulated persistence**: `@devtools/db` manages pooled SQLite handles, WAL pragmas, busy retries, and lazy baseline schema initialization. Consuming applications (`apps/cli`, `apps/api`) access persistence exclusively through domain stores (`@devtools/lighthouse`) rather than importing `@devtools/db` directly.
 3. **Public slice exports**: Each package exposes its public interface exclusively through its root `index.ts`. Internal implementation files remain encapsulated within package internals.
 4. **Runtime interaction boundary**: The CLI (`@devtools/cli`) starts the daemon in-process and does not make HTTP calls to the API. The frontend (`@devtools/frontend`) runs in the user's browser and interacts with the API (`@devtools/api`) over loopback HTTP.
 
