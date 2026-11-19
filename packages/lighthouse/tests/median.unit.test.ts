@@ -1,7 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { EmptyRunsError } from "../src/errors";
-import { computeRepresentativeRun } from "../src/median";
-import type { SingleIterationResult } from "../src/types";
+import { EmptyRunsError, type SingleIterationResult } from "../src/contracts";
+import { computeRepresentativeRun } from "../src/domain";
 
 function makeIteration(
   fcpMs: number,

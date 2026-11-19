@@ -13,7 +13,7 @@ import {
   type NormalizedLighthouseRun,
   type RawLhrAuditItem,
   type RawLighthouseResult,
-} from "./types";
+} from "../contracts";
 
 const IGNORED_DISPLAY_MODES = new Set([
   "notApplicable",
@@ -61,6 +61,10 @@ function toFiniteMetric(audit: RawLhrAuditItem | undefined): number | null {
  * 2. `lhr.audits['document-latency-insight']?.details?.debugData?.serverResponseTime`
  * 3. `lhr.audits['metrics']?.details?.items?.[0]?.timeToFirstByte`
  */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 function extractTtfbMs(
   audits: Record<string, RawLhrAuditItem | undefined>,
 ): number | null {
@@ -70,17 +74,21 @@ function extractTtfbMs(
   }
 
   const docLatencyDetails = audits["document-latency-insight"]?.details;
-  const debugData = docLatencyDetails?.debugData as
-    Record<string, unknown> | undefined;
-  const debugTtfb = debugData?.serverResponseTime;
+  const debugData = docLatencyDetails?.debugData;
+  const debugTtfb = isRecord(debugData)
+    ? debugData.serverResponseTime
+    : undefined;
   if (typeof debugTtfb === "number" && Number.isFinite(debugTtfb)) {
     return debugTtfb;
   }
 
-  const metricsDetails = audits["metrics"]?.details;
-  const metricsItems = metricsDetails?.items as
-    Array<Record<string, unknown>> | undefined;
-  const metricsTtfb = metricsItems?.[0]?.timeToFirstByte;
+  const metricsItems = audits["metrics"]?.details?.items;
+  const firstMetricItem = Array.isArray(metricsItems)
+    ? metricsItems[0]
+    : undefined;
+  const metricsTtfb = isRecord(firstMetricItem)
+    ? firstMetricItem.timeToFirstByte
+    : undefined;
   if (typeof metricsTtfb === "number" && Number.isFinite(metricsTtfb)) {
     return metricsTtfb;
   }
@@ -92,16 +100,15 @@ function extractTtfbMs(
  * Parses a raw `boundingRect` object into an {@link ElementBoundingRect} if all 6 coordinates are finite numbers.
  */
 function parseBoundingRect(raw: unknown): ElementBoundingRect | null {
-  if (!raw || typeof raw !== "object") {
+  if (!isRecord(raw)) {
     return null;
   }
-  const rect = raw as Record<string, unknown>;
-  const top = rect.top;
-  const bottom = rect.bottom;
-  const left = rect.left;
-  const right = rect.right;
-  const width = rect.width;
-  const height = rect.height;
+  const top = raw.top;
+  const bottom = raw.bottom;
+  const left = raw.left;
+  const right = raw.right;
+  const width = raw.width;
+  const height = raw.height;
   if (
     typeof top === "number" &&
     typeof bottom === "number" &&
@@ -119,20 +126,19 @@ function parseBoundingRect(raw: unknown): ElementBoundingRect | null {
  * Parses a Lighthouse `Details.NodeValue` (`{ type: 'node', selector, ... }`) into an {@link AttributedElement}.
  */
 function parseNodeValue(raw: unknown): AttributedElement | null {
-  if (!raw || typeof raw !== "object") {
+  if (!isRecord(raw)) {
     return null;
   }
-  const node = raw as Record<string, unknown>;
-  if (node.type !== "node" || typeof node.selector !== "string") {
+  if (raw.type !== "node" || typeof raw.selector !== "string") {
     return null;
   }
   return {
-    selector: node.selector,
-    snippet: typeof node.snippet === "string" ? node.snippet : null,
-    nodeLabel: typeof node.nodeLabel === "string" ? node.nodeLabel : null,
-    path: typeof node.path === "string" ? node.path : null,
-    lhId: typeof node.lhId === "string" ? node.lhId : null,
-    boundingRect: parseBoundingRect(node.boundingRect),
+    selector: raw.selector,
+    snippet: typeof raw.snippet === "string" ? raw.snippet : null,
+    nodeLabel: typeof raw.nodeLabel === "string" ? raw.nodeLabel : null,
+    path: typeof raw.path === "string" ? raw.path : null,
+    lhId: typeof raw.lhId === "string" ? raw.lhId : null,
+    boundingRect: parseBoundingRect(raw.boundingRect),
   };
 }
 
@@ -142,11 +148,10 @@ function parseNodeValue(raw: unknown): AttributedElement | null {
 function extractLcpPhasesFromTable(
   rawTable: unknown,
 ): LcpPhaseBreakdown | null {
-  if (!rawTable || typeof rawTable !== "object") {
+  if (!isRecord(rawTable)) {
     return null;
   }
-  const table = rawTable as Record<string, unknown>;
-  if (table.type !== "table" || !Array.isArray(table.items)) return null;
+  if (rawTable.type !== "table" || !Array.isArray(rawTable.items)) return null;
 
   const phases: LcpPhaseBreakdown = {
     timeToFirstByteMs: null,
@@ -156,11 +161,10 @@ function extractLcpPhasesFromTable(
   };
   let foundAny = false;
 
-  for (const item of table.items) {
-    if (!item || typeof item !== "object") continue;
-    const row = item as Record<string, unknown>;
-    const subpart = row.subpart;
-    const duration = row.duration;
+  for (const item of rawTable.items) {
+    if (!isRecord(item)) continue;
+    const subpart = item.subpart;
+    const duration = item.duration;
     if (typeof duration !== "number" || !Number.isFinite(duration)) continue;
 
     if (subpart === "timeToFirstByte") {
@@ -190,9 +194,8 @@ function findNodeInDetailsItems(items: unknown[]): AttributedElement | null {
     if (directNode) {
       return directNode;
     }
-    if (item && typeof item === "object") {
-      const row = item as Record<string, unknown>;
-      const nestedNode = parseNodeValue(row.node);
+    if (isRecord(item)) {
+      const nestedNode = parseNodeValue(item.node);
       if (nestedNode) {
         return nestedNode;
       }
@@ -242,22 +245,20 @@ function extractLcpAttribution(
  * Parses root-cause `subItems` attached to a CLS culprit row in `cls-culprits-insight`.
  */
 function parseClsSubItems(rawSubItems: unknown): ClsCulpritCause[] {
-  if (!rawSubItems || typeof rawSubItems !== "object") {
+  if (!isRecord(rawSubItems)) {
     return [];
   }
-  const sub = rawSubItems as Record<string, unknown>;
-  if (!Array.isArray(sub.items)) {
+  if (!Array.isArray(rawSubItems.items)) {
     return [];
   }
 
   const causes: ClsCulpritCause[] = [];
-  for (const rawItem of sub.items) {
-    if (!rawItem || typeof rawItem !== "object") continue;
-    const item = rawItem as Record<string, unknown>;
+  for (const item of rawSubItems.items) {
+    if (!isRecord(item)) continue;
     const cause = typeof item.cause === "string" ? item.cause : null;
     if (!cause) continue;
 
-    const extra = item.extra as Record<string, unknown> | undefined;
+    const extra = isRecord(item.extra) ? item.extra : undefined;
     const url =
       extra?.type === "url" && typeof extra.value === "string"
         ? extra.value
@@ -277,9 +278,8 @@ function parseClsSubItems(rawSubItems: unknown): ClsCulpritCause[] {
  */
 function extractCulpritsFromTableItems(tableItems: unknown[]): ClsCulprit[] {
   const culprits: ClsCulprit[] = [];
-  for (const rawRow of tableItems) {
-    if (!rawRow || typeof rawRow !== "object") continue;
-    const row = rawRow as Record<string, unknown>;
+  for (const row of tableItems) {
+    if (!isRecord(row)) continue;
     const element = parseNodeValue(row.node);
     if (!element) {
       continue;
@@ -308,10 +308,9 @@ function extractClsCulprits(
   if (insightDetails && Array.isArray(insightDetails.items)) {
     const culprits: ClsCulprit[] = [];
     for (const clusterTable of insightDetails.items) {
-      if (!clusterTable || typeof clusterTable !== "object") continue;
-      const table = clusterTable as Record<string, unknown>;
-      if (Array.isArray(table.items)) {
-        culprits.push(...extractCulpritsFromTableItems(table.items));
+      if (!isRecord(clusterTable)) continue;
+      if (Array.isArray(clusterTable.items)) {
+        culprits.push(...extractCulpritsFromTableItems(clusterTable.items));
       }
     }
     if (culprits.length > 0) {

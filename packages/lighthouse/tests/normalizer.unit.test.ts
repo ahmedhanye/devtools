@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { normalizeLhr } from "../src/normalizer";
 import {
   LighthouseRunSummaryDataSchema,
   type LighthouseMedianMetadata,
   type RawLighthouseResult,
-} from "../src/types";
+} from "../src/contracts";
+import { normalizeLhr } from "../src/domain";
 
 describe("normalizeLhr (Lighthouse v13.5.0 LHR normalization)", () => {
   it("extracts 4 rounded 0-100 category scores and 6 Core Web Vitals from standard v13.5.0 LHR", () => {

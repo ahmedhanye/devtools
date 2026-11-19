@@ -125,10 +125,10 @@ function getVirtualAssetContent(targetPath: unknown): string | null {
     return null;
   }
   if (norm.endsWith("/standalone-flow-template.html")) {
-    return String(flowReportTemplate);
+    return flowReportTemplate;
   }
   if (norm.endsWith("/standalone-template.html")) {
-    return String(standaloneTemplate);
+    return standaloneTemplate;
   }
   if (norm.includes("flow-report") && norm.endsWith("/styles.css")) {
     return flowStylesCss;
@@ -155,26 +155,48 @@ function getVirtualAssetContent(targetPath: unknown): string | null {
   return null;
 }
 
+function extractEncoding(options?: unknown): string | undefined {
+  if (typeof options === "string") {
+    return options;
+  }
+  if (
+    typeof options === "object" &&
+    options !== null &&
+    "encoding" in options &&
+    typeof options.encoding === "string"
+  ) {
+    return options.encoding;
+  }
+  return undefined;
+}
+
+function isEnoentError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "ENOENT"
+  );
+}
+
 function formatReadFileResult(
   content: string,
   options?: unknown,
 ): string | Buffer {
-  const encoding =
-    typeof options === "string"
-      ? options
-      : (options as { encoding?: BufferEncoding | null } | undefined)?.encoding;
+  const encoding = extractEncoding(options);
 
-  if (!encoding || encoding === "buffer") {
-    return Buffer.from(content, "utf-8");
-  }
   if (encoding === "utf-8" || encoding === "utf8") {
     return content;
   }
-  return Buffer.from(content, "utf-8").toString(encoding as BufferEncoding);
+  if (encoding && encoding !== "buffer" && Buffer.isEncoding(encoding)) {
+    return Buffer.from(content, "utf-8").toString(encoding);
+  }
+  return Buffer.from(content, "utf-8");
 }
 
 function createMockDirent(name: string, dirPath = ""): fs.Dirent {
   const isDir = !name.includes(".");
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Node fs.Dirent constructor is private; plain structural object satisfies Lighthouse virtual locales enumeration
   return {
     name,
     parentPath: dirPath,
@@ -186,26 +208,24 @@ function createMockDirent(name: string, dirPath = ""): fs.Dirent {
     isFIFO: () => false,
     isSocket: () => false,
     isSymbolicLink: () => false,
-  } as unknown as fs.Dirent;
+  } as fs.Dirent;
 }
 
 function formatReaddirResult(
   entries: string[],
   options?: unknown,
   dirPath = "",
-): any {
+): string[] | Buffer[] | fs.Dirent[] {
   if (
     options &&
     typeof options === "object" &&
-    (options as { withFileTypes?: boolean }).withFileTypes
+    "withFileTypes" in options &&
+    Boolean(options.withFileTypes)
   ) {
     return entries.map((name) => createMockDirent(name, dirPath));
   }
 
-  const encoding =
-    typeof options === "string"
-      ? options
-      : (options as { encoding?: string | null } | undefined)?.encoding;
+  const encoding = extractEncoding(options);
 
   if (encoding === "buffer") {
     return entries.map((entry) => Buffer.from(entry, "utf-8"));
@@ -219,17 +239,20 @@ export function ensureLighthouseVirtualFs(): void {
     return;
   }
   isVirtualFsInstalled = true;
-  originalReaddirSync = fs.readdirSync;
-  originalReadFileSync = fs.readFileSync;
+  const rawReaddirSync = fs.readdirSync;
+  const rawReadFileSync = fs.readFileSync;
+  originalReaddirSync = rawReaddirSync;
+  originalReadFileSync = rawReadFileSync;
 
-  const patchedReaddirSync: typeof fs.readdirSync = ((
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Node fs.readdirSync has multiple conditional return overloads
+  const patchedReaddirSync = ((
     targetPath: fs.PathLike,
     options?: unknown,
-  ): any => {
+  ): unknown => {
     try {
-      return (originalReaddirSync as any)(targetPath, options);
+      return Reflect.apply(rawReaddirSync, fs, [targetPath, options]);
     } catch (error: unknown) {
-      if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+      if (isEnoentError(error)) {
         const pathStr = typeof targetPath === "string" ? targetPath : "";
         if (isLocalesPath(targetPath)) {
           return formatReaddirResult(
@@ -247,14 +270,15 @@ export function ensureLighthouseVirtualFs(): void {
     }
   }) as typeof fs.readdirSync;
 
-  const patchedReadFileSync: typeof fs.readFileSync = ((
-    targetPath: fs.PathLike,
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Node fs.readFileSync has multiple conditional return overloads
+  const patchedReadFileSync = ((
+    targetPath: fs.PathOrFileDescriptor,
     options?: unknown,
-  ): any => {
+  ): unknown => {
     try {
-      return (originalReadFileSync as any)(targetPath, options);
+      return Reflect.apply(rawReadFileSync, fs, [targetPath, options]);
     } catch (error: unknown) {
-      if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+      if (isEnoentError(error)) {
         const virtualContent = getVirtualAssetContent(targetPath);
         if (virtualContent !== null) {
           return formatReadFileResult(virtualContent, options);
@@ -267,9 +291,6 @@ export function ensureLighthouseVirtualFs(): void {
   fs.readdirSync = patchedReaddirSync;
   fs.readFileSync = patchedReadFileSync;
 }
-
-// Auto-install virtual filesystem shims at import time so compiled binaries never hit ENOENT
-ensureLighthouseVirtualFs();
 
 export function restoreLighthouseVirtualFs(): void {
   if (!isVirtualFsInstalled) {

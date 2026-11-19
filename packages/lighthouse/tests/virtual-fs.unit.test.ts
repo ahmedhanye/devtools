@@ -5,7 +5,7 @@ import {
   CANONICAL_LOCALES_FILES,
   ensureLighthouseVirtualFs,
   restoreLighthouseVirtualFs,
-} from "../src/virtual-fs";
+} from "../src/infra/runtime/virtual-fs";
 
 describe("virtual-fs", () => {
   it("exports canonical locale message files list containing en-US.json", () => {
@@ -241,6 +241,17 @@ describe("virtual-fs", () => {
       // Real filesystem reads work
       const realPkg = fs.readFileSync("package.json", "utf-8");
       expect(realPkg).toContain("devtools");
+
+      // Alternate encodings and fallback Buffer handling for virtual assets
+      const latin1Css = fs.readFileSync(
+        "/$bunfs/root/../assets/styles.css",
+        "latin1",
+      );
+      expect(typeof latin1Css).toBe("string");
+      expect(latin1Css.length).toBeGreaterThan(0);
+
+      const defaultBuf = fs.readFileSync("/$bunfs/root/../assets/styles.css");
+      expect(Buffer.isBuffer(defaultBuf)).toBe(true);
 
       // Non-existent unrelated file throws ENOENT
       expect(() =>

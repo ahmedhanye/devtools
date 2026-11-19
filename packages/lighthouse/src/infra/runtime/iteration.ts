@@ -1,20 +1,22 @@
 import {
+  launchBrowserSession,
   resolveBrowserPath,
   type BrowserResolution,
+  type BrowserSession,
+  type BrowserSessionDependencies,
   type ResolveBrowserOptions,
 } from "@devtools/browser";
-import { throwIfAborted } from "./abort";
-import { resolveChromeSandboxDisabled } from "./config";
-import { WorkerExecutionError } from "./errors";
+import type { ExecuteIterationParams } from "../../application";
+import {
+  WorkerExecutionError,
+  type LighthouseFormFactor,
+  type LighthouseProgressEvent,
+  type LighthouseThrottlingMethod,
+  type RawLighthouseResult,
+  type SingleIterationResult,
+} from "../../contracts";
+import { throwIfAborted } from "../../domain";
 import { ensureLighthouseVirtualFs } from "./virtual-fs";
-import type {
-  ExecuteIterationParams,
-  LighthouseFormFactor,
-  LighthouseProgressEvent,
-  LighthouseThrottlingMethod,
-  RawLighthouseResult,
-  SingleIterationResult,
-} from "./types";
 
 /**
  * Minimal structural shape of a Lighthouse configuration object (`LH.Config`).
@@ -45,12 +47,7 @@ export interface IterationDependencies {
   resolveBrowser?: (
     options?: ResolveBrowserOptions,
   ) => Promise<BrowserResolution>;
-  launchChrome?: (options: {
-    chromePath: string;
-    chromeFlags: string[];
-    port: number;
-    logLevel: "silent";
-  }) => Promise<{ port: number; kill: () => Promise<void> | void }>;
+  launchChrome?: BrowserSessionDependencies["launchChrome"];
   runLighthouse?: (
     url: string,
     flags: Record<string, unknown>,
@@ -164,22 +161,16 @@ export async function executeIteration(
 ): Promise<SingleIterationResult> {
   throwIfAborted(params.signal);
 
-  const resolveBrowser = deps.resolveBrowser ?? resolveBrowserPath;
-  const launchChrome =
-    deps.launchChrome ??
-    ((await import("chrome-launcher")).launch as unknown as NonNullable<
-      IterationDependencies["launchChrome"]
-    >);
   let runLh = deps.runLighthouse;
   if (!runLh) {
     ensureLighthouseVirtualFs();
     const { registerBundledModules } = await import("./bundled-modules");
     await registerBundledModules();
-    runLh = (await import("lighthouse")).default as unknown as NonNullable<
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Official lighthouse RunnerResult omits a TS index signature expected by RawLighthouseResult
+    runLh = (await import("lighthouse")).default as NonNullable<
       IterationDependencies["runLighthouse"]
     >;
   }
-  const Launcher = (await import("chrome-launcher")).Launcher;
 
   const emitStage = (
     stage: LighthouseProgressEvent["stage"],
@@ -194,54 +185,45 @@ export async function executeIteration(
     });
   };
 
-  emitStage("locating_browser", "Resolving Chromium executable");
-  const browser = await resolveBrowser({
-    chromePath: params.chromePath,
-    env: params.env,
-  });
-  throwIfAborted(params.signal);
+  let browser = params.browser;
+  if (!browser) {
+    emitStage("locating_browser", "Resolving Chromium executable");
+    const resolveBrowser = deps.resolveBrowser ?? resolveBrowserPath;
+    try {
+      browser = await resolveBrowser({
+        chromePath: params.chromePath,
+        env: params.env,
+        ...(params.signal ? { signal: params.signal } : {}),
+      });
+    } catch (err: unknown) {
+      throwIfAborted(params.signal);
+      throw err;
+    }
+    throwIfAborted(params.signal);
+  }
 
   emitStage(
     "launching_browser",
     `Launching headless Chromium (${browser.version})`,
   );
-  const disableSandbox = resolveChromeSandboxDisabled({
-    disableSandbox: params.disableSandbox,
-    env: params.env,
-  });
-  const chromeFlags = [
-    ...Launcher.defaultFlags(),
-    "--headless=new",
-    ...(disableSandbox ? ["--no-sandbox"] : []),
-    "--disable-gpu",
-    "--disable-dev-shm-usage",
-  ];
 
-  const launchedChrome = await launchChrome({
-    chromePath: browser.executablePath,
-    chromeFlags,
-    port: 0,
-    logLevel: "silent",
-  });
-
-  if (params.signal?.aborted) {
-    await launchedChrome.kill();
+  let session: BrowserSession;
+  try {
+    session = await launchBrowserSession(
+      {
+        browser,
+        disableSandbox: params.disableSandbox,
+        env: params.env,
+        signal: params.signal,
+      },
+      {
+        launchChrome: deps.launchChrome,
+      },
+    );
+  } catch (err: unknown) {
     throwIfAborted(params.signal);
+    throw err;
   }
-
-  const cleanupSignal = async (): Promise<void> => {
-    await launchedChrome.kill();
-  };
-  const onAbort = (): void => {
-    try {
-      void Promise.resolve(launchedChrome.kill()).catch(() => {});
-    } catch {
-      // finally block retries kill()
-    }
-  };
-  process.once("SIGTERM", cleanupSignal);
-  process.once("SIGINT", cleanupSignal);
-  params.signal?.addEventListener("abort", onAbort, { once: true });
 
   try {
     emitStage(
@@ -258,7 +240,7 @@ export async function executeIteration(
     const runnerResult = await runLh(
       params.url,
       {
-        port: launchedChrome.port,
+        port: session.port,
         hostname: "127.0.0.1",
         output: ["json", "html"],
         logLevel: "silent",
@@ -291,9 +273,6 @@ export async function executeIteration(
     throwIfAborted(params.signal);
     throw err;
   } finally {
-    params.signal?.removeEventListener("abort", onAbort);
-    process.off("SIGTERM", cleanupSignal);
-    process.off("SIGINT", cleanupSignal);
-    await launchedChrome.kill();
+    await session.kill();
   }
 }

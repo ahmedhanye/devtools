@@ -1,9 +1,9 @@
-import { EmptyRunsError } from "./errors";
-import type {
-  LighthouseMedianMetadata,
-  RawLighthouseResult,
-  SingleIterationResult,
-} from "./types";
+import {
+  EmptyRunsError,
+  type LighthouseMedianMetadata,
+  type RawLighthouseResult,
+  type SingleIterationResult,
+} from "../contracts";
 
 /**
  * Result returned by {@link computeRepresentativeRun}.
@@ -67,7 +67,8 @@ function pickMiddleValue(values: number[]): number {
 export function computeRepresentativeRun(
   runs: readonly SingleIterationResult[],
 ): RepresentativeRunSelection {
-  if (runs.length === 0) {
+  const [firstRun] = runs;
+  if (!firstRun) {
     throw new EmptyRunsError(
       "Cannot compute a representative run from an empty runs array",
     );
@@ -75,42 +76,48 @@ export function computeRepresentativeRun(
 
   if (runs.length === 1) {
     return {
-      representative: runs[0]!,
+      representative: firstRun,
       runIndex: 0,
       medianMetadata: null,
     };
   }
 
-  const fcpValues = runs.map((r) => getFcpMs(r.lhr));
-  const interactiveValues = runs.map((r) => getInteractiveOrTbtMs(r.lhr));
+  const runMetrics = runs.map((run, runIndex) => ({
+    runIndex,
+    fcpMs: getFcpMs(run.lhr),
+    interactiveMs: getInteractiveOrTbtMs(run.lhr),
+  }));
 
-  const medianFcpMs = pickMiddleValue(fcpValues);
-  const medianInteractiveMs = pickMiddleValue(interactiveValues);
-
-  const runDistances = runs.map((_, idx) => {
-    const fcpMs = fcpValues[idx]!;
-    const interactiveMs = interactiveValues[idx]!;
-    const distanceSquared =
-      (fcpMs - medianFcpMs) ** 2 + (interactiveMs - medianInteractiveMs) ** 2;
-    return {
-      runIndex: idx,
-      fcpMs,
-      interactiveMs,
-      distanceSquared,
-    };
-  });
-
-  const sortedByDistance = runDistances.toSorted(
-    (a, b) => a.distanceSquared - b.distanceSquared || a.runIndex - b.runIndex,
+  const medianFcpMs = pickMiddleValue(runMetrics.map((m) => m.fcpMs));
+  const medianInteractiveMs = pickMiddleValue(
+    runMetrics.map((m) => m.interactiveMs),
   );
-  const best = sortedByDistance[0]!;
+
+  const runDistances = runMetrics.map((m) => ({
+    runIndex: m.runIndex,
+    fcpMs: m.fcpMs,
+    interactiveMs: m.interactiveMs,
+    distanceSquared:
+      (m.fcpMs - medianFcpMs) ** 2 +
+      (m.interactiveMs - medianInteractiveMs) ** 2,
+  }));
+
+  let bestIndex = 0;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const entry of runDistances) {
+    if (entry.distanceSquared < bestDistance) {
+      bestDistance = entry.distanceSquared;
+      bestIndex = entry.runIndex;
+    }
+  }
+  const representative = runs[bestIndex] ?? firstRun;
 
   return {
-    representative: runs[best.runIndex]!,
-    runIndex: best.runIndex,
+    representative,
+    runIndex: bestIndex,
     medianMetadata: {
       totalRuns: runs.length,
-      selectedRunIndex: best.runIndex,
+      selectedRunIndex: bestIndex,
       medianFcpMs,
       medianInteractiveMs,
       runDistances,

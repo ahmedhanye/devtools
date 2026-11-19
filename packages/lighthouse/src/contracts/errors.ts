@@ -21,28 +21,6 @@ export class InvalidAuditOptionsError extends Error {
 }
 
 /**
- * Error thrown when an isolated Lighthouse worker subprocess exits with a failure
- * or fails to produce a valid LHR result.
- */
-export class LighthouseExecutionError extends Error {
-  /** Suggested CLI exit code (`1`) when this error terminates a command. */
-  readonly exitCode = 1;
-  /** Machine-readable error code (`"LIGHTHOUSE_EXECUTION_ERROR"`). */
-  readonly code = "LIGHTHOUSE_EXECUTION_ERROR" as const;
-
-  /**
-   * Creates a new {@link LighthouseExecutionError}.
-   *
-   * @param message - Diagnostic explanation of the worker or Lighthouse runtime failure.
-   * @param options - Optional native error options including error cause.
-   */
-  constructor(message: string, options?: ErrorOptions) {
-    super(message, options);
-    this.name = "LighthouseExecutionError";
-  }
-}
-
-/**
  * Error thrown when attempting to compute a representative run from an empty runs array.
  */
 export class EmptyRunsError extends Error {

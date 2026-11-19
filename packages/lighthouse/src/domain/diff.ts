@@ -1,11 +1,24 @@
-import type { LighthouseRunRow, LighthouseRunSummaryData } from "@devtools/db";
 import {
   type InsightDiffSummary,
   type LighthouseDiffDeltas,
+  type LighthouseRunRecord,
+  type LighthouseRunSummary,
   LighthouseRunSummaryDataSchema,
-} from "./schemas";
+} from "../contracts";
 
-export type { InsightDiffSummary };
+/**
+ * Empty fallback {@link LighthouseRunSummary} used when a persisted `summary_json` payload is malformed.
+ */
+export const EMPTY_LIGHTHOUSE_RUN_SUMMARY: LighthouseRunSummary = {
+  lcpElement: null,
+  lcpPhases: null,
+  clsCulprits: [],
+  insights: [],
+  failedAudits: [],
+  runWarnings: [],
+  runtimeError: null,
+  medianMetadata: null,
+};
 
 function isFailingInsight(insight: {
   score: number | null;
@@ -30,7 +43,7 @@ function computeNumericDelta(
 }
 
 /**
- * Parses and validates a raw `summaryJson` column value into {@link LighthouseRunSummaryData},
+ * Parses and validates a raw `summaryJson` column value into {@link LighthouseRunSummary},
  * returning `null` if missing or malformed.
  *
  * @param rawSummary - Raw column value (parsed object, JSON string, or `null`/`undefined`).
@@ -38,7 +51,7 @@ function computeNumericDelta(
  */
 export function parseRunSummary(
   rawSummary: unknown,
-): LighthouseRunSummaryData | null {
+): LighthouseRunSummary | null {
   if (!rawSummary) {
     return null;
   }
@@ -55,7 +68,7 @@ export function parseRunSummary(
 }
 
 function collectFailingInsights(
-  summary: LighthouseRunSummaryData,
+  summary: LighthouseRunSummary,
 ): Map<string, { id: string; title: string }> {
   const failing = new Map<string, { id: string; title: string }>();
   for (const item of summary.insights ?? []) {
@@ -87,8 +100,8 @@ function collectMissingInsights(
  * @returns Status transitions identifying resolved and regressed audits.
  */
 export function computeInsightDiff(
-  s1?: LighthouseRunSummaryData | null,
-  s2?: LighthouseRunSummaryData | null,
+  s1?: LighthouseRunSummary | null,
+  s2?: LighthouseRunSummary | null,
 ): InsightDiffSummary {
   if (!s1 || !s2) {
     return { resolved: [], regressed: [], clsCulpritDelta: null };
@@ -107,55 +120,44 @@ export function computeInsightDiff(
   return { resolved, regressed, clsCulpritDelta };
 }
 
-const SCORE_KEYS = [
-  "performanceScore",
-  "accessibilityScore",
-  "bestPracticesScore",
-  "seoScore",
-] as const;
-
-const METRIC_KEYS = [
-  "lcpMs",
-  "cls",
-  "tbtMs",
-  "fcpMs",
-  "siMs",
-  "ttfbMs",
-] as const;
-
-function computeDeltaGroup<K extends keyof LighthouseRunRow>(
-  baseline: LighthouseRunRow,
-  comparison: LighthouseRunRow,
-  keys: readonly K[],
-): Record<K, number | null> {
-  const result = {} as Record<K, number | null>;
-  for (const key of keys) {
-    result[key] = computeNumericDelta(
-      baseline[key] as number | null,
-      comparison[key] as number | null,
-    );
-  }
-  return result;
-}
+type NumericRunKey = {
+  [K in keyof LighthouseRunRecord]: LighthouseRunRecord[K] extends number | null
+    ? K
+    : never;
+}[keyof LighthouseRunRecord];
 
 /**
  * Computes pairwise score, Core Web Vitals, and Insight Audit deltas (`comparison - baseline`)
- * between two persisted {@link LighthouseRunRow} records.
+ * between two persisted {@link LighthouseRunRecord} entries.
  *
  * @param baseline - Baseline run record.
  * @param comparison - Comparison run record.
  * @returns Structured score, metric, and insight delta summary.
  */
 export function computeRunDeltas(
-  baseline: LighthouseRunRow,
-  comparison: LighthouseRunRow,
+  baseline: LighthouseRunRecord,
+  comparison: LighthouseRunRecord,
 ): LighthouseDiffDeltas {
   const baselineSummary = parseRunSummary(baseline.summaryJson);
   const comparisonSummary = parseRunSummary(comparison.summaryJson);
+  const delta = (key: NumericRunKey) =>
+    computeNumericDelta(baseline[key], comparison[key]);
 
   return {
-    scores: computeDeltaGroup(baseline, comparison, SCORE_KEYS),
-    metrics: computeDeltaGroup(baseline, comparison, METRIC_KEYS),
+    scores: {
+      performanceScore: delta("performanceScore"),
+      accessibilityScore: delta("accessibilityScore"),
+      bestPracticesScore: delta("bestPracticesScore"),
+      seoScore: delta("seoScore"),
+    },
+    metrics: {
+      lcpMs: delta("lcpMs"),
+      cls: delta("cls"),
+      tbtMs: delta("tbtMs"),
+      fcpMs: delta("fcpMs"),
+      siMs: delta("siMs"),
+      ttfbMs: delta("ttfbMs"),
+    },
     insights: computeInsightDiff(baselineSummary, comparisonSummary),
   };
 }

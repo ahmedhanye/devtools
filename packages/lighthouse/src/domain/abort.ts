@@ -1,4 +1,4 @@
-import { AuditCancelledError } from "./errors";
+import { AuditCancelledError } from "../contracts";
 
 /**
  * Throws {@link AuditCancelledError} if the provided `AbortSignal` has already aborted.
