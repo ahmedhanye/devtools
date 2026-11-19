@@ -1,98 +1,87 @@
-# CLI and Loopback Daemon Architecture
+# CLI and Daemon architecture
 
-Detailed architecture, command routing, programmatic seams, and daemon lifecycles for `apps/cli`.
+Command routing, Programmatic CLI Seams, Daemon hosting, 3-phase shutdown, and standalone binary bundling for `apps/cli`.
 
-## Command-line interface architecture
+## Module responsibilities
 
-`apps/cli` provides developer tooling commands via Commander.js:
+| Path                       | Responsibility                                                                   | Entrypoint                         |
+| :------------------------- | :------------------------------------------------------------------------------- | :--------------------------------- |
+| `apps/cli/bin/devtools.js` | 4-line executable shebang delegating to `executeCliMain(import.meta.main)`.      | `apps/cli/bin/devtools.js`         |
+| `apps/cli/src/app/`        | Commander tree assembly (`program.ts`) and host runner (`main.ts`).              | `apps/cli/src/app/index.ts`        |
+| `apps/cli/src/commands/`   | Isolated vertical slices for `browser`, `lighthouse`, and `web` (Daemon + port). | `apps/cli/src/commands/*/index.ts` |
+| `apps/cli/src/shared/`     | `NO_COLOR` / `FORCE_COLOR` / TTY color guards and embedded asset declarations.   | `apps/cli/src/shared/terminal/`    |
+| `apps/cli/src/index.ts`    | Curated Programmatic CLI Seam (`createProgram`, `runCli`, `startDaemon`).        | `apps/cli/src/index.ts`            |
 
-```text
-apps/cli/
-├── bin/
-│   └── devtools.js            # Executable shebang wrapper (4 lines)
-├── src/
-│   ├── lighthouse/            # Lighthouse subcommands, shared context, budgets & formatters
-│   ├── browser.ts             # Browser status & install command handlers
-│   ├── cli.ts                 # Commander command tree & signal handling
-│   ├── colors.ts              # NO_COLOR / FORCE_COLOR / TTY color helpers
-│   ├── daemon.ts              # Unified loopback daemon & SQLite ownership
-│   ├── declarations.d.ts      # Embedded Lighthouse asset module declarations
-│   ├── index.ts               # Programmatic re-exports for testing & embedding
-│   └── port.ts                # Ephemeral & assigned port resolution
-└── tests/                     # Change-scoped unit, integration, & E2E suites
-```
+## Command tree
 
-### Command tree and routing
+Commander registers command metadata synchronously so `--help` completes in under 20 ms, while action handlers dynamically import heavy modules on demand.
 
-- `devtools`: Root program declaring global `--help`, `--version`, and command registration.
-- `devtools web`: Boots the unified loopback daemon, starts the local web dashboard, and mounts the API.
-- `devtools browser status`: Queries Chromium resolution status across cache and system probes.
-- `devtools browser install`: Downloads and caches Chrome for Testing binaries into the managed cache directory.
-- `devtools lighthouse [url]`: Executes isolated Lighthouse performance audits with `--agent`, `--json`, and `--fail-under` budget gating.
-- `devtools lighthouse list`: Lists historical Lighthouse audit runs from SQLite.
-- `devtools lighthouse diff <id1> <id2>`: Computes and renders score, CWV, and insight deltas via `@devtools/lighthouse`.
-- `devtools lighthouse open [id]`: Opens a persisted `report.html` artifact in the system browser (or prints its `file://` URI in headless environments).
+| Command                                | Purpose                                                                                                 |
+| :------------------------------------- | :------------------------------------------------------------------------------------------------------ |
+| `devtools`                             | Root program providing `--help` (`-h`) and `--version` (`-V`).                                          |
+| `devtools web`                         | Starts the local Daemon serving `/api/*` and static frontend assets on one loopback port.               |
+| `devtools browser status`              | Queries Chromium resolution status across Managed Browser Cache and system probes.                      |
+| `devtools browser install`             | Downloads and caches Chrome for Testing binaries into the Managed Browser Cache.                        |
+| `devtools lighthouse [url]`            | Runs isolated Lighthouse Audit Runs with `--agent`, `--json`, and `--fail-under` Performance Budgets.   |
+| `devtools lighthouse list`             | Lists persisted Lighthouse Audit Runs from SQLite.                                                      |
+| `devtools lighthouse diff <id1> <id2>` | Computes score, Core Web Vitals, and Insight Audit deltas via `@devtools/lighthouse`.                   |
+| `devtools lighthouse open [id]`        | Opens a persisted `report.html` Report Artifact (or prints its `file://` URI in headless environments). |
 
-### Programmatic library seams
+## Programmatic CLI Seams
 
-To decouple command logic from process execution, `src/index.ts` exports library functions:
+`apps/cli/src/index.ts` exports in-process entrypoints decoupled from the executable wrapper:
 
-- `createProgram()`: Assembles the Commander command tree without calling `parse()`.
-- `runCli(argv)`: Parses command arguments and executes actions.
-- `startDaemon(options)`: Boots SQLite migrations, mounts `/api/*`, starts the HTTP server, and returns an instance handle with `.stop()`, `.port`, `.hostname`, and `.staticDir`.
-- `runBrowserStatusCommand(options, deps)` & `runBrowserInstallCommand(options, deps)`: Executes browser commands with injectable dependency seams.
-- `registerLighthouseCommands(program, handlers)` & Lighthouse command runners (`runLighthouseAuditCommand`, `runLighthouseListCommand`, `runLighthouseDiffCommand`, `runLighthouseOpenCommand`): Share `createLighthouseCliContext` (`src/lighthouse/context.ts`) and injectable test seams across Lighthouse subcommands.
+- **`createProgram()`.** Builds the Commander command tree without calling `parse()`.
+- **`runCli(argv)`.** Parses arguments and invokes matching actions.
+- **`startDaemon(options)`.** Lazily wires `openLighthouseStore`, mounts `/api/*`, registers Phase 1 (`ingress`) and Phase 2 (`work`) hooks on `ShutdownCoordinator`, starts `Bun.serve()`, and returns `.stop()`, `.port`, `.hostname`, and `.staticDir`.
 
-This programmatic seam allows integration test suites to execute commands in-process without spawning OS child processes.
+Command slices expose injectable handlers behind their barrels (`runBrowserStatusCommand`, `runBrowserInstallCommand`, `registerLighthouseCommands`, `runLighthouse*Command`, `createLighthouseCliContext`, `runWebCommand`) so tests run commands in-process without spawning child processes.
 
-## Unified loopback daemon lifecycle
-
-The loopback daemon unifies the backend API and frontend static dashboard into a single process listening on one port:
+## Daemon lifecycle
 
 ```mermaid
 sequenceDiagram
   autonumber
   participant User as Developer / Shell
-  participant CLI as apps/cli (CLI Entrypoint)
-  participant Daemon as apps/cli (Daemon Host)
-  participant DB as packages/db (Persistence)
-  participant API as apps/api (Hono Router)
-  participant UI as apps/frontend (Static Assets)
+  participant CLI as "apps/cli (CLI Entrypoint)"
+  participant Daemon as "apps/cli (Daemon)"
+  participant Shutdown as "@devtools/core/node (ShutdownCoordinator)"
+  participant API as "apps/api (Hono Router)"
+  participant Store as "@devtools/lighthouse (LighthouseStore)"
+  participant UI as "apps/frontend (Static Assets)"
 
   User->>CLI: devtools web --port 4000
-  CLI->>Daemon: startDaemon({ port, host, staticDir })
-  Daemon->>DB: getDb({ path, env }) & runMigrations(daemonDb)
-  DB-->>Daemon: Schema migrations applied (WAL mode active)
-  Daemon->>API: createApp({ basePath: '/api', db: daemonDb, env })
-  Daemon->>Daemon: Bun.serve({ fetch: (req, server) => API or Static })
+  CLI->>Daemon: startDaemon({ port, host, staticDir, shutdown })
+  Daemon->>API: createApp({ basePath: "/api", store, shutdown, env })
+  API->>Store: openLighthouseStore({ env, shutdown }) (lazy, zero disk I/O)
+  Daemon->>Daemon: Bun.serve({ fetch: API or Static })
+  Daemon->>Shutdown: Register Phase 1 ingress and Phase 2 work hooks
   Daemon-->>User: Listening on http://127.0.0.1:4000
-  User->>Daemon: GET /api/health
+  User->>Daemon: GET /api/lighthouse/runs
   Daemon->>API: api.fetch(req, { server })
-  API-->>User: 200 OK (HealthResponseSchema)
+  API->>Store: listRunsWithTotal() -> lazy openDb()
+  Store-->>API: Persisted Audit Runs
+  API-->>User: 200 OK
   User->>Daemon: GET /
-  Daemon->>UI: Serve index.html & static chunks
-  UI-->>User: 200 OK (Dashboard UI)
+  Daemon->>UI: Serve index.html and static chunks
+  UI-->>User: 200 OK
 ```
 
-### Request routing and multiplexing
+### Request multiplexing and port resolution
 
-`startDaemon` creates a `Bun.serve()` server that inspects incoming HTTP request URLs:
+- **API routes (`/api/*`).** Handled in-process by `createApp()` from `@devtools/api`, forwarding `{ server }` bindings for socket peer IP checks and SSE timeout disabling (`server.timeout(req, 0)`).
+- **Static assets (`/*`).** Resolved by `serveStaticAsset` from `apps/frontend/dist` (or `--static-dir`). Requests containing path traversal sequences (`../`) fail with `403 Forbidden`.
+- **Port binding.** Defaults to `4000` (or `PORT`). Passing `--port 0` binds an OS-assigned ephemeral port (`daemon.port`) for concurrent test suites.
 
-1. **API Requests (`/api/*`)**: Handled in-process by the Hono application instance created via `createApp({ basePath: "/api", db: daemonDb, env: options.env })` from `@devtools/api`, forwarding `{ server: bunServer }` bindings for socket peer IP checks and SSE timeout disabling (`server.timeout(req, 0)`).
-2. **Static Frontend Assets (`/*`)**: Handled by `serveStaticAsset`, which resolves pre-rendered Next.js static files from `apps/frontend/dist` or candidate distribution directories.
-3. **Security path traversal guard**: Requests containing path traversal sequences (`../`) are intercepted and rejected with HTTP 403 Forbidden.
+### 3-phase Shutdown Coordinator
 
-### Port resolution and ephemeral binding
+`apps/cli/src/app/main.ts` and `apps/cli/src/commands/web/command.ts` delegate `SIGINT` and `SIGTERM` handling to `attachHostSignals` and `createShutdownCoordinator()` from `@devtools/core/node`:
 
-The daemon accepts `--port <number>`:
+1. **Host Process Boundary.** Intercepts `SIGINT` and `SIGTERM` (a second signal force-exits with `130` or `143`).
+2. **Phase 1 (`ingress`).** Calls `server.stop(true)` to halt new HTTP connections while `POST /api/lighthouse/audits` returns `503 SERVICE_UNAVAILABLE`.
+3. **Phase 2 (`work`).** Aborts the shared `AbortSignal`, awaits `api.shutdown()` to cancel active Audit Jobs and settle SSE streams, and closes owned stores.
+4. **Phase 3 (`persistence`).** Runs self-registered `@devtools/db` hooks to flush WAL checkpoints and close SQLite handles, then exits with code `0`.
 
-- Default port: `4000` (or resolved via `PORT`).
-- Ephemeral port: When `--port 0` is supplied, the operating system assigns a free socket dynamically (`daemon.port`). Integration tests use this mechanism to prevent port collision in concurrent CI runners.
+## Standalone binary compilation
 
-### Graceful shutdown and signal termination
-
-`apps/cli/src/cli.ts` binds listeners for `SIGINT` and `SIGTERM`:
-
-1. Intercepts termination signal.
-2. Calls `await daemon.stop()` (`apps/cli/src/daemon.ts`), which stops HTTP connections (`await server.stop(true)`), cancels active Lighthouse audit jobs and awaits settlement (`await api.shutdown()`), and closes SQLite handles (`closeDb()`) last.
-3. Exits with exit code 0.
+Running `bun run build:bin` compiles `apps/cli/bin/devtools.js` with `bun build --compile --minify --bytecode` into a self-contained single-file executable (`dist/devtools`) embedding the Bun runtime, bytecode, bundled baseline SQL schema, and Lighthouse assets with no external Bun dependency. For release targets and Checksum Manifests, see [Releases and distribution](../contributing/releases.md).

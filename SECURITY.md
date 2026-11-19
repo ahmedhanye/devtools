@@ -1,42 +1,39 @@
 # Security policy
 
-The DevTools project takes repository, dependency, and software security seriously. We appreciate the responsible disclosure of security vulnerabilities by researchers and contributors.
+Responsible disclosure channels, supported release lines, and triage timelines for reporting security vulnerabilities in DevTools.
 
 ## Supported versions
 
 Only the latest active minor release line receives security updates and patches. Older versions and unreleased tags are not supported.
 
-| Version        | Supported |
-| -------------- | --------- |
-| >= 0.0.1 < 0.1 | Yes       |
-| < 0.0.1        | No        |
+| Version | Supported |
+| :------ | :-------- |
+| `0.1.x` | Yes       |
+| `< 0.1` | No        |
 
 ## Reporting a vulnerability
 
-Report security vulnerabilities confidentially through private channels rather than public issues, discussions, or pull requests. Public disclosure exposes users before a fix is prepared and verified.
+> [!CAUTION]
+> Report security vulnerabilities confidentially through private channels. Do not open public issues, discussions, or pull requests for undisclosed vulnerabilities.
 
-### Primary disclosure channel: Private Vulnerability Reporting (PVR)
+### Primary disclosure channel
 
-Submit all vulnerability reports through GitHub Private Vulnerability Reporting:
+Submit vulnerability reports through [GitHub Private Vulnerability Reporting](https://github.com/AhmedHanye/devtools/security/advisories/new).
 
-> **[Submit Security Advisory](https://github.com/AhmedHanye/devtools/security/advisories/new)**
-
-If you are unable to use the GitHub Advisory interface, contact repository maintainer **[@AhmedHanye](https://github.com/AhmedHanye)** directly via GitHub.
+If you cannot access the GitHub Advisory interface, contact repository maintainer [@AhmedHanye](https://github.com/AhmedHanye) directly via GitHub.
 
 ### Required report details
 
-Please include the following information in your report:
-
-1. **Type of Issue:** Vulnerability type (for example, command injection, path traversal, privilege escalation, credential exposure).
-2. **Affected Components:** Affected packages or services (`@devtools/cli`, `@devtools/api`, `@devtools/frontend`, `@devtools/core`, `@devtools/db`, `@devtools/browser`, `@devtools/lighthouse`, or repository workflows).
-3. **Environment:** OS, architecture, and Bun version (`bun --version`).
-4. **Proof of Concept (PoC):** Step-by-step instructions or minimal code reproducing the vulnerability.
-5. **Impact Assessment:** Plausible attack scenarios and consequences.
-6. **Suggested Remediation:** Any recommended fixes, mitigations, or patches (if available).
+1. **Type of issue.** Vulnerability class (for example, command injection, path traversal, privilege escalation, or credential exposure).
+2. **Affected components.** Impacted packages, applications (`@devtools/cli`, `@devtools/api`, `@devtools/frontend`, `@devtools/core`, `@devtools/db`, `@devtools/browser`, `@devtools/lighthouse`), or workflows.
+3. **Environment.** Operating system, CPU architecture, and Bun version (`bun --version`).
+4. **Proof of concept.** Step-by-step reproduction instructions or minimal code.
+5. **Impact assessment.** Plausible attack scenarios and consequences.
+6. **Suggested remediation.** Recommended fixes, mitigations, or patches if available.
 
 ## Triage SLA and disclosure process
 
-- **48-Hour Triage SLA:** The maintainer will acknowledge receipt of the report and begin initial triage assessment within **48 hours**.
-- **Assessment & Fix:** We will collaborate with the reporter in the private GitHub security advisory workspace to evaluate impact, develop a fix, and prepare a release candidate.
-- **Coordinated Disclosure:** Security advisories and patches are coordinated under a standard 90-day Coordinated Vulnerability Disclosure (CVD) timeline, or earlier upon mutual agreement once patches are published.
-- **Credit & Attribution:** Reporters are credited in the published GitHub Security Advisory and release notes, unless they request to remain anonymous.
+- **48-hour triage SLA.** Maintainers acknowledge receipt and begin initial triage within 48 hours.
+- **Assessment and fix.** Maintainers collaborate with the reporter in the private GitHub advisory workspace to evaluate impact, develop a fix, and prepare a release.
+- **Coordinated disclosure.** Advisories and patches follow a 90-day Coordinated Vulnerability Disclosure timeline, or publish earlier by mutual agreement once patches ship.
+- **Credit and attribution.** Reporters receive credit in the published GitHub Security Advisory and release notes unless they request anonymity.

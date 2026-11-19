@@ -1,68 +1,47 @@
-# TypeScript Coding Standards
+# TypeScript coding standards
 
-Repository-wide TypeScript engineering standards and language baselines across all monorepo packages and applications.
+Repository-wide TypeScript compiler baselines, type hygiene, Zod boundary validation, and error conventions across all workspaces.
 
 ## Compiler baselines
 
-All workspaces inherit compiler settings from [tsconfig.base.json](../../tsconfig.base.json):
+All workspaces inherit compiler settings from [`tsconfig.base.json`](../../tsconfig.base.json):
 
-1. **Strict type checking**: `strict: true` and `noUncheckedIndexedAccess: true` are enabled everywhere. Accessing indexable collections (`arr[i]`, `record[key]`) produces `T | undefined`, requiring explicit guard checks before access.
-2. **Modern target and bundling**: `target: "ES2022"` and `moduleResolution: "bundler"` enable native modern JavaScript constructs, top-level `await`, and direct TypeScript source resolution.
-3. **Isolated modules**: `isolatedModules: true` guarantees that every file can be transpiled independently without whole-program type analysis.
+- **Strict checks.** `strict`, `noUncheckedIndexedAccess`, `noUnusedLocals`, `noUnusedParameters`, `noImplicitOverride`, `noFallthroughCasesInSwitch`, `noImplicitReturns`, and `verbatimModuleSyntax` are enabled everywhere (`erasableSyntaxOnly` is enabled across non-CSP-evaluator workspaces). Indexed accesses (`arr[i]`, `record[key]`) evaluate to `T | undefined` and require explicit guards.
+- **Target and bundling.** `target: "ES2024"`, `moduleResolution: "bundler"`, and `isolatedModules: true` enable modern syntax, direct TypeScript source imports, and independent per-file transpilation.
 
 ## Type hygiene and imports
 
-1. **Type-only imports**: Enforce `import type { ... }` when importing types, interfaces, or type aliases. This preserves runtime bundle isolation and prevents circular runtime dependencies:
-   ```ts
-   // Good
-   import type { ServerConfig } from "./types";
-   import { createServer } from "./server";
-
-   // Bad: imports type with runtime import syntax
-   import { ServerConfig, createServer } from "./server";
-   ```
-2. **No arbitrary `any`**: Never use `any`. Use `unknown` when incoming data types are unverified at compile time, and narrow types using type guards, discriminating unions, or Zod schemas before operating on them.
-3. **Inference vs. explicit annotations**:
-   - Infer local variables and simple internal return values to minimize visual noise.
-   - Explicitly annotate exported public APIs, functions, class methods, and library entrypoints to maintain clear public contracts and catch unintended signature drift:
-   ```ts
-   // Public package export: explicit parameter and return types
-   export function parsePort(input: string | undefined): number {
-     const resolved = Number(input);
-     return Number.isInteger(resolved) && resolved > 0 ? resolved : 4000;
-   }
-   ```
+- **Type-only imports.** Always write `import type { ... }` for types, interfaces, and type aliases (`verbatimModuleSyntax` enforces this).
+- **Ban `any` and unsafe assertions.** Never use `any`, and avoid unsafe narrowing `as` assertions in production source (`typescript/no-unsafe-type-assertion`). Narrow `unknown` inputs with type guards, discriminated unions, or Zod schemas.
+- **Inference vs. explicit annotations.** Infer local variables and internal helpers; annotate exported functions, class methods, and public entrypoints explicitly to lock down public contracts.
 
 ## Schema-first domain contracts (Zod)
 
-1. **Single source of truth**: All data crossing system boundaries (HTTP request/response bodies, CLI arguments, environment configuration, database query results, IPC messages) must be validated through Zod schemas.
-2. **Inferred types**: Derive TypeScript types directly from schemas using `z.infer<typeof Schema>` instead of duplicating type definitions manually:
-   ```ts
-   import { z } from "zod";
+Validate all data crossing system boundaries (HTTP payloads, CLI flags, environment config, database rows, IPC messages) with Zod, and derive TypeScript types directly from schemas using `z.infer`:
 
-   export const DaemonConfigSchema = z
-     .object({
-       port: z.number().int().min(0).max(65535).default(4000),
-       host: z.string().default("127.0.0.1"),
-       staticDir: z.string().optional(),
-     })
-     .strict();
+```ts
+export const ExampleConfigSchema = z
+  .object({
+    port: z.number().int().min(0).max(65535).default(4000),
+    host: z.string().min(1).default("127.0.0.1"),
+  })
+  .strict();
 
-   export type DaemonConfig = z.infer<typeof DaemonConfigSchema>;
-   ```
-3. **Strict schema parsing**: Use `.strict()` or `.parse()` on boundary payloads to reject unexpected fields when security or contract integrity requires exact input shapes.
+export type ExampleConfig = z.infer<typeof ExampleConfigSchema>;
+```
+
+Use `.strict()` on boundary objects when unexpected keys must fail validation. See `packages/core/src/config.ts` and `packages/lighthouse/src/contracts/schemas.ts` for live schemas.
 
 ## Error handling and causes
 
-1. **Native Error instances with causes**: Always throw instances of `Error` or custom subclasses. When wrapping lower-level exceptions, attach the original error using the native `cause` option to preserve stack traces:
-   ```ts
-   try {
-     await initializeDatabase();
-   } catch (error) {
-     throw new Error("Failed to initialize persistence engine", {
-       cause: error,
-     });
-   }
-   ```
-2. **No primitive throws**: Never throw string literals, numbers, or anonymous objects (`throw "error"` or `throw { msg: "fail" }`).
-3. **Distinct domain errors**: For domain-specific failure modes, define specialized error classes extending `Error` (e.g. `BrowserNotFoundError`, `InvalidPortError`) to allow programmatic handling via `instanceof`.
+- **Native `Error` subclasses with `cause`.** Always throw `Error` or domain subclasses (`BrowserNotFoundError`, `InvalidPortError`, `WorkerExecutionError`), attaching lower-level exceptions via `{ cause: error }`:
+  ```ts
+  try {
+    await initializeDatabase();
+  } catch (error) {
+    throw new Error("Failed to initialize persistence engine", {
+      cause: error,
+    });
+  }
+  ```
+- **No primitive throws.** Never throw strings, numbers, or plain objects.

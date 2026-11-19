@@ -1,50 +1,54 @@
 # DevTools
 
-Developer tooling monorepo providing development utilities and workflows across CLI, daemon, API, and frontend interfaces.
+Developer tooling monorepo providing local workflows across CLI, Daemon, HTTP API, and web dashboard interfaces.
 
 ## Workspaces
 
-- **`apps/cli`** (`@devtools/cli`): Command-line interface for DevTools workflows.
-- **`apps/api`** (`@devtools/api`): HTTP API server powered by Hono.
-- **`apps/frontend`** (`@devtools/frontend`): Web dashboard and user interface built with Next.js.
-- **`packages/core`** (`@devtools/core`): Shared domain models, configuration schemas, and utilities.
-- **`packages/db`** (`@devtools/db`): Database persistence schemas and migration utilities.
-- **`packages/browser`** (`@devtools/browser`): Chromium provisioning, resolution waterfall, and managed cache.
-- **`packages/lighthouse`** (`@devtools/lighthouse`): Direct in-process Lighthouse v13 audit engine, metric extraction, pairwise diffing, and 3-tier persistence.
-- **`site`** (`@devtools/site`): Documentation platform and guides built with Fumadocs.
+| Directory             | Package                | Responsibility                                                                                       |
+| :-------------------- | :--------------------- | :--------------------------------------------------------------------------------------------------- |
+| `apps/cli`            | `@devtools/cli`        | Command-line interface and local Daemon host (`devtools web`, `browser`, `lighthouse`).              |
+| `apps/api`            | `@devtools/api`        | In-process Hono HTTP API mounted under `/api/*`.                                                     |
+| `apps/frontend`       | `@devtools/frontend`   | Next.js web dashboard built with Feature-Sliced Design v2.1 and exported as static assets.           |
+| `packages/core`       | `@devtools/core`       | Browser-safe domain schemas and error constants (`.`) plus Node/Bun host utilities (`./node`).       |
+| `packages/db`         | `@devtools/db`         | Embedded SQLite (`bun:sqlite`) handle pool, Drizzle ORM schemas, and bundled baseline migrations.    |
+| `packages/browser`    | `@devtools/browser`    | Chromium Browser Resolution Waterfall, Managed Browser Cache, and headless Chrome session ownership. |
+| `packages/lighthouse` | `@devtools/lighthouse` | In-process Lighthouse audit engine, Representative Run selection, diffing, and 3-tier persistence.   |
+| `site`                | `@devtools/site`       | Public documentation platform built with Fumadocs.                                                   |
 
-## Quick Start
+## Quick start
 
 ### Prerequisites
 
 - [Bun](https://bun.sh) (`1.4.2` or later)
 
-### Setup & Verification
+### Setup and verification
 
 ```bash
-# Install workspace dependencies
+# Install workspace dependencies and Git hooks
 bun install
 
-# Run linters, type checks, and tests across all workspaces
+# Run linters, typechecks, architecture gates, coverage, and binary smoke checks
 bun run verify
 ```
 
-## Documentation
-
-Comprehensive guides, architecture overviews, tutorials, and API references are hosted on the Fumadocs documentation platform.
-
-To run the documentation site locally:
+To run the Fumadocs documentation site locally on `http://localhost:3001`:
 
 ```bash
 bun --filter @devtools/site dev
 ```
 
-The documentation server will be available at `http://localhost:3001`.
+## Engineering documentation
 
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development workflows, branch naming conventions, and pull request guidelines.
+| Document                                   | Read when                                                                              |
+| :----------------------------------------- | :------------------------------------------------------------------------------------- |
+| [ARCHITECTURE.md](ARCHITECTURE.md)         | Navigating system design, monorepo layout, subsystem internals, or ADRs (`docs/adr/`). |
+| [CODING_STANDARDS.md](CODING_STANDARDS.md) | Writing TypeScript, packages, CLI commands, API routes, frontend code, or TSDoc.       |
+| [TESTING.md](TESTING.md)                   | Authoring unit, integration, E2E, or Storybook tests and checking test anti-patterns.  |
+| [REVIEW.md](REVIEW.md)                     | Running path-scoped verification commands, commit hooks, or Fallow baseline checks.    |
+| [CONTRIBUTING.md](CONTRIBUTING.md)         | Managing issues, commits, pull requests, pushes, review replies, or releases.          |
+| [GLOSSARY.md](GLOSSARY.md)                 | Checking canonical domain terms and avoided synonyms across bounded contexts.          |
+| [SECURITY.md](SECURITY.md)                 | Reporting a security vulnerability or checking supported release lines.                |
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.

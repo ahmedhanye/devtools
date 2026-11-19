@@ -1,101 +1,76 @@
-# HTTP API Architecture
+# HTTP API architecture
 
-Architecture, route design, security boundaries, and validation contracts for `apps/api`.
+Route topology, loopback security boundaries, SSE streaming, and HTTP status and error contracts for `apps/api`.
 
-## Application design and factory pattern
+## Module responsibilities
 
-`apps/api` provides HTTP API endpoints implemented with [Hono](https://hono.dev/):
+| Path                    | Responsibility                                                                                  | Entrypoint                             |
+| :---------------------- | :---------------------------------------------------------------------------------------------- | :------------------------------------- |
+| `apps/api/src/app/`     | Hono app factory (`create-app.ts`), standalone server lifecycle (`server.ts`, `server-cli.ts`). | `apps/api/src/app/index.ts`            |
+| `apps/api/src/modules/` | Vertical route slices: `health/` probe and `lighthouse/` (`AuditJobManager`, SSE, reports).     | `apps/api/src/modules/*/index.ts`      |
+| `apps/api/src/shared/`  | Canonical error envelope helpers (`http/`) and all-verb loopback guard (`security/`).           | `apps/api/src/shared/{http,security}/` |
+| `apps/api/src/index.ts` | Curated public exports (`createApp`, `startServer`, `AppType`).                                 | `apps/api/src/index.ts`                |
 
-```text
-apps/api/
-├── src/
-│   ├── lighthouse/
-│   │   ├── job-manager.ts     # Single-flight Audit Job registry, shutdown cancellation, SSE & persistence
-│   │   └── serializers.ts     # Run detail/list DTO and structured AuditJobError serializers
-│   ├── middleware/
-│   │   └── security.ts        # All-verb loopback peer, Host, Origin & CSRF protection
-│   ├── routes/
-│   │   ├── health.ts          # Health probe & uptime endpoint
-│   │   └── lighthouse.ts      # Audit triggers, SSE progress, runs, diff & sandboxed HTML
-│   ├── app.ts                 # Hono app factory, middleware registration & shutdown() hook
-│   ├── index.ts               # Public API package exports
-│   └── server.ts              # Standalone DB-free Bun.serve bootstrap & signal shutdown
-└── tests/                     # Socketless in-memory, job-manager, and HTTP lifecycle suites
+`createApp(options?: CreateAppOptions)` in `apps/api/src/app/create-app.ts` returns a Hono app extended with `.shutdown()` rather than an ambient singleton. This decouples `apps/api` from `@devtools/db`, lets the Daemon mount `/api/*` in-process, and allows socketless testing via `app.request()` with injected `:memory:` `openLighthouseStore` instances and fake audit runners.
+
+Both `startServer` (`apps/api/src/app/server.ts`) and `startDaemon` (`apps/cli/src/commands/web/daemon.ts`) coordinate 3-phase shutdown via `createShutdownCoordinator()` (`ingress` -> `work` -> `persistence`).
+
+## Request and SSE lifecycle
+
+```mermaid
+flowchart LR
+  Req["HTTP Request (/api/*)"] --> Guard["Loopback Guard<br/>(Peer IP, Host, Origin, Sec-Fetch-Site, JSON)"]
+  Guard -- Blocked --> Err403["403 / 415 ApiErrorResponse"]
+  Guard -- Allowed --> Router["Hono Router"]
+  Router --> Health["GET /health (200)"]
+  Router --> Trigger["POST /lighthouse/audits (202 / 409 / 503)"]
+  Router --> Stream["GET /lighthouse/audits/:jobId/stream (SSE)"]
+  Router --> Runs["GET /lighthouse/runs, :id, :id/report, /diff"]
+  Trigger --> JobMgr["AuditJobManager<br/>(Single-Flight + AbortSignal)"]
+  JobMgr --> Stream
+  Runs --> Store["LighthouseStore (lazy openDb)"]
 ```
-
-Instead of exporting an ambient singleton, `apps/api` exposes a factory function:
-
-```ts
-export interface CreateAppOptions {
-  basePath?: string;
-  db?: DevtoolsDb;
-  env?: EnvMap;
-  artifactsDir?: string;
-  auditRunner?: LighthouseAuditRunner;
-  jobRetentionMs?: number;
-  keepaliveIntervalMs?: number;
-}
-
-export function createApp(options: CreateAppOptions = {}) {
-  const app = new Hono<{ Bindings: ApiBindings }>();
-  const basePath = options.basePath ?? "/api";
-
-  // Register middleware, routes, and cooperative shutdown() under basePath
-  return Object.assign(app, { shutdown });
-}
-```
-
-This factory enables the CLI loopback daemon to mount routes under `/api` in-process while allowing test suites to instantiate isolated test applications with injected `:memory:` SQLite databases and fast audit runners. Both `startServer` (`apps/api/src/server.ts`) and `startDaemon` (`apps/cli/src/daemon.ts`) stop HTTP connections (`await server.stop(true)`) before awaiting `app.shutdown()` to abort active Lighthouse jobs cleanly.
 
 ## Mounted routes and SSE transport
 
-| Method & Path                              | Response                                                | Purpose                                                                     |
-| :----------------------------------------- | :------------------------------------------------------ | :-------------------------------------------------------------------------- |
-| `GET /api/health`                          | `200 OK` (`HealthResponseSchema`)                       | Process liveness, uptime, and `APP_VERSION`                                 |
-| `POST /api/lighthouse/audits`              | `202 Accepted` (`AuditJobSchema`) / `409 Conflict`      | Start a single-flight Audit Job                                             |
-| `GET /api/lighthouse/audits/active`        | `200 OK` (`ActiveAuditJobResponseSchema`)               | Discover the currently running Audit Job for reload recovery                |
-| `GET /api/lighthouse/audits/:jobId/stream` | `200 OK` (`text/event-stream`)                          | Replay latest snapshot and stream `progress`, `complete`, or `error` frames |
-| `GET /api/lighthouse/runs`                 | `200 OK` (`ListLighthouseRunsResponseSchema`)           | Paginated, filtered historical Audit Run list                               |
-| `GET /api/lighthouse/runs/:id`             | `200 OK` (`LighthouseRunDetailSchema`) / `409 Conflict` | Resolve full run detail by UUID or unique 6+ char prefix                    |
-| `GET /api/lighthouse/runs/:id/report`      | `200 OK` (`text/html`)                                  | Serve symlink-confined `report.html` inside an opaque-origin CSP sandbox    |
-| `GET /api/lighthouse/diff`                 | `200 OK` (`LighthouseDiffResponseSchema`)               | Compute score, Core Web Vitals, and Insight Audit deltas                    |
+| Method and path                            | Response                                                                       | Purpose                                                                      |
+| :----------------------------------------- | :----------------------------------------------------------------------------- | :--------------------------------------------------------------------------- |
+| `GET /api/health`                          | `200 OK` (`HealthResponseSchema`)                                              | Process liveness, uptime, and `APP_VERSION`.                                 |
+| `POST /api/lighthouse/audits`              | `202 Accepted` (`AuditJobSchema`) / `409 Conflict` / `503 Service Unavailable` | Start a single-flight Audit Job unless shutting down.                        |
+| `GET /api/lighthouse/audits/active`        | `200 OK` (`ActiveAuditJobResponseSchema`)                                      | Discover the active Audit Job for dashboard reload recovery.                 |
+| `GET /api/lighthouse/audits/:jobId/stream` | `200 OK` (`text/event-stream`)                                                 | Replay latest snapshot and stream `progress`, `complete`, or `error` frames. |
+| `GET /api/lighthouse/runs`                 | `200 OK` (`ListLighthouseRunsResponseSchema`)                                  | Paginated, filtered historical Audit Run list.                               |
+| `GET /api/lighthouse/runs/:id`             | `200 OK` (`LighthouseRunDetailSchema`) / `409 Conflict`                        | Resolve full run detail by UUID or unique 6+ character prefix.               |
+| `GET /api/lighthouse/runs/:id/report`      | `200 OK` (`text/html`)                                                         | Serve symlink-confined `report.html` inside an opaque-origin CSP sandbox.    |
+| `GET /api/lighthouse/diff`                 | `200 OK` (`LighthouseDiffResponseSchema`)                                      | Compute score, Core Web Vitals, and Insight Audit deltas.                    |
 
-## Loopback security and origin protection
+## Loopback security boundary
 
-Because DevTools operates on developer workstations, `apps/api` enforces loopback isolation:
+> [!CAUTION]
+> Never bind the API or Daemon to `0.0.0.0` by default. Loopback middleware in `apps/api/src/shared/security/middleware.ts` enforces peer IP, `Host`, `Origin`, and `Sec-Fetch-Site` checks across **all** `/api/*` verbs (including `GET`, SSE streams, and `report.html`).
 
-1. **Host binding**: Listens on `127.0.0.1`, `localhost`, or `[::1]` by default. Never exposes endpoints to public interfaces without explicit user flags.
-2. **CORS policy**: Cross-Origin Resource Sharing is locked down to loopback origins (`http://localhost:*`, `http://127.0.0.1:*`, `http://[::1]:*`, `http://[::ffff:127.0.0.1]:*`).
-3. **All-verb cross-site & peer IP protection**: Verifies socket peer IP via `server.requestIP(req)` (recognizing IPv4, IPv6, IPv4-mapped `[::ffff:127.0.0.1]`, and container-local host interface NAT on loopback servers), validates `Host` headers, rejects `Sec-Fetch-Site: cross-site` and non-loopback or opaque `"null"` `Origin` headers across **all** `/api/*` verbs (including `GET`, SSE streams, and `report.html`), and requires `Content-Type: application/json` on mutating payloads.
+1. **Interface binding.** Listens on `127.0.0.1`, `localhost`, or `[::1]` unless explicitly overridden.
+2. **Socket peer verification.** Checks `server.requestIP(req)` for IPv4, IPv6, IPv4-mapped `[::ffff:127.0.0.1]`, or container-local host NAT when running under `Bun.serve`.
+3. **DNS rebinding protection (`Host`).** Rejects any non-loopback `Host` header with `403 Forbidden`.
+4. **CORS, `Origin`, and `Sec-Fetch-Site`.** Allows only loopback origins (`http://localhost:*`, `http://127.0.0.1:*`, `http://[::1]:*`, `http://[::ffff:127.0.0.1]:*`), rejects opaque `"null"` origins (including sandboxed report iframes), and denies `Sec-Fetch-Site: cross-site` across all HTTP methods.
+5. **Mutating content-type guard.** Requires `Content-Type: application/json` on `POST`, `PUT`, `DELETE`, and `PATCH` payloads (`415 Unsupported Media Type` otherwise).
 
-## Request validation and response contracts
+## HTTP status and error contracts
 
-1. **Schema validation with Zod**: Cross-cutting envelopes (`HealthResponseSchema`, `ApiErrorResponseSchema`, `API_ERROR_CODES`) live in `@devtools/core`, while domain-specific API/SSE request and DTO schemas live in their owning domain package's browser-safe subpath (such as `@devtools/lighthouse/schemas` per [ADR 0003](../adr/0003-lighthouse-audit-isolation-and-tiered-storage.md) and [ADR 0004](../adr/0004-lighthouse-daemon-api-isolation-and-sse.md)).
-2. **Standardized error envelopes**: Any non-2xx HTTP response formats its body according to `ApiErrorResponseSchema` from `@devtools/core`:
-   ```json
-   {
-     "error": {
-       "code": "VALIDATION_ERROR",
-       "message": "Invalid query parameter",
-       "details": {}
-     }
-   }
-   ```
-3. **Status code discipline**:
-   - `200 OK`: Successful read or update.
-   - `201 Created`: Successful creation.
-   - `202 Accepted`: Asynchronous background job triggered (e.g. Audit Job).
-   - `400 Bad Request`: Malformed JSON or syntax error.
-   - `403 Forbidden`: Loopback or cross-site boundary violation.
-   - `404 Not Found`: Unknown endpoint or missing resource.
-   - `409 Conflict`: Single-flight concurrency conflict or ambiguous run prefix.
-   - `415 Unsupported Media Type`: Non-JSON request body on mutating verb.
-   - `422 Unprocessable Entity`: Validation failure on input schema.
-   - `500 Internal Server Error`: Unhandled internal exception.
+Cross-cutting schemas (`HealthResponseSchema`, `ApiErrorResponseSchema`, `API_ERROR_CODES`) live in `packages/core/src/errors.ts`; domain DTO and SSE schemas live in `@devtools/lighthouse/schemas` per [ADR 0003](../adr/0003-lighthouse-audit-isolation-and-tiered-storage.md) and [ADR 0004](../adr/0004-lighthouse-daemon-api-isolation-and-sse.md).
 
-## Socketless in-memory testing seam
+| Status | `API_ERROR_CODES`        | When returned                                                                    |
+| :----- | :----------------------- | :------------------------------------------------------------------------------- |
+| `200`  | _(none)_                 | Successful read, query, diff, or SSE stream.                                     |
+| `201`  | _(none)_                 | Synchronous resource creation.                                                   |
+| `202`  | _(none)_                 | Asynchronous Audit Job accepted (`POST /api/lighthouse/audits`).                 |
+| `400`  | `BAD_REQUEST`            | Malformed JSON or syntax error.                                                  |
+| `403`  | `FORBIDDEN`              | Blocked by loopback peer, `Host`, `Origin`, or `Sec-Fetch-Site` guard.           |
+| `404`  | `NOT_FOUND`              | Unknown route or missing Audit Run / Audit Job.                                  |
+| `409`  | `CONFLICT`               | Single-flight Audit Job already running or ambiguous short-ID prefix.            |
+| `415`  | `UNSUPPORTED_MEDIA_TYPE` | Missing `application/json` `Content-Type` on a mutating request.                 |
+| `422`  | `VALIDATION_ERROR`       | Request body or query parameter failed Zod validation.                           |
+| `500`  | `INTERNAL_ERROR`         | Unhandled server exception.                                                      |
+| `503`  | `SERVICE_UNAVAILABLE`    | Server shutting down (rejects new Audit Jobs) or backing dependency unavailable. |
 
-Hono's Web Fetch API compliance enables in-memory testing via `app.request()`:
-
-- Integration tests invoke HTTP endpoints by passing standard `Request` objects directly to `app.request()`.
-- No physical TCP ports are opened, eliminating port contention and reducing test suite execution times to milliseconds.
+For Hono route authoring rules and error envelope examples, see [HTTP API standards](../coding-standards/api.md).
