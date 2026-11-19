@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: partially superseded by ADR-0006
 date: 2026-10-06
 contexts:
   - Persistence
@@ -7,7 +7,10 @@ contexts:
 
 # Embedded database foundation
 
-Local application state uses an embedded SQLite database powered by `bun:sqlite` and Drizzle ORM inside `@devtools/db`, configured with lazy pooled handles (`openDb`), WAL + `SQLITE_BUSY` retry concurrency safeguards, bundled baseline initialization (`initializeBaselineSchema`), and environment-aware path resolution (`:memory:` in tests).
+> [!NOTE]
+> Startup runtime migrations via `runMigrations()` are superseded by [ADR 0006](0006-lazy-pooled-database-and-shutdown-lifecycle.md). The SQLite engine, Drizzle ORM, concurrency pragmas, path resolution, and package boundary remain active.
+
+Local application state uses an embedded SQLite database powered by `bun:sqlite` and Drizzle ORM inside `@devtools/db`, configured with WAL + `SQLITE_BUSY` retry concurrency safeguards, environment-aware path resolution (`:memory:` in tests), and (originally) startup runtime migrations via `runMigrations()`.
 
 ## Considered options
 
@@ -15,5 +18,5 @@ Local application state uses an embedded SQLite database powered by `bun:sqlite`
 
 ## Consequences
 
-- CLI commands and the local daemon share one database file lazily without startup overhead or lock contention, and test suites run hermetically with isolated `:memory:` handles.
-- `@devtools/db` stays pure persistence infrastructure consumed through domain stores (such as `openLighthouseStore` in `@devtools/lighthouse`), while applications (`apps/cli`, `apps/api`) never import `@devtools/db` directly; see [Persistence Architecture](../architecture/persistence.md) for PRAGMA settings, path resolution rules, and pooling mechanics.
+- Test suites run hermetically with isolated `:memory:` handles without file-system side effects or lock contention.
+- `@devtools/db` stays pure persistence infrastructure consumed through domain stores (such as `openLighthouseStore` in `@devtools/lighthouse`), while applications (`apps/cli`, `apps/api`) never import `@devtools/db` directly; see [Persistence Architecture](../architecture/persistence.md) for active pragma values, path resolution rules, and pooling mechanics.
