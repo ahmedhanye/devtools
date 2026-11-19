@@ -1,7 +1,8 @@
-import { describe, expect, it } from "bun:test";
+import { Database } from "bun:sqlite";
+import { afterEach, describe, expect, it } from "bun:test";
 import { createHash } from "node:crypto";
 import {
-  mkdirSync,
+  existsSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -9,429 +10,503 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { createShutdownCoordinator } from "@devtools/core/node";
 import {
-  closeDb,
-  createConnection,
-  createDb,
-  createSqliteConnection,
-  db,
+  asc,
+  closeAllDbs,
   eq,
-  getDb,
   lighthouseRuns,
-  resetDb,
-  runMigrations,
+  openDb,
+  sql,
   systemMetadata,
 } from "../src";
 
-describe("SQLite Connection & Concurrency PRAGMAs", () => {
-  it("initializes an in-memory connection with correct PRAGMAs", () => {
-    const conn = createSqliteConnection(":memory:");
+const PACKAGE_ROOT = resolve(import.meta.dir, "..");
+
+describe("Unified openDb Lifecycle, PRAGMAs, Pooling & Concurrency", () => {
+  afterEach(() => {
+    closeAllDbs();
+  });
+
+  it("is strictly lazy until first access and leaves zero disk artifacts if closed unused", () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "devtools-db-lazy-"));
+    const dbPath = join(tmpDir, "nested", "lazy.db");
+
     try {
-      const busyTimeout = conn.query("PRAGMA busy_timeout;").get() as {
-        timeout: number;
-      };
-      expect(busyTimeout.timeout).toBe(5000);
+      const handle = openDb({ path: dbPath });
+      expect(handle.path).toBe(dbPath);
+      expect(existsSync(join(tmpDir, "nested"))).toBe(false);
+      expect(existsSync(dbPath)).toBe(false);
 
-      const foreignKeys = conn.query("PRAGMA foreign_keys;").get() as {
-        foreign_keys: number;
-      };
-      expect(foreignKeys.foreign_keys).toBe(1);
-
-      const synchronous = conn.query("PRAGMA synchronous;").get() as {
-        synchronous: number;
-      };
-      expect(synchronous.synchronous).toBe(1); // 1 = NORMAL
+      handle.close();
+      expect(existsSync(join(tmpDir, "nested"))).toBe(false);
+      expect(existsSync(dbPath)).toBe(false);
     } finally {
-      conn.close();
+      rmSync(tmpDir, { recursive: true, force: true });
     }
   });
 
-  it("enables WAL mode on file-backed connections", () => {
-    const tempDbPath = join(tmpdir(), `test-wal-${Date.now()}.db`);
-    try {
-      const conn = createSqliteConnection(tempDbPath);
-      try {
-        const journalMode = conn.query("PRAGMA journal_mode;").get() as {
-          journal_mode: string;
-        };
-        expect(journalMode.journal_mode.toLowerCase()).toBe("wal");
-      } finally {
-        conn.close();
-      }
-    } finally {
-      rmSync(tempDbPath, { force: true });
-      rmSync(`${tempDbPath}-wal`, { force: true });
-      rmSync(`${tempDbPath}-shm`, { force: true });
-    }
-  });
-});
-
-describe("Migrations & Database Client Operations", () => {
-  it("applies migrations programmatically and performs CRUD operations", async () => {
-    const testDb = createDb({ path: ":memory:" });
-
-    // Run programmatic migrations
-    runMigrations(testDb);
-
-    // Verify system_metadata table created and works
-    const now = new Date();
-    testDb
-      .insert(systemMetadata)
-      .values({
-        key: "version",
-        value: "1.0.0",
-        updatedAt: now,
-      })
-      .run();
-
-    // Verify query via await
-    const result = await testDb.query.systemMetadata.findFirst({
-      where: eq(systemMetadata.key, "version"),
-    });
-
-    expect(result).toBeDefined();
-    expect(result?.key).toBe("version");
-    expect(result?.value).toBe("1.0.0");
-    expect(result?.updatedAt instanceof Date).toBe(true);
-
-    // Verify query via .sync()
-    const syncResult = testDb.query.systemMetadata
-      .findFirst({
-        where: eq(systemMetadata.key, "version"),
-      })
-      .sync();
-    expect(syncResult?.value).toBe("1.0.0");
-
-    // Update
-    testDb
-      .update(systemMetadata)
-      .set({ value: "2.0.0" })
-      .where(eq(systemMetadata.key, "version"))
-      .run();
-
-    const updated = await testDb.query.systemMetadata.findFirst({
-      where: eq(systemMetadata.key, "version"),
-    });
-    expect(updated?.value).toBe("2.0.0");
-
-    // Delete
-    testDb
-      .delete(systemMetadata)
-      .where(eq(systemMetadata.key, "version"))
-      .run();
-
-    const deleted = await testDb.query.systemMetadata.findFirst({
-      where: eq(systemMetadata.key, "version"),
-    });
-    expect(deleted).toBeUndefined();
-
-    // Verify lighthouse_runs table and default timestamp $defaultFn
-    testDb
-      .insert(lighthouseRuns)
-      .values({
-        id: "run-default-ts",
-        url: "https://example.com",
-        finalUrl: "https://example.com/",
-        formFactor: "mobile",
-        throttlingMethod: "simulate",
-        performanceScore: 95,
-        accessibilityScore: 100,
-        bestPracticesScore: 92,
-        seoScore: 98,
-        lcpMs: 1200.5,
-        cls: 0.01,
-        tbtMs: 45,
-        fcpMs: 800,
-        siMs: 1100,
-        ttfbMs: 120,
-        summaryJson: {
-          lcpElement: null,
-          lcpPhases: null,
-          clsCulprits: [],
-          insights: [],
-          failedAudits: [],
-          runWarnings: [],
-          runtimeError: null,
-          medianMetadata: null,
-        },
-        jsonReportPath: "/tmp/report.json",
-        htmlReportPath: "/tmp/report.html",
-        durationMs: 3200,
-      })
-      .run();
-
-    const lhRow = await testDb.query.lighthouseRuns.findFirst({
-      where: eq(lighthouseRuns.id, "run-default-ts"),
-    });
-    expect(lhRow?.url).toBe("https://example.com");
-    expect(lhRow?.createdAt instanceof Date).toBe(true);
-  });
-
-  it("supports getDb() singleton, closeDb(), and resetDb()", () => {
-    resetDb();
-    const db1 = getDb();
-    const db2 = getDb();
-    expect(db1).toBe(db2);
-    closeDb();
-    const db3 = getDb();
-    expect(db3).not.toBe(db1);
-    resetDb();
-  });
-
-  it("createConnection alias works identically to createSqliteConnection", () => {
-    const conn = createConnection({ path: ":memory:" });
-    expect(conn).toBeDefined();
-    conn.close();
-  });
-
-  it("proxies db export dynamically and re-instantiates cleanly after resetDb()", () => {
-    resetDb();
-    const firstInstance = getDb();
-    // Access property on db proxy
-    expect(db.query).toBeDefined();
-    // Reset db clears singleton
-    resetDb();
-    const secondInstance = getDb();
-    expect(firstInstance).not.toBe(secondInstance);
-    // db proxy continues to work against the new instance without throwing
-    expect(db.query).toBeDefined();
-    resetDb();
-  });
-
-  it("applies migrations idempotently when called multiple times", () => {
-    const testDb = createDb({ path: ":memory:" });
-    expect(() => runMigrations(testDb)).not.toThrow();
-    expect(() => runMigrations(testDb)).not.toThrow();
-
-    const rows = testDb.select().from(systemMetadata).all();
-    expect(Array.isArray(rows)).toBe(true);
-  });
-
-  it("rolls back all writes atomically when a transaction throws mid-flight", () => {
-    const testDb = createDb({ path: ":memory:" });
-    runMigrations(testDb);
-
-    expect(() => {
-      testDb.transaction((tx) => {
-        tx.insert(systemMetadata)
-          .values({ key: "atomic_test", value: "v1", updatedAt: new Date() })
-          .run();
-        throw new Error("Mid-flight abort");
-      });
-    }).toThrow("Mid-flight abort");
-
-    const found = testDb
-      .select()
-      .from(systemMetadata)
-      .where(eq(systemMetadata.key, "atomic_test"))
-      .all();
-    expect(found).toHaveLength(0);
-  });
-
-  it("re-initializes connection when getDb is called with a different path", () => {
-    resetDb();
-    const db1 = getDb({ path: ":memory:" });
-    runMigrations(db1);
-    db1
-      .insert(systemMetadata)
-      .values({ key: "db1_key", value: "db1_val", updatedAt: new Date() })
-      .run();
-
-    const tempPath2 = join(tmpdir(), `test-switch-${Date.now()}.db`);
-    try {
-      const db2 = getDb({ path: tempPath2 });
-      expect(db2).not.toBe(db1);
-      runMigrations(db2);
-
-      const foundInDb2 = db2
-        .select()
-        .from(systemMetadata)
-        .where(eq(systemMetadata.key, "db1_key"))
-        .all();
-      expect(foundInDb2).toHaveLength(0);
-    } finally {
-      resetDb();
-      rmSync(tempPath2, { force: true });
-      rmSync(`${tempPath2}-wal`, { force: true });
-      rmSync(`${tempPath2}-shm`, { force: true });
-    }
-  });
-
-  it("applies embedded migrations matching packages/db/drizzle journal and SQL files on disk", () => {
-    const drizzleDir = resolve(import.meta.dir, "../drizzle");
+  it("configures SQLite WAL & integrity PRAGMAs and applies embedded baseline schema matching drizzle artifacts", () => {
+    const drizzleDir = resolve(PACKAGE_ROOT, "drizzle");
     const diskJournal = JSON.parse(
       readFileSync(join(drizzleDir, "meta/_journal.json"), "utf8"),
     ) as { entries: Array<{ tag: string; when: number }> };
-
     const expectedApplied = diskJournal.entries.map((entry) => {
       const rawSql = readFileSync(join(drizzleDir, `${entry.tag}.sql`), "utf8");
       return {
         hash: createHash("sha256").update(rawSql).digest("hex"),
-        createdAt: entry.when,
+        created_at: entry.when,
       };
     });
 
-    const embeddedConn = createSqliteConnection(":memory:");
-    const diskConn = createSqliteConnection(":memory:");
+    const mem = openDb({ memory: true });
+    mem.ensureReady();
+    const memChecks = mem.read((db) => ({
+      busy: db.all<{ timeout: number }>(sql`PRAGMA busy_timeout;`)[0],
+      fk: db.all<{ foreign_keys: number }>(sql`PRAGMA foreign_keys;`)[0],
+      sync: db.all<{ synchronous: number }>(sql`PRAGMA synchronous;`)[0],
+      migrations: db.all<{ hash: string; created_at: number }>(
+        sql`SELECT hash, created_at FROM __devtools_migrations ORDER BY created_at ASC`,
+      ),
+    }));
+    expect(memChecks.busy?.timeout).toBe(5000);
+    expect(memChecks.fk?.foreign_keys).toBe(1);
+    expect(memChecks.sync?.synchronous).toBe(1);
+    expect(memChecks.migrations).toEqual(expectedApplied);
+    mem.close();
+
+    const tmpDir = mkdtempSync(join(tmpdir(), "devtools-db-wal-"));
+    const fileDbPath = join(tmpDir, "wal.db");
     try {
-      const embeddedDb = createDb({ connection: embeddedConn });
-      const diskDb = createDb({ connection: diskConn });
-
-      runMigrations(embeddedDb);
-      runMigrations(diskDb, { migrationsFolder: drizzleDir });
-
-      const embeddedRows = embeddedConn
-        .query(
-          "SELECT hash, created_at FROM __devtools_migrations ORDER BY created_at ASC",
-        )
-        .all() as Array<{ hash: string; created_at: number }>;
-      const diskRows = diskConn
-        .query(
-          "SELECT hash, created_at FROM __devtools_migrations ORDER BY created_at ASC",
-        )
-        .all() as Array<{ hash: string; created_at: number }>;
-
-      expect(embeddedRows).toEqual(
-        expectedApplied.map((e) => ({ hash: e.hash, created_at: e.createdAt })),
-      );
-      expect(embeddedRows).toEqual(diskRows);
-    } finally {
-      embeddedConn.close();
-      diskConn.close();
-    }
-  });
-
-  it("applies only pending embedded migrations incrementally and honors custom migrationsTable", () => {
-    const drizzleDir = resolve(import.meta.dir, "../drizzle");
-    const diskJournal = JSON.parse(
-      readFileSync(join(drizzleDir, "meta/_journal.json"), "utf8"),
-    ) as { entries: Array<{ tag: string; when: number }> };
-    const firstEntry = diskJournal.entries[0]!;
-    const firstSql = readFileSync(
-      join(drizzleDir, `${firstEntry.tag}.sql`),
-      "utf8",
-    );
-    const firstHash = createHash("sha256").update(firstSql).digest("hex");
-
-    const conn = createSqliteConnection(":memory:");
-    try {
-      conn.run(firstSql);
-      conn.run(`
-        CREATE TABLE "__custom_migrations" (
-          id SERIAL PRIMARY KEY,
-          hash text NOT NULL,
-          created_at numeric
+      {
+        using fileDb = openDb({ path: fileDbPath });
+        fileDb.ensureReady();
+        // Idempotent second ensureReady()
+        fileDb.ensureReady();
+        const mode = fileDb.read(
+          (db) =>
+            db.all<{ journal_mode: string }>(sql`PRAGMA journal_mode;`)[0],
         );
-      `);
-      conn
-        .query(
-          'INSERT INTO "__custom_migrations" ("hash", "created_at") VALUES (?, ?)',
-        )
-        .run(firstHash, firstEntry.when);
+        expect(mode?.journal_mode.toLowerCase()).toBe("wal");
+      }
 
-      const testDb = createDb({ connection: conn });
-      runMigrations(testDb, { migrationsTable: "__custom_migrations" });
-
-      const applied = conn
-        .query(
-          'SELECT created_at FROM "__custom_migrations" ORDER BY created_at ASC',
-        )
-        .all() as Array<{ created_at: number }>;
-      expect(applied).toHaveLength(diskJournal.entries.length);
-      expect(
-        conn
-          .query(
-            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'lighthouse_runs'",
-          )
-          .get(),
-      ).toEqual({ name: "lighthouse_runs" });
+      // Re-opening an already-initialized file DB keeps existing schema & data
+      using reopened = openDb({ path: fileDbPath });
+      const tables = reopened.read((db) =>
+        db.all<{ name: string }>(
+          sql`SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('system_metadata', 'lighthouse_runs') ORDER BY name ASC`,
+        ),
+      );
+      expect(tables).toEqual([
+        { name: "lighthouse_runs" },
+        { name: "system_metadata" },
+      ]);
     } finally {
-      conn.close();
+      closeAllDbs();
+      rmSync(tmpDir, { recursive: true, force: true });
     }
   });
 
-  it("delegates to drizzle-orm/bun-sqlite/migrator when custom migrationsFolder is provided", () => {
-    const tmpFolder = mkdtempSync(join(tmpdir(), "devtools-custom-mig-"));
-    const conn = createSqliteConnection(":memory:");
-    try {
-      mkdirSync(join(tmpFolder, "meta"), { recursive: true });
-      writeFileSync(
-        join(tmpFolder, "meta/_journal.json"),
-        JSON.stringify({
-          version: "7",
-          dialect: "sqlite",
-          entries: [
-            {
-              idx: 0,
-              version: "6",
-              when: 1700000000000,
-              tag: "0000_custom",
-              breakpoints: true,
-            },
-          ],
-        }),
-      );
-      const customSql =
-        "CREATE TABLE `custom_probe` (`id` text PRIMARY KEY NOT NULL);";
-      writeFileSync(join(tmpFolder, "0000_custom.sql"), customSql);
+  it("keeps :memory: handles isolated across concurrent openDb calls", () => {
+    using dbA = openDb({ memory: true });
+    using dbB = openDb({ memory: true });
 
-      const testDb = createDb({ connection: conn });
-      runMigrations(testDb, {
-        migrationsFolder: tmpFolder,
-        migrationsTable: "__custom_folder_migrations",
+    dbA.write((tx) => {
+      tx.insert(systemMetadata)
+        .values({ key: "isolation", value: "alpha", updatedAt: new Date() })
+        .run();
+    });
+
+    const fromA = dbA.read((db) =>
+      db
+        .select()
+        .from(systemMetadata)
+        .where(eq(systemMetadata.key, "isolation"))
+        .all(),
+    );
+    const fromB = dbB.read((db) =>
+      db
+        .select()
+        .from(systemMetadata)
+        .where(eq(systemMetadata.key, "isolation"))
+        .all(),
+    );
+
+    expect(fromA).toHaveLength(1);
+    expect(fromA[0]?.value).toBe("alpha");
+    expect(fromB).toHaveLength(0);
+  });
+
+  it("supports autoInit: false error boundary and later upgrades via pooled autoInit: true handle", () => {
+    const mem = openDb({ memory: true, autoInit: false });
+    mem.ensureReady();
+    expect(() =>
+      mem.read((db) => db.select().from(lighthouseRuns).all()),
+    ).toThrow();
+    mem.close();
+
+    const tmpDir = mkdtempSync(join(tmpdir(), "devtools-db-autoinit-"));
+    const dbPath = join(tmpDir, "uninit.db");
+    try {
+      const noInitHandle = openDb({ path: dbPath, autoInit: false });
+      noInitHandle.ensureReady();
+      expect(() =>
+        noInitHandle.read((db) => db.select().from(systemMetadata).all()),
+      ).toThrow();
+
+      // Re-calling ensureReady on same handle with autoInit: false still does not initialize
+      noInitHandle.ensureReady();
+
+      const initHandle = openDb({ path: dbPath, autoInit: true });
+      initHandle.ensureReady();
+      expect(
+        noInitHandle.read((db) => db.select().from(systemMetadata).all()),
+      ).toEqual([]);
+
+      noInitHandle.close();
+      initHandle.close();
+    } finally {
+      closeAllDbs();
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("pools file-backed connections by canonical path with lease ref-counting and rejects use-after-close", () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "devtools-db-pool-"));
+    const dbPath = join(tmpDir, "pooled.db");
+
+    try {
+      const h1 = openDb({ path: dbPath });
+      const h2 = openDb({ path: dbPath });
+
+      h1.write((tx) => {
+        tx.insert(systemMetadata)
+          .values({ key: "pool_key", value: "shared", updatedAt: new Date() })
+          .run();
       });
 
-      expect(
-        conn
-          .query(
-            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'custom_probe'",
-          )
+      // h2 joins the open pool and sees committed data immediately
+      const row = h2.read((db) =>
+        db
+          .select()
+          .from(systemMetadata)
+          .where(eq(systemMetadata.key, "pool_key"))
           .get(),
-      ).toEqual({ name: "custom_probe" });
+      );
+      expect(row?.value).toBe("shared");
 
-      const expectedHash = createHash("sha256").update(customSql).digest("hex");
-      const trackingRows = conn
-        .query(
-          'SELECT hash, created_at FROM "__custom_folder_migrations" ORDER BY created_at ASC',
-        )
-        .all() as Array<{ hash: string; created_at: number }>;
-      expect(trackingRows).toEqual([
-        { hash: expectedHash, created_at: 1700000000000 },
-      ]);
+      // Closing h1 decrements lease refCount while h2 stays open
+      h1.close();
+      h1.close(); // idempotent
+      expect(() => h1.read(() => 1)).toThrow("Database handle is closed");
+      expect(() => h1.ensureReady()).toThrow("Database handle is closed");
+      expect(() => h1.write(() => 1)).toThrow("Database handle is closed");
 
-      expect(
-        conn
-          .query(
-            "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('__devtools_migrations', '__drizzle_migrations')",
-          )
-          .all(),
-      ).toEqual([]);
+      const stillReadable = h2.read((db) =>
+        db
+          .select()
+          .from(systemMetadata)
+          .where(eq(systemMetadata.key, "pool_key"))
+          .get(),
+      );
+      expect(stillReadable?.value).toBe("shared");
+
+      // Closing final lease closes underlying SQLite and checkpoints WAL
+      h2.close();
+      expect(() => h2.read(() => 1)).toThrow("Database handle is closed");
     } finally {
-      conn.close();
-      rmSync(tmpFolder, { recursive: true, force: true });
+      closeAllDbs();
+      rmSync(tmpDir, { recursive: true, force: true });
     }
   });
 
-  it("rejects empty or whitespace migrationsFolder instead of falling back to embedded migrations", () => {
-    for (const invalidFolder of ["", "   "]) {
-      const conn = createSqliteConnection(":memory:");
-      try {
-        const testDb = createDb({ connection: conn });
+  it("rolls back write() transactions atomically and supports nested SAVEPOINTs", () => {
+    using handle = openDb({ memory: true });
 
-        expect(() =>
-          runMigrations(testDb, { migrationsFolder: invalidFolder }),
-        ).toThrow("migrationsFolder must be a non-empty directory path");
+    // Outer rollback
+    expect(() =>
+      handle.write((tx) => {
+        tx.insert(systemMetadata)
+          .values({ key: "outer_fail", value: "1", updatedAt: new Date() })
+          .run();
+        throw new Error("Outer abort");
+      }),
+    ).toThrow("Outer abort");
 
-        expect(
-          conn
-            .query(
-              "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'system_metadata'",
-            )
-            .get(),
-        ).toBeNull();
-      } finally {
-        conn.close();
+    expect(
+      handle.read((db) =>
+        db
+          .select()
+          .from(systemMetadata)
+          .where(eq(systemMetadata.key, "outer_fail"))
+          .all(),
+      ),
+    ).toHaveLength(0);
+
+    // Nested SAVEPOINT rollback caught inside outer write() preserves outer insert
+    handle.write((tx) => {
+      tx.insert(systemMetadata)
+        .values({ key: "outer_keep", value: "kept", updatedAt: new Date() })
+        .run();
+
+      expect(() =>
+        handle.write((nestedTx) => {
+          nestedTx
+            .insert(systemMetadata)
+            .values({
+              key: "inner_rollback",
+              value: "dropped",
+              updatedAt: new Date(),
+            })
+            .run();
+          throw new Error("Inner savepoint abort");
+        }),
+      ).toThrow("Inner savepoint abort");
+
+      // Successful nested write commits cleanly
+      handle.write((nestedTx) => {
+        nestedTx
+          .insert(systemMetadata)
+          .values({
+            key: "inner_keep",
+            value: "committed",
+            updatedAt: new Date(),
+          })
+          .run();
+      });
+    });
+
+    const keys = handle.read((db) =>
+      db
+        .select()
+        .from(systemMetadata)
+        .orderBy(asc(systemMetadata.key))
+        .all()
+        .map((r) => r.key),
+    );
+    expect(keys).toEqual(["inner_keep", "outer_keep"]);
+  });
+
+  it("cleans up opened connection cleanly when opening a corrupt non-SQLite file", () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "devtools-db-corrupt-"));
+    const corruptPath = join(tmpDir, "corrupt.db");
+    writeFileSync(corruptPath, "not-a-sqlite-database\n");
+
+    try {
+      const handle = openDb({ path: corruptPath });
+      expect(() => handle.ensureReady()).toThrow();
+      handle.close();
+    } finally {
+      closeAllDbs();
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("self-registers Phase 3 persistence cleanup onto ShutdownCoordinator and executes last", async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "devtools-db-shutdown-"));
+    const dbPath = join(tmpDir, "shutdown.db");
+    const coordinator = createShutdownCoordinator();
+    const order: string[] = [];
+
+    try {
+      const dbHandle = openDb({ path: dbPath, shutdown: coordinator });
+      const memHandle = openDb({ memory: true, shutdown: coordinator });
+      dbHandle.ensureReady();
+      memHandle.ensureReady();
+
+      // Calling ensureReady again re-uses the existing shutdown hook registration
+      dbHandle.ensureReady();
+
+      coordinator.register("ingress", () => {
+        order.push("ingress");
+      });
+      coordinator.register("work", () => {
+        // DB must still be usable during ingress and work phases
+        dbHandle.write((tx) => {
+          tx.insert(systemMetadata)
+            .values({ key: "during_work", value: "ok", updatedAt: new Date() })
+            .run();
+        });
+        order.push("work");
+      });
+
+      await coordinator.shutdown("SIGTERM");
+      order.push("after-shutdown");
+
+      expect(order).toEqual(["ingress", "work", "after-shutdown"]);
+      expect(() => dbHandle.read(() => 1)).toThrow("Database handle is closed");
+      expect(() => memHandle.read(() => 1)).toThrow(
+        "Database handle is closed",
+      );
+
+      // Closing handle after Phase 3 already closed it is a safe no-op
+      dbHandle.close();
+      memHandle.close();
+    } finally {
+      closeAllDbs();
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("retries transient SQLITE_BUSY locks, exhausts maxBusyRetries on persistent locks, and ignores checkpoint BUSY on close", async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "devtools-db-busy-"));
+    const dbPath = join(tmpDir, "busy.db");
+
+    // Pre-initialize DB cleanly so a child process can hold BEGIN EXCLUSIVE on it
+    const init = openDb({ path: dbPath });
+    init.ensureReady();
+    init.close();
+
+    const lockerScript = `
+      import { Database } from "bun:sqlite";
+      const db = new Database(process.argv[1]);
+      const holdMs = Number(process.argv[2]);
+      db.run("BEGIN EXCLUSIVE;");
+      process.stdout.write("LOCKED\\n");
+      Bun.sleepSync(holdMs);
+      db.run("COMMIT;");
+      db.close();
+    `;
+
+    async function spawnLocker(holdMs: number) {
+      const proc = Bun.spawn(
+        ["bun", "-e", lockerScript, dbPath, String(holdMs)],
+        {
+          cwd: PACKAGE_ROOT,
+          stdout: "pipe",
+          stderr: "pipe",
+        },
+      );
+      const reader = proc.stdout.getReader();
+      let text = "";
+      while (!text.includes("LOCKED")) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        text += new TextDecoder().decode(chunk.value);
       }
+      return proc;
+    }
+
+    try {
+      // 1. Transient lock released after 80ms -> openDb retries cold-start/write and succeeds
+      const transientProc = await spawnLocker(80);
+      try {
+        const handle = openDb({
+          path: dbPath,
+          busyTimeoutMs: 5,
+          maxBusyRetries: 15,
+        });
+        handle.write((tx) => {
+          tx.insert(systemMetadata)
+            .values({ key: "after_busy", value: "ok", updatedAt: new Date() })
+            .run();
+        });
+        handle.close();
+      } finally {
+        await transientProc.exited;
+      }
+
+      // 2. Persistent lock exceeding maxBusyRetries throws SQLITE_BUSY on write()
+      const longProc = await spawnLocker(350);
+      try {
+        const failingHandle = openDb({
+          path: dbPath,
+          busyTimeoutMs: 5,
+          maxBusyRetries: 1,
+        });
+        expect(() =>
+          failingHandle.write((tx) => {
+            tx.insert(systemMetadata)
+              .values({
+                key: "should_fail_busy",
+                value: "no",
+                updatedAt: new Date(),
+              })
+              .run();
+          }),
+        ).toThrow();
+        failingHandle.close();
+      } finally {
+        await longProc.exited;
+      }
+
+      // 3. Closing while another connection holds a write lock ignores wal_checkpoint SQLITE_BUSY
+      const handleForClose = openDb({ path: dbPath, busyTimeoutMs: 5 });
+      handleForClose.ensureReady();
+      const rawReader = new Database(dbPath);
+      rawReader.run("BEGIN IMMEDIATE;");
+      try {
+        expect(() => handleForClose.close()).not.toThrow();
+      } finally {
+        rawReader.run("COMMIT;");
+        rawReader.close();
+      }
+
+      // 4. closeAllDbs() closes unclosed active handles cleanly
+      const unclosedMem = openDb({ memory: true });
+      unclosedMem.ensureReady();
+      closeAllDbs();
+      expect(() => unclosedMem.read(() => 1)).toThrow(
+        "Database handle is closed",
+      );
+    } finally {
+      closeAllDbs();
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("coordinates concurrent multi-process cold-start schema auto-init and BEGIN IMMEDIATE writes via Bun.spawn", async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "devtools-db-multiproc-"));
+    const sharedDbPath = join(tmpDir, "concurrent.db");
+    const workerCount = 6;
+
+    const workerScript = `
+      import { openDb, systemMetadata } from "./src/index.ts";
+      const dbPath = process.argv[1];
+      const workerId = process.argv[2];
+      using handle = openDb({ path: dbPath });
+      handle.write((tx) => {
+        tx.insert(systemMetadata)
+          .values({
+            key: "worker-" + workerId,
+            value: "pid-" + String(process.pid),
+            updatedAt: new Date(),
+          })
+          .run();
+      });
+      const count = handle.read((db) => db.select().from(systemMetadata).all().length);
+      if (count < 1) throw new Error("Expected committed row");
+    `;
+
+    try {
+      const procs = Array.from({ length: workerCount }, (_, idx) =>
+        Bun.spawn(["bun", "-e", workerScript, sharedDbPath, String(idx)], {
+          cwd: PACKAGE_ROOT,
+          stdout: "pipe",
+          stderr: "pipe",
+        }),
+      );
+
+      const results = await Promise.all(
+        procs.map(async (proc) => ({
+          exitCode: await proc.exited,
+          stderr: await new Response(proc.stderr).text(),
+        })),
+      );
+
+      for (const res of results) {
+        expect(res.stderr).toBe("");
+        expect(res.exitCode).toBe(0);
+      }
+
+      using verifier = openDb({ path: sharedDbPath });
+      const rows = verifier.read((db) =>
+        db.select().from(systemMetadata).all(),
+      );
+      expect(rows).toHaveLength(workerCount);
+    } finally {
+      closeAllDbs();
+      rmSync(tmpDir, { recursive: true, force: true });
     }
   });
 });

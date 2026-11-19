@@ -1,8 +1,9 @@
-import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
-import type { Database } from "bun:sqlite";
+import { Database } from "bun:sqlite";
 import type { EnvMap } from "@devtools/core";
-import { resolveDatabasePath } from "./config";
-import { createSqliteConnection } from "./connection";
+import { hostShutdown, type ShutdownRegistry } from "@devtools/core/node";
+import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
+import { ensureParentDirectory, resolveDatabaseTargetPath } from "./config";
+import { initializeBaselineSchema } from "./migrator";
 import * as schema from "./schema";
 
 /**
@@ -16,109 +17,332 @@ export type DevtoolsSchema = typeof schema;
 export type DevtoolsDb = BunSQLiteDatabase<DevtoolsSchema>;
 
 /**
- * Configuration options for creating an isolated {@link DevtoolsDb} instance via {@link createDb}.
+ * Configuration options for opening a lazy, concurrency-safe database handle via {@link openDb}.
  */
-export interface CreateDbOptions {
-  /** Optional filesystem path or `":memory:"` passed to {@link createSqliteConnection}. */
+export interface OpenDbOptions {
+  /** Optional explicit filesystem path or `":memory:"` override. */
   path?: string;
-  /** Optional pre-configured `bun:sqlite` `Database` handle. */
-  connection?: Database;
+  /** Force an isolated in-memory SQLite instance regardless of environment variables. */
+  memory?: boolean;
+  /**
+   * Automatically initialize the baseline schema when opening a brand-new empty database.
+   * Pass `false` only in error-boundary tests that verify uninitialized DB failures.
+   * @defaultValue true
+   */
+  autoInit?: boolean;
   /** Optional environment variable map overriding `process.env`. */
   env?: EnvMap;
+  /** Optional working directory getter seam overriding `process.cwd()`. */
+  cwd?: () => string;
+  /** Optional standalone binary runtime seam overriding `Bun.isStandaloneExecutable`. */
+  isStandalone?: boolean;
+  /** Optional shutdown registry for Phase 3 (`"persistence"`) cleanup hook registration. */
+  shutdown?: ShutdownRegistry;
+  /** Optional SQLite `PRAGMA busy_timeout` duration in milliseconds. Defaults to `5000`. */
+  busyTimeoutMs?: number;
+  /** Optional maximum bounded cold-start / `SQLITE_BUSY` retry attempts. Defaults to `20`. */
+  maxBusyRetries?: number;
 }
 
 /**
- * Instantiates a new Drizzle ORM database client bound to a `bun:sqlite` connection.
- *
- * @param options - Connection path, environment seam, or pre-existing SQLite handle options.
- * @returns Fresh {@link DevtoolsDb} client instance.
- */
-export function createDb(options: CreateDbOptions = {}): DevtoolsDb {
-  const sqlite =
-    options.connection ??
-    createSqliteConnection({ path: options.path, env: options.env });
-  return drizzle({ client: sqlite, schema });
-}
-
-let devtoolsDbInstance: DevtoolsDb | null = null;
-let devtoolsSqliteConnection: Database | null = null;
-let devtoolsDbPath: string | null = null;
-
-/**
- * Returns the lazily initialized process-wide {@link DevtoolsDb} singleton.
+ * Managed handle around a lazily opened `bun:sqlite` + Drizzle ORM connection.
  *
  * @remarks
- * Creates the underlying SQLite connection on first invocation. Call {@link closeDb}
- * or {@link resetDb} to release the singleton handle.
- *
- * @param options - Optional connection path or environment seam used if the singleton is initialized.
- * @returns Shared {@link DevtoolsDb} singleton instance.
+ * File-backed handles share one pooled connection per canonical path in the current process
+ * via lease reference counting, while `":memory:"` handles remain strictly isolated.
+ * All writes via {@link DbHandle.write} execute inside `BEGIN IMMEDIATE` (or nested `SAVEPOINT`s).
  */
-export function getDb(options: CreateDbOptions = {}): DevtoolsDb {
-  if (
-    devtoolsDbInstance &&
-    (options.path !== undefined || options.env !== undefined) &&
-    options.connection === undefined
-  ) {
-    const requestedPath = resolveDatabasePath({
-      customPath: options.path,
-      env: options.env,
-    });
-    if (devtoolsDbPath !== null && requestedPath !== devtoolsDbPath) {
-      closeDb();
-    }
-  }
-
-  if (!devtoolsDbInstance) {
-    devtoolsSqliteConnection =
-      options.connection ??
-      createSqliteConnection({ path: options.path, env: options.env });
-    devtoolsDbInstance = drizzle({ client: devtoolsSqliteConnection, schema });
-    devtoolsDbPath = options.connection
-      ? null
-      : resolveDatabasePath({ customPath: options.path, env: options.env });
-  }
-  return devtoolsDbInstance;
+export interface DbHandle {
+  /** Resolved target path (`":memory:"` or absolute filesystem path). */
+  readonly path: string;
+  /** Materializes the SQLite connection, configures WAL/PRAGMAs, and applies empty-DB auto-init. */
+  ensureReady(): void;
+  /** Executes a read operation against the Drizzle ORM database client. */
+  read<T>(fn: (db: DevtoolsDb) => T): T;
+  /** Executes a write operation inside a `BEGIN IMMEDIATE` transaction (or nested `SAVEPOINT`). */
+  write<T>(fn: (tx: DevtoolsDb) => T): T;
+  /** Releases this handle lease and checkpoints WAL + closes SQLite when the last lease closes. */
+  close(): void;
+  /** Releases this handle automatically when used with `using`. */
+  [Symbol.dispose](): void;
 }
 
-/**
- * Closes the active singleton SQLite connection (checkpointing WAL journals) and clears the cached instance.
- *
- * @remarks
- * Safe to call multiple times or when no singleton connection has been opened.
- */
-export function closeDb(): void {
-  if (devtoolsSqliteConnection) {
+interface SharedConnection {
+  readonly key: string;
+  readonly sqlite: Database;
+  readonly db: DevtoolsDb;
+  readonly isMemory: boolean;
+  refCount: number;
+  writeDepth: number;
+  activeTx: DevtoolsDb | null;
+  autoInitApplied: boolean;
+  closed: boolean;
+  readonly shutdownHooks: Map<ShutdownRegistry, () => void>;
+}
+
+const filePool = new Map<string, SharedConnection>();
+const activeConnections = new Set<SharedConnection>();
+
+function isSqliteBusyError(err: unknown): boolean {
+  const record = (err && typeof err === "object" ? err : {}) as {
+    code?: unknown;
+    message?: unknown;
+  };
+  const msg = typeof record.message === "string" ? record.message : "";
+  return (
+    record.code === "SQLITE_BUSY" ||
+    msg.includes("SQLITE_BUSY") ||
+    msg.includes("database is locked")
+  );
+}
+
+function withSqliteBusyRetry<T>(fn: () => T, maxRetries = 20): T {
+  for (let attempt = 0; attempt < maxRetries; attempt += 1) {
     try {
-      devtoolsSqliteConnection.close();
-    } catch {
-      // Ignore close errors on already-closed handles
+      return fn();
+    } catch (err: unknown) {
+      if (!isSqliteBusyError(err)) {
+        throw err;
+      }
+      Bun.sleepSync(5 + (attempt + 1) * 10);
     }
-    devtoolsSqliteConnection = null;
   }
-  devtoolsDbInstance = null;
-  devtoolsDbPath = null;
+  return fn();
+}
+
+function forceCloseConnection(conn: SharedConnection): void {
+  conn.closed = true;
+  activeConnections.delete(conn);
+  if (!conn.isMemory) {
+    filePool.delete(conn.key);
+  }
+  for (const unregister of conn.shutdownHooks.values()) {
+    unregister();
+  }
+  conn.shutdownHooks.clear();
+  if (!conn.isMemory) {
+    try {
+      conn.sqlite.run("PRAGMA wal_checkpoint(TRUNCATE);");
+    } catch {
+      // Ignore SQLITE_BUSY if another process still holds the WAL file
+    }
+  }
+  conn.sqlite.close(true);
+}
+
+function registerConnectionShutdownHook(
+  conn: SharedConnection,
+  registry: ShutdownRegistry,
+): void {
+  if (conn.shutdownHooks.has(registry)) {
+    return;
+  }
+  const hookOptions = conn.isMemory ? undefined : { id: `db:${conn.key}` };
+  const unregister = registry.register(
+    "persistence",
+    () => {
+      forceCloseConnection(conn);
+    },
+    hookOptions,
+  );
+  conn.shutdownHooks.set(registry, unregister);
+}
+
+function applyAutoInitIfNeeded(
+  conn: SharedConnection,
+  autoInit: boolean,
+  maxBusyRetries: number,
+): void {
+  if (autoInit && !conn.autoInitApplied) {
+    withSqliteBusyRetry(
+      () => initializeBaselineSchema(conn.sqlite),
+      maxBusyRetries,
+    );
+    conn.autoInitApplied = true;
+  }
+}
+
+function openPhysicalConnection(
+  resolvedPath: string,
+  isMemory: boolean,
+  autoInit: boolean,
+  busyTimeoutMs: number,
+  maxBusyRetries: number,
+): SharedConnection {
+  return withSqliteBusyRetry(() => {
+    if (!isMemory) {
+      ensureParentDirectory(resolvedPath);
+    }
+    const sqlite = new Database(resolvedPath, {
+      create: true,
+      strict: true,
+    });
+    try {
+      sqlite.run(`PRAGMA busy_timeout = ${busyTimeoutMs};`);
+      if (!isMemory) {
+        sqlite.run("PRAGMA journal_mode = WAL;");
+      }
+      sqlite.run("PRAGMA foreign_keys = ON;");
+      sqlite.run("PRAGMA synchronous = NORMAL;");
+      if (autoInit) {
+        initializeBaselineSchema(sqlite);
+      }
+    } catch (err: unknown) {
+      sqlite.close(true);
+      throw err;
+    }
+
+    const conn: SharedConnection = {
+      key: resolvedPath,
+      sqlite,
+      db: drizzle({ client: sqlite, schema }),
+      isMemory,
+      refCount: 1,
+      writeDepth: 0,
+      activeTx: null,
+      autoInitApplied: autoInit,
+      closed: false,
+      shutdownHooks: new Map(),
+    };
+    activeConnections.add(conn);
+    if (!isMemory) {
+      filePool.set(resolvedPath, conn);
+    }
+    return conn;
+  }, maxBusyRetries);
 }
 
 /**
- * Resets the cached {@link DevtoolsDb} singleton and closes any active underlying SQLite handle.
+ * Opens a lazy, concurrency-safe handle to the embedded SQLite database.
  *
  * @remarks
- * Primarily used in test suites and daemon shutdown hooks to guarantee clean state between runs.
+ * Opening a handle does not touch the filesystem or initialize SQLite until the first
+ * {@link DbHandle.ensureReady}, {@link DbHandle.read}, or {@link DbHandle.write} call.
+ * File-backed handles share a pooled connection per resolved path and automatically
+ * register a Phase 3 (`"persistence"`) cleanup hook onto `options.shutdown ?? hostShutdown`.
+ *
+ * @param options - Path resolution, memory isolation, auto-init, and shutdown registry seams.
+ * @returns Managed {@link DbHandle}.
  */
-export function resetDb(): void {
-  closeDb();
+export function openDb(options: OpenDbOptions = {}): DbHandle {
+  const resolvedPath = resolveDatabaseTargetPath({
+    customPath: options.path,
+    memory: options.memory,
+    env: options.env,
+    cwd: options.cwd,
+    isStandalone: options.isStandalone,
+  });
+  const isMemory = resolvedPath === ":memory:";
+  const autoInit = options.autoInit !== false;
+  const busyTimeoutMs = options.busyTimeoutMs ?? 5000;
+  const maxBusyRetries = options.maxBusyRetries ?? 20;
+  const shutdownRegistry = options.shutdown ?? hostShutdown;
+
+  let conn: SharedConnection | null = null;
+  let handleClosed = false;
+
+  const ensureConnection = (): SharedConnection => {
+    if (handleClosed || conn?.closed) {
+      throw new Error("Database handle is closed");
+    }
+
+    if (conn) {
+      applyAutoInitIfNeeded(conn, autoInit, maxBusyRetries);
+      return conn;
+    }
+
+    if (!isMemory) {
+      const existing = filePool.get(resolvedPath);
+      if (existing && !existing.closed) {
+        existing.refCount += 1;
+        conn = existing;
+        applyAutoInitIfNeeded(conn, autoInit, maxBusyRetries);
+        registerConnectionShutdownHook(conn, shutdownRegistry);
+        return conn;
+      }
+    }
+
+    conn = openPhysicalConnection(
+      resolvedPath,
+      isMemory,
+      autoInit,
+      busyTimeoutMs,
+      maxBusyRetries,
+    );
+    registerConnectionShutdownHook(conn, shutdownRegistry);
+    return conn;
+  };
+
+  const close = (): void => {
+    if (handleClosed) {
+      return;
+    }
+    handleClosed = true;
+    if (!conn || conn.closed) {
+      return;
+    }
+    conn.refCount -= 1;
+    if (conn.refCount <= 0) {
+      forceCloseConnection(conn);
+    }
+  };
+
+  return {
+    path: resolvedPath,
+
+    ensureReady() {
+      ensureConnection();
+    },
+
+    read<T>(fn: (db: DevtoolsDb) => T): T {
+      const active = ensureConnection();
+      return fn(active.db);
+    },
+
+    write<T>(fn: (tx: DevtoolsDb) => T): T {
+      const active = ensureConnection();
+      const runWithTx = (tx: unknown): T => {
+        const prevTx = active.activeTx;
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Drizzle SQLiteTransaction exposes the full query surface of DevtoolsDb while omitting $client
+        active.activeTx = tx as DevtoolsDb;
+        active.writeDepth += 1;
+        try {
+          return fn(active.activeTx);
+        } finally {
+          active.writeDepth -= 1;
+          active.activeTx = prevTx;
+        }
+      };
+
+      if (active.writeDepth > 0 && active.activeTx) {
+        return active.activeTx.transaction((nestedTx) => runWithTx(nestedTx));
+      }
+
+      return withSqliteBusyRetry(
+        () =>
+          active.db.transaction((tx) => runWithTx(tx), {
+            behavior: "immediate",
+          }),
+        maxBusyRetries,
+      );
+    },
+
+    close,
+
+    [Symbol.dispose]() {
+      close();
+    },
+  };
 }
 
 /**
- * Lazy proxy forwarding all property accesses to the active {@link getDb} singleton.
+ * Force-closes all active file-backed and in-memory SQLite connections in the current process.
  *
  * @remarks
- * Allows modules to import `db` at the top level without triggering filesystem I/O
- * or SQLite connection initialization until a query is actually executed.
+ * Primarily intended for test teardown and cleanup boundaries.
  */
-export const db: DevtoolsDb = new Proxy({} as DevtoolsDb, {
-  get(_target, prop, receiver) {
-    return Reflect.get(getDb(), prop, receiver);
-  },
-});
+export function closeAllDbs(): void {
+  for (const conn of Array.from(activeConnections)) {
+    forceCloseConnection(conn);
+  }
+}
