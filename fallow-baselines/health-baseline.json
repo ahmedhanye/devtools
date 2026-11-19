@@ -1,0 +1,164 @@
+{
+  "kind": "health",
+  "finding_counts": {
+    "apps/cli/src/commands/lighthouse/audit.ts": {
+      "complexity_high": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "apps/cli/src/commands/lighthouse/budgets.ts": {
+      "complexity_moderate": {
+        "count": 1
+      }
+    },
+    "apps/cli/src/commands/lighthouse/formatters/agent.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "apps/cli/src/commands/lighthouse/formatters/terminal.ts": {
+      "complexity_critical": {
+        "count": 2
+      },
+      "crap_critical": {
+        "count": 2
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/cli/src/commands/lighthouse/open.ts": {
+      "complexity_moderate": {
+        "count": 1
+      }
+    },
+    "packages/lighthouse/src/domain/normalizer.ts": {
+      "complexity_high": {
+        "count": 3
+      },
+      "crap_high": {
+        "count": 3
+      },
+      "crap_moderate": {
+        "count": 4
+      }
+    },
+    "packages/lighthouse/src/infra/runtime/virtual-fs.ts": {
+      "crap_high": {
+        "count": 1
+      }
+    }
+  },
+  "identity_finding_counts": {
+    "apps/cli/src/commands/lighthouse/audit.ts\u0000runLighthouseAuditCommand": {
+      "complexity_high": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "apps/cli/src/commands/lighthouse/budgets.ts\u0000parseBudgetRules": {
+      "complexity_moderate": {
+        "count": 1
+      }
+    },
+    "apps/cli/src/commands/lighthouse/formatters/agent.ts\u0000formatAgentMarkdown": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "apps/cli/src/commands/lighthouse/formatters/terminal.ts\u0000formatMetricDelta": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/cli/src/commands/lighthouse/formatters/terminal.ts\u0000formatTerminalDiff": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "apps/cli/src/commands/lighthouse/formatters/terminal.ts\u0000getRatingBadge": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "apps/cli/src/commands/lighthouse/open.ts\u0000runLighthouseOpenCommand": {
+      "complexity_moderate": {
+        "count": 1
+      }
+    },
+    "packages/lighthouse/src/domain/normalizer.ts\u0000buildAuditCategoryMap": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "packages/lighthouse/src/domain/normalizer.ts\u0000extractClsCulprits": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "packages/lighthouse/src/domain/normalizer.ts\u0000extractFailedAudits": {
+      "complexity_high": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "packages/lighthouse/src/domain/normalizer.ts\u0000extractInsights": {
+      "complexity_high": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "packages/lighthouse/src/domain/normalizer.ts\u0000extractLcpPhasesFromTable": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "packages/lighthouse/src/domain/normalizer.ts\u0000extractTtfbMs": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "packages/lighthouse/src/domain/normalizer.ts\u0000parseClsSubItems": {
+      "complexity_high": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "packages/lighthouse/src/infra/runtime/virtual-fs.ts\u0000getVirtualAssetContent": {
+      "crap_high": {
+        "count": 1
+      }
+    }
+  },
+  "runtime_coverage_findings": [],
+  "target_keys": [
+    "apps/cli/src/commands/lighthouse/audit.ts:complexity",
+    "apps/cli/src/commands/lighthouse/formatters/agent.ts:complexity",
+    "apps/frontend/src/shared/ui/shadcn/sidebar/sidebar.tsx:dead code",
+    "apps/cli/src/commands/lighthouse/formatters/terminal.ts:complexity",
+    "packages/lighthouse/src/domain/normalizer.ts:untested risk"
+  ]
+}

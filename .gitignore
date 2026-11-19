@@ -11,6 +11,7 @@ out/
 .next/
 storybook-static/
 .source/
+next-env.d.ts
 coverage/
 **/coverage/
 
@@ -31,6 +32,5 @@ Thumbs.db
 *.db-shm
 
 # Fallow cache
-.fallow/*
-!.fallow/dupes-baseline.json
+.fallow/
 

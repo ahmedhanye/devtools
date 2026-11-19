@@ -7,7 +7,7 @@ pre-commit:
   commands:
     lint-and-format:
       glob: "*.{js,jsx,ts,tsx,mjs,cjs,mts,cts}"
-      run: bunx --bun oxlint --fix {staged_files} && bunx --bun prettier --write {staged_files}
+      run: bunx --bun oxlint --deny-warnings --fix {staged_files} && bunx --bun prettier --write {staged_files}
       stage_fixed: true
 
     format-docs:
@@ -17,7 +17,7 @@ pre-commit:
 
     react-doctor:
       glob: "{apps/frontend,site}/**/*.{js,jsx,ts,tsx}"
-      run: bunx react-doctor --project apps/frontend,site -y --no-telemetry --no-supply-chain --blocking error {staged_files}
+      run: CI=true bunx react-doctor --project apps/frontend,site -y --no-telemetry --no-supply-chain --blocking warning --staged
 
     test-staged-ui:
       glob: "apps/frontend/src/**/*.{ts,tsx}"
@@ -28,12 +28,13 @@ pre-commit:
 
     verify-agents-governance:
       glob: "{.agents/*.md,.agents/**/*.md}"
-      run: bun scripts/verify-agents-governance/verify-agents-governance.ts {staged_files}
+      run: bun run lint:agents {staged_files}
+
+    verify-db-migrations:
+      glob: "packages/db/{src/schema/**,drizzle/**,drizzle.config.ts,src/migrator.ts}"
+      run: bun run verify:db-migrations --check-git-status
 
 commit-msg:
   commands:
     conventional-commits:
       run: bunx --bun commitlint --edit {1}
-
-    verify-atomic-commit:
-      run: bun scripts/verify-atomic-commit/verify-atomic-commit.ts {1}

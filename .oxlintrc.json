@@ -1,5 +1,8 @@
 {
   "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/refs/heads/main/npm/oxlint/configuration_schema.json",
+  "options": {
+    "typeAware": true
+  },
   "plugins": ["typescript", "unicorn", "oxc", "import", "promise", "jsdoc"],
   "categories": {
     "correctness": "deny",
@@ -11,6 +14,13 @@
     "typescript/await-thenable": "deny",
     "typescript/no-misused-spread": "deny",
     "typescript/no-redundant-type-constituents": "deny",
+    "typescript/no-explicit-any": "deny",
+    "typescript/no-non-null-assertion": "deny",
+    "typescript/consistent-type-imports": "deny",
+    "typescript/ban-types": "deny",
+    "typescript/only-throw-error": "deny",
+    "typescript/switch-exhaustiveness-check": "deny",
+    "typescript/no-unsafe-type-assertion": "deny",
     "typescript/ban-ts-comment": [
       "deny",
       {
@@ -51,6 +61,7 @@
     "jsdoc/require-yields-description": "deny",
     "import/no-duplicates": "deny",
     "import/no-self-import": "deny",
+    "import/no-cycle": "deny",
     "import/no-unassigned-import": "off",
     "import/namespace": "off",
     "promise/catch-or-return": "deny",
@@ -63,7 +74,11 @@
       "files": ["apps/frontend/**", "site/**"],
       "plugins": ["react", "react-perf", "jsx-a11y", "nextjs"],
       "rules": {
+        "no-console": "deny",
         "react/react-in-jsx-scope": "off",
+        "react/rules-of-hooks": "deny",
+        "react/button-has-type": "deny",
+        "react/no-danger": "deny",
         "react/jsx-no-comment-textnodes": "deny",
         "react/no-unstable-nested-components": "deny",
         "react/exhaustive-deps": "deny",
@@ -76,19 +91,28 @@
         "jsx-a11y/alt-text": "deny",
         "jsx-a11y/anchor-is-valid": "deny",
         "jsx-a11y/click-events-have-key-events": "warn",
-        "jsx-a11y/prefer-tag-over-role": "off"
+        "jsx-a11y/prefer-tag-over-role": "off",
+        "react-perf/jsx-no-jsx-as-prop": "off"
+      }
+    },
+    {
+      "files": ["**/vitest.config.ts"],
+      "rules": {
+        "no-underscore-dangle": "off"
       }
     },
     {
       "files": ["apps/frontend/src/shared/ui/shadcn/**"],
       "rules": {
-        "no-shadow": "off"
+        "no-shadow": "off",
+        "typescript/no-unsafe-type-assertion": "off"
       }
     },
     {
       "files": ["packages/**/src/**"],
       "plugins": ["node"],
       "rules": {
+        "no-console": "deny",
         "node/no-process-env": "deny",
         "unicorn/no-process-exit": "deny",
         "node/no-path-concat": "deny",
@@ -96,10 +120,17 @@
       }
     },
     {
+      "files": ["**/packages/core/src/node/signals.ts"],
+      "rules": {
+        "no-console": "off",
+        "unicorn/no-process-exit": "off"
+      }
+    },
+    {
       "files": [
         "**/packages/db/src/config.ts",
         "**/packages/browser/src/config.ts",
-        "**/packages/lighthouse/src/config.ts"
+        "**/packages/lighthouse/src/config/artifacts-config.ts"
       ],
       "plugins": ["node"],
       "rules": {
@@ -110,8 +141,7 @@
       "files": [
         "**/packages/browser/src/detector.ts",
         "**/packages/browser/src/waterfall.ts",
-        "**/packages/lighthouse/src/runner.ts",
-        "**/packages/lighthouse/src/worker.ts"
+        "**/packages/lighthouse/src/application/execute-batch.ts"
       ],
       "rules": {
         "no-await-in-loop": "off"
@@ -123,6 +153,64 @@
       "rules": {
         "node/no-path-concat": "deny",
         "node/handle-callback-err": "deny"
+      }
+    },
+    {
+      "files": ["apps/cli/src/**", "apps/api/src/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "deny",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "./modules/*/**",
+                  "../modules/*/**",
+                  "../../modules/*/**",
+                  "../../../modules/*/**",
+                  "./commands/*/**",
+                  "../commands/*/**",
+                  "../../commands/*/**",
+                  "../../../commands/*/**",
+                  "./shared/*/**",
+                  "../shared/*/**",
+                  "../../shared/*/**",
+                  "../../../shared/*/**",
+                  "./app/*/**",
+                  "../app/*/**",
+                  "../../app/*/**"
+                ],
+                "message": "Import vertical slices and shared subsystems only through their index.ts barrel."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["scripts/**"],
+      "rules": {
+        "typescript/no-explicit-any": "off",
+        "typescript/no-non-null-assertion": "off",
+        "typescript/consistent-return": "off",
+        "typescript/no-unnecessary-type-assertion": "off",
+        "typescript/no-unnecessary-type-conversion": "off",
+        "typescript/no-unsafe-type-assertion": "off",
+        "typescript/no-redundant-type-constituents": "off"
+      }
+    },
+    {
+      "files": [".agents/**"],
+      "rules": {
+        "typescript/no-unnecessary-type-assertion": "off",
+        "typescript/no-non-null-assertion": "off",
+        "typescript/no-unsafe-type-assertion": "off"
+      }
+    },
+    {
+      "files": ["**/*.stories.tsx", "apps/frontend/.storybook/**"],
+      "rules": {
+        "typescript/no-unsafe-type-assertion": "off"
       }
     },
     {
@@ -140,7 +228,11 @@
         "vitest/valid-expect": "deny",
         "vitest/expect-expect": "warn",
         "vitest/no-identical-title": "deny",
-        "typescript/no-floating-promises": "off",
+        "vitest/require-mock-type-parameters": "off",
+        "typescript/await-thenable": "off",
+        "typescript/no-non-null-assertion": "off",
+        "typescript/no-unsafe-type-assertion": "off",
+        "no-console": "off",
         "unicorn/consistent-function-scoping": "off",
         "no-await-in-loop": "off"
       }
