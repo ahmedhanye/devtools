@@ -394,9 +394,7 @@ unquoted colon: in: here
     it("discovers existing files and passes clean repository scan", () => {
       const files = discoverAgentFiles();
       expect(files.length).toBeGreaterThan(0);
-      expect(
-        files.some((f) => f.includes(".agents/rules/documentation.md")),
-      ).toBe(true);
+      expect(files.some((f) => f.includes(".agents/AGENTS.md"))).toBe(true);
 
       const result = verifyAgentsGovernance();
       expect(result.scannedCount).toBeGreaterThan(0);
@@ -405,7 +403,7 @@ unquoted colon: in: here
     });
 
     it("filters and validates specific target files", () => {
-      const target = [".agents/rules/documentation.md"];
+      const target = [".agents/AGENTS.md"];
       const result = verifyAgentsGovernance(target);
       expect(result.scannedCount).toBe(1);
       expect(result.findings).toHaveLength(0);

@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Resolve a GitHub Action reference to a pinned `uses:` line.
 #
-#   pin-action.sh actions/checkout            # latest semver release
-#   pin-action.sh actions/checkout v4.2.2     # specific tag
-#   pin-action.sh github/codeql-action/init   # sub-path actions resolve against the repo
+#   pin-action.sh actions/checkout                        # latest semver release
+#   pin-action.sh actions/checkout v4.2.2                 # specific tag
+#   pin-action.sh github/codeql-action/init               # sub-path actions resolve against the repo
+#   pin-action.sh owner/repo/.github/workflows/ci.yml     # reusable workflows resolve against the repo
 #
 # Output: actions/checkout@<40-char commit sha> # v4.2.2
 set -euo pipefail
+export GIT_TERMINAL_PROMPT=0
 
 if [[ $# -lt 1 || $# -gt 2 ]]; then
   echo "usage: $0 <owner/repo[/path]> [tag]" >&2

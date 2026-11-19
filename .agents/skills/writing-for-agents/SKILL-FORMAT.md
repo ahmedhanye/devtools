@@ -1,6 +1,6 @@
-# Skill mechanics
+# Skill format
 
-Skill-specific rules for [`writing-for-agents`](SKILL.md), covering `SKILL.md` frontmatter, invocation modes, skill splitting, bundled scripts, and two-tier lockfile management.
+Skill-specific rules for [`writing-for-agents`](SKILL.md), covering `SKILL.md` frontmatter, invocation modes, skill splitting, and bundled scripts.
 
 ## Frontmatter requirements
 
@@ -14,9 +14,9 @@ Every `.agents/skills/<name>/SKILL.md` must start with a YAML frontmatter block 
 
 Choose between model invocation and user invocation based on who triggers the skill.
 
-- **Model-invoked skills.** Omit `disable-model-invocation`. Both the agent and the user can invoke the skill, and other skills can reference it. Because the `description` loads into context automatically on every turn, write it using the context pointer rules in `SKILL.md` and never add duplicate pointers to the skill inside `.agents/AGENTS.md` or `.agents/rules/*.md`. A model-invoked reference skill can also hold shared rules that multiple skills consult.
+- **Model-invoked skills.** Omit `disable-model-invocation`. Both the agent and the user can invoke the skill, and other skills can reference it. Because the `description` loads into context automatically on every turn, write it using the context pointer rules in `SKILL.md` and never add duplicate pointers to the skill inside `.agents/AGENTS.md` or optional scoped rules. A model-invoked reference skill can also hold shared rules that multiple skills consult.
 - **User-invoked skills.** Set `disable-model-invocation: true`. Only the user typing `/<name>` can invoke the skill, spending zero context tokens per turn. Write a concise one-sentence `description` for the human without `Use when...` trigger branches.
-- **Shared reference for user-invoked skills.** Two user-invoked skills cannot invoke each other automatically. Place shared reference in a standalone Markdown file or a model-invoked skill that both skills link to.
+- **Shared reference for user-invoked skills.** Two user-invoked skills cannot invoke each other automatically by name; link directly to the sibling `SKILL.md` path when already inside a user-invoked flow, or place shared reference in a standalone Markdown file or a model-invoked skill that both skills link to.
 
 ## Splitting by invocation and router skills
 
@@ -27,11 +27,6 @@ Choose between model invocation and user invocation based on who triggers the sk
 
 Place deterministic validation, lookup, or transformation logic in `.agents/skills/<name>/scripts/` so the agent executes the script via CLI without loading implementation code into the context window.
 
-- **Executable permissions.** Include a shebang such as `#!/usr/bin/env bun` or `#!/usr/bin/env bash` and mark the file executable with `chmod +x`.
+- **Executable permissions.** Include a portable shebang such as `#!/usr/bin/env bash` and mark the file executable with `chmod +x`.
 - **Non-interactive CLI.** Accept explicit file or flag arguments and exit `0` on success or non-zero with actionable error messages on failure. Never prompt for interactive TTY input.
 - **Documented invocation.** Show the exact command line and exit-code completion criterion inside `SKILL.md`.
-
-## Two-tier skill management
-
-- **Vendor skills in `skills-lock.json`.** Skills declared in root `skills-lock.json` are read-only upstream assets updated with `bunx skills`. [`scripts/verify-agents-governance/verify-agents-governance.ts`](../../../scripts/verify-agents-governance/verify-agents-governance.ts) exempts vendor skills from directory-name mismatch, machine-path, local link, and unslop checks.
-- **Customized skills in `.agents/skills-override.json`.** Before editing a vendor skill, eject it by removing its entry from `skills-lock.json` and registering its upstream `source`, `path`, and `commit` SHA in `.agents/skills-override.json`. Ejected skills must pass all governance checks and reconcile upstream changes with [`/update-custom-skills`](../update-custom-skills/SKILL.md).

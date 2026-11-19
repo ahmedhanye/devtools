@@ -1,38 +1,16 @@
 ---
 name: comments-review
-description: Review pull request comments against repository truth and author a review report. Use when reviewing PR comments, inspecting review feedback, or auditing open PR threads.
+description: Review open pull request comments against repository truth and settle actions for each thread. Use when reviewing PR comments, triaging reviewer feedback, or auditing unresolved PR threads.
 ---
 
 # Review pull request comments
 
-Review pull request comments against repository truth directly in the main agent session without dispatching a dedicated subagent. This skill is read-only: do not edit codebase files, stage git commits, push branches, or resolve review threads. Follow the investigation rules and thread query in [docs/contributing/pr-comments.md](../../../docs/contributing/pr-comments.md).
+Audit open pull request review threads against repository truth and settle dispositions before making changes. Leave repository files, git state, and GitHub threads untouched during the review.
 
 ## Workflow
 
-### 1. Fetch unresolved threads
+1. **Fetch open threads.** Following `CONTRIBUTING.md` and its linked PR comment guide, query unresolved threads and top-level review summaries for the target PR or active branch PR. Read every comment and follow-up reply in each thread alongside commits pushed after the comment. Stop and report if zero threads are open.
+2. **Research and verify.** Trace cited lines, callers, types, tests, `CODING_STANDARDS.md`, `ARCHITECTURE.md` (including linked ADRs), and `GLOSSARY.md`, and verify technical or external claims against primary sources using [`../research/SKILL.md`](../research/SKILL.md). Check for regressions and broken contracts, then classify each thread as a valid defect, architectural trade-off, or false positive.
+3. **Present findings via grilling.** Frame open threads, options, and grounded recommendations using [`../grilling/SKILL.md`](../grilling/SKILL.md).
 
-Query open review threads for the target pull request using the GraphQL query from the contributing documentation. If no threads remain open, report that all threads are resolved and stop.
-
-### 2. Research all findings
-
-Investigate all comments and recommended changes across repository truth and external sources:
-
-1. **Monorepo context.** Trace cited lines, surrounding logic, types, and all callers or dependents across packages.
-2. **Repository documentation.** Verify recommendations against monorepo coding standards, testing guides, domain glossaries, and architecture decision records.
-3. **External best practices.** For recommended patterns, alternative APIs, or library choices, conduct web research for primary specifications, release notes, and community consensus per [`../research/SKILL.md`](../research/SKILL.md).
-4. **Counter-evidence and future breakages.** Check whether applying recommendations would cause subtle regressions, break public contracts, or create maintenance hazards.
-5. **Classify findings:**
-   - **Valid defect:** A verified bug, regression, or standard breach with proposed fix and test strategy.
-   - **False positive:** An invalid claim contradicted by codebase implementation, tests, ADRs, or external specifications.
-   - **Architectural trade-off:** Multiple valid approaches or scope questions requiring maintainer guidance.
-
-### 3. Author report artifact
-
-Author a markdown report artifact named `pr_<number>_comments_review.md` in the session artifact directory containing:
-- Overview of inspected threads, authors, and files.
-- Grouped findings by disposition with file citations, line numbers, and research proof.
-- Technical refutations for false positives and exact proposed solutions for valid defects.
-
-Present the artifact link and a summary table to the user.
-
-Completion criterion: The review report artifact is written to the session artifact directory and presented to the user without modifying repository code or mutating GitHub threads.
+Completion criterion: All open threads are verified, the grilling session artifact is written and linked in chat, and repository files and GitHub threads remain untouched.

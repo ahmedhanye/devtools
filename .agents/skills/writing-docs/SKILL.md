@@ -1,49 +1,41 @@
 ---
 name: writing-docs
-description: "Author, structure, and synchronize human-facing technical documentation. Use when writing, editing, restructuring, or updating READMEs, architectural docs, guides, or API reference files."
+description: "Write, structure, and update project documentation across root *.md and docs/**. Use when writing, editing, restructuring, or syncing READMEs, guides, coding standards, architecture, testing, contributing, review, or security docs, including doc updates after code, CI, or workflow changes."
 ---
 
 # Writing documentation
 
-Reference and authoring guide for writing clear, maintainable technical documentation for software engineers.
+Authoring guide for repository documentation across `docs/**`, package and app READMEs, and root `*.md` files (`README.md`, `ARCHITECTURE.md`, `CODE_OF_CONDUCT.md`, `CODING_STANDARDS.md`, `CONTRIBUTING.md`, `GLOSSARY.md`, `REVIEW.md`, `SECURITY.md`, and `TESTING.md`).
 
-Apply [`/unslop`](../unslop/SKILL.md) to all prose.
-
-## Human-only documentation boundary
-
-Files under `docs/**` and root `*.md` (`README.md`, `CONTRIBUTING.md`, `TESTING.md`, `SECURITY.md`, `ARCHITECTURE.md`, `CODING_STANDARDS.md`, `GLOSSARY-MAP.md`) are written strictly for human engineers.
-
-- **Zero agent leakage.** Never reference `.agents/` paths, agent skills or rules, slash commands (such as `/qa`, `/tdd`), subagents, ephemeral `.scratch/` workspaces, or AI confirmation checkpoints inside human documentation.
-- **Audience separation.** When an instruction governs AI agent behavior, place it in `.agents/AGENTS.md`, `.agents/rules/`, or `.agents/skills/`. When documentation guides human contributors or users, place it under `docs/` or root markdown files.
+Apply [`/unslop`](../unslop/SKILL.md) to all prose. For Architecture Decision Records (`docs/adr/`) and domain glossaries (`GLOSSARY.md`, `docs/glossary/`), read and follow [`domain-modeling`](../domain-modeling/SKILL.md) and obtain explicit maintainer confirmation before authoring or editing any ADR.
 
 ## Core authoring principles
 
-Every document should prioritize readability, visual scanning, and structural longevity.
+- **Lead with a summary.** Open every file with one or two sentences stating what the document covers and when it applies.
+- **Write human-first engineering prose.** Author root `*.md`, `docs/**`, and READMEs uniformly so humans and coding agents follow the exact same procedures. Omit agent-harness mechanics such as `subagent`, `coordinator`, `prompt`, `token`, `turn`, or "run in another session" from project documentation.
+- **Verify facts against live code first.** Read live source files, manifests, configs, and CLI `--help` output before writing or updating claims. Ban volatile literals that silently rot, such as patch version strings, hardcoded CI check counts, terminal directory listings, or file-by-file ASCII trees.
+- **Keep one source of truth.** Record each contract, table, diagram, or procedure in one canonical file and link to it elsewhere. Maintain clear folder ownership: architecture docs own topology, data flow, and lifecycles (*how it works*); coding standards own authoring rules and checklists (*how to write it*); testing and contributing docs own verification and workflow procedures.
+- **Point to code instead of copying it.** Reference repository-relative paths (`path/to/file.ext#L10-L25`) and exported symbol names (`ClassName.method`) instead of pasting full files or functions. Keep inline snippets to short 5 to 12 line syntax or pattern skeletons.
+- **Use canonical domain language.** Reuse exact terms from `GLOSSARY.md` and `docs/glossary/*.md` and replace synonyms listed under `_Avoid_`.
 
-- **Lead with an executive summary.** Open with a brief summary or bulleted contract stating what the component or subsystem does. Readers scan this in 15 seconds to evaluate relevance.
-- **Express architecture in Mermaid.** Use plain-text Mermaid diagrams for workflows, lifecycles, and component interactions. They render visually in GitHub and documentation portals without image asset rot.
-- **Format relational data in tables.** Structure CLI flags, configuration parameters, environment variables, schema fields, and error codes into Markdown tables rather than narrative paragraphs.
-- **Use code pointers over code copies.** Direct readers to repository-relative file paths (`path/to/file.ext#L10-L25`) and symbol names (`ClassName.method`). Inlined code belongs only in minimal syntax examples (one to three lines). Code copies rot when source code changes.
-- **Progressive disclosure.** Keep root index files lean as navigation pointers. Keep topic documents cohesive and bounded under a centralized documentation path such as `docs/`.
+## Token efficiency and structure
 
-## When to update documentation
+- **Keep root indexes thin.** Root `*.md` files act as hub-and-spoke maps: a short overview, core invariants, and a `When to read` routing table pointing to topic guides under `docs/**` so readers open only the single file they need.
+- **Front-load answers and cut generic prose.** Place decision tables, commands, and hard constraints before background rationale. Document only repository-specific contracts, trade-offs, and non-obvious constraints rather than textbook explanations any engineer already knows.
+- **Co-locate and split cleanly.** Group a contract's definition, rules, and edge cases under one concrete, searchable heading (for example, `## Loopback security boundary` instead of `## Security`). Split a guide only when it serves distinct workflows or grows dense past ~150 lines; place shared rules in a parent guide and branch-specific procedures in sibling files under a matching subfolder.
+- **Maintain link hygiene during restructures.** When creating, renaming, splitting, merging, or deleting any file, update every incoming link and `#heading` anchor across root `*.md`, `docs/**`, and package or app READMEs, leaving zero orphan documents.
 
-Update existing documentation when code changes alter:
+## Visuals and formatting
 
-- Exported API signatures, parameters, types, or return values.
-- Configuration schemas, environment variables, or default settings.
-- CLI flags, arguments, commands, or exit codes.
-- System components, runtime lifecycles, or architectural invariants.
-
-When adding, moving, or deleting documentation files, update parent table-of-contents links and prune broken references.
+- **Format structured data in tables.** Put CLI commands, flags, environment variables, folder responsibilities, status codes, schemas, and commit matrices in Markdown tables instead of prose lists.
+- **Use GitHub Flavored Markdown features purposefully.** Use language-tagged fenced code blocks, task lists (`- [ ]`, `- [x]`) for checklists, relative file and `#heading` links, footnotes for secondary citations, and collapsible `<details>` sections only for optional reference details while keeping required rules and specs visible inline. Use GitHub Alerts (`> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]`, `> [!CAUTION]`) at most once or twice per file, never nested or stacked consecutively, to highlight security boundaries, irreversible actions, traps, and superseded-doc notices.
+- **Express flows in Mermaid.** Use `flowchart` for topology and decisions, `sequenceDiagram` for protocols and lifecycles, and `stateDiagram-v2` for state machines. Keep diagrams readable (~10 to 12 nodes maximum), quote labels containing special characters (`()`, `[]`, `/`, `:`), and never duplicate the same diagram across two files.
 
 ## Verification
 
-Before finishing documentation edits:
+Before finishing any documentation edit, confirm all of the following:
 
-1. Confirm all code fences are closed and declare a language tag.
-2. Confirm relative Markdown links point to existing files and valid anchors.
-3. Confirm all paths are repository-relative, with no machine-specific paths (`/home/`, `/Users/`, `file:///`).
-4. Confirm zero agent leaks exist in `docs/**` or root `*.md` files.
-
-Completion criterion: Modified documentation reads clearly, contains valid links and closed fences, uses code pointers over copies, and passes repository lint checks.
+1. Every modified file passes [`/unslop`](../unslop/SKILL.md) (sentence-case headings, no em dashes, plain active voice) and contains zero agent-harness leakage.
+2. Every documented fact, CLI flag, script name, file path, symbol, relative link, and `#heading` anchor is verified against live files in the repository.
+3. No duplicated sections or volatile code copies were introduced across sibling docs, and all incoming links to moved or removed files are updated.
+4. The repository's Markdown formatter or linter exits `0` on all modified files.

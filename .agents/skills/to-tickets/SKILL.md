@@ -1,96 +1,37 @@
 ---
 name: to-tickets
-description: Break a plan, spec, or conversation into tracer-bullet tickets with blocking edges, published locally or to a tracker.
+description: Split a spec, plan, or conversation into actionable tickets and publish them to GitHub.
 disable-model-invocation: true
 ---
 
 # To tickets
 
-Break a plan, spec, or conversation into tracer-bullet tickets, each declaring its blocking dependencies. Follow Git and GitHub CLI workflows in `CONTRIBUTING.md`.
+Break a spec, plan, or conversation into vertical tracer-bullet tickets with explicit blocking dependencies.
 
-## Process
+1. **Load source and repository conventions.** Read the referenced spec, file, or issue (including comments) or synthesize the current conversation. Inspect available repository issue docs and templates (such as `CONTRIBUTING.md`, linked issue guides, and `.github/ISSUE_TEMPLATE/`), relevant codebase boundaries, and live GitHub labels and parent issue details when publishing to GitHub.
 
-### 1. Gather context
+   Completion criterion: Source work loaded in full, available repository issue rules and live labels checked, and affected boundaries understood.
 
-Work from whatever is already in the conversation context. If the user passes a reference, such as a spec path, issue number, or URL as an argument, fetch it and read its full body and comments.
+2. **Slice the work cleanly.** Split work into vertical tracer-bullet tickets across affected layers, each independently verifiable and sized for one focused task, with explicit `Blocked by` edges.
 
-Completion criterion: Target context, spec, or ticket loaded and read completely.
+   - Frame each ticket around the problem and observable expected outcome across public interfaces, omitting internal file paths, helper names, and implementation recipes documented elsewhere.
+   - Sequence wide cross-cutting refactors as expand, migrate in bounded batches, and contract when a single vertical slice is impractical.
+   - Match each ticket's label from the live repository labels (such as feature, bug, refactor, test, docs, infra, or research) rather than assuming one type for every ticket.
 
-### 2. Explore the codebase (optional)
+   Completion criterion: Complete work breakdown drafted with vertical or expand-contract slices, accurate blocking edges, and matching labels.
 
-If you have not already explored the codebase, do so to understand the current state of the code. Use vocabulary from `GLOSSARY-MAP.md` (and context glossaries under `docs/glossary/`) and respect ADRs in `docs/adr/`.
+3. **Propose and confirm.** Write the proposed tickets and dependency graph or table (titles, blockers, delivered outcome, labels, parent spec, and target destination) to a Markdown session artifact (such as `ticket_proposal_<slug>.md`), link it in chat, and wait for user confirmation.
 
-Look for prefactoring opportunities to simplify the change.
+   Completion criterion: Proposal artifact linked in chat and approved by the user.
 
-Completion criterion: Codebase boundaries mapped and prefactoring opportunities identified.
+4. **Publish in dependency order.** Default to creating GitHub issues (blockers first), matching the repository's ticket template and conventions, linking each child ticket to its parent spec and recording blocking dependencies natively when supported or in the body otherwise. Write numbered files under `.scratch/<feature-slug>/issues/<NN>-<slug>.md` instead only when requested or when no GitHub remote is configured. Return all issue URLs or file paths.
 
-### 3. Draft vertical slices
+   Completion criterion: Approved tickets published in dependency order with parent and blocking links recorded, and all URLs or paths returned.
 
-Break the work into tracer bullet tickets.
+## Fallback ticket structure
 
-<vertical-slice-rules>
+When the repository defines no ticket template, keep only sections that add value:
 
-- Each slice cuts a narrow but complete path through every layer, including schema, API, UI, and tests: vertical, not a horizontal slice of one layer.
-- A completed slice is demoable or verifiable on its own.
-- Each slice is sized to fit in a single fresh context window.
-- Any prefactoring should be done first.
-
-</vertical-slice-rules>
-
-Declare blocking edges for each ticket. A ticket with no blockers can start immediately.
-
-Wide refactors are the exception to vertical slicing. A wide refactor is one mechanical change, such as renaming a column or retyping a shared symbol, whose blast radius fans across the whole codebase, so a single edit breaks thousands of call sites at once and no vertical slice can land green. Do not force it into a tracer bullet; sequence it as expand-contract. First expand by adding the new form beside the old so nothing breaks. Then migrate the call sites over in batches sized by blast radius, by package or directory, each batch its own ticket blocked by the expand, keeping CI green batch to batch because the old form still exists. Finally contract by deleting the old form once no callers remain, in a ticket blocked by every migrate batch.
-
-Completion criterion: Vertical slices drafted with declared blocking edges.
-
-### 4. Quiz the user
-
-Present the proposed breakdown as a numbered list. For each ticket, show:
-
-- **Title.** Short descriptive name.
-- **Blocked by.** Other tickets that must complete first, if any.
-- **Delivered capability.** The end-to-end behavior this ticket makes work.
-
-Ask the user:
-
-- Does the granularity feel right, or is it too coarse or too fine?
-- Are the blocking edges correct? Confirm each ticket depends only on tickets that genuinely gate it.
-- Should any tickets be merged or split further?
-
-Iterate until the user approves the breakdown.
-
-Completion criterion: Breakdown approved by the user without pending revisions.
-
-### 5. Publish the tickets
-
-Determine the target destination from the user's prompt:
-
-- **Local files (default).** Unless the user explicitly requests publishing to GitHub or a remote tracker, save tickets locally under `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01` in dependency order (blockers first). Use the template below with `# <NN>: <Ticket title>` prepended and a `### Blocked by` section listing blocking ticket numbers or `None (can start immediately)`. Write one ticket per file, never a single combined file.
-- **GitHub.** When the user explicitly requests publishing to GitHub or the issue tracker, create one issue per ticket in dependency order (blockers first) with a clean descriptive title (no bracketed or type prefixes) and label `type:feat`. Use the ticket template below for the issue body. If the ticket belongs to a parent Spec, attach it as a native sub-issue. Declare any blocking dependencies to gate start order.
-
-Leave parent Specs open in the issue tracker until all child tickets reach Done.
-
-Completion criterion: All approved tickets published locally or created as linked GitHub issues.
-
-<ticket-template>
-
-### Primary affected area
-
-Select the primary workspace app or package from `apps/*`, `packages/*`, `site`, or `toolchain / infra`.
-
-### Problem statement
-
-Describe the concrete user pain point, missing capability, or technical defect this slice addresses.
-
-### Expected behavioral contract
-
-Describe the observable behavioral contracts, public seams, and user-facing capabilities that will hold when this slice is complete. Avoid prescribing internal file paths or implementation recipes.
-
-### Automated acceptance criteria
-
-- [ ] Automated verification suite passes
-- [ ] Observable behavioral contracts hold across public seams
-
-</ticket-template>
-
-Avoid specific file paths or code snippets because they go stale quickly. Exception: if a prototype produced a snippet that encodes a decision more precisely than prose (state machine, reducer, schema, or type shape), inline it and note that it came from a prototype.
+- **Problem (optional).** Concrete defect, gap, or motivation for the slice.
+- **Expected outcome.** Observable behavior across public interfaces when done.
+- **Acceptance criteria.** Verifiable checks proving the expected outcome holds.

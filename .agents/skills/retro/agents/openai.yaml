@@ -1,5 +1,5 @@
 interface:
   display_name: "Retro"
-  short_description: "Conduct a retrospective across sessions to surface recurring agent, tooling, and workflow problems."
+  short_description: "Diagnose command failures, slow tasks, wasted reads, and instruction friction"
 policy:
   allow_implicit_invocation: false

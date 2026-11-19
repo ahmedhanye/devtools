@@ -1,21 +1,21 @@
 ---
 name: github-actions
-description: GitHub Actions workflows and composite actions. Use when writing, reviewing, or hardening anything under `.github/workflows/` or `.github/actions/`, or when a CI run is red or never started.
+description: GitHub Actions workflows, composite actions, and Dependabot action config. Use when writing, reviewing, or hardening `.github/workflows/`, `.github/actions/`, or `.github/dependabot.yml`, or when a CI run fails or never starts.
 ---
 
 # GitHub Actions
 
-A workflow is a trust boundary. The core rule is that **tainted** data must never reach a shell, a secret, or a write token. Tainted data includes PR titles, bodies, and branch names, comments, commit messages, fork code, and artifacts or caches produced by fork runs. Tainted data stays data. It never becomes code and never executes next to a privilege.
+A workflow is a trust boundary. Treat PR titles, bodies, branch names, comments, commit messages, fork code, and fork artifacts or caches as tainted data, never code or privileges.
 
-Resolve facts instead of recalling them. Action versions, commit SHAs, and input names drift faster than training data. A SHA written from memory is either stale or invented. The scripts below do the lookups.
+Look up action versions, commit SHAs, and inputs with the tools below instead of writing them from memory.
 
 ## Tools
 
-- `scripts/pin-action.sh <owner/repo[/path]> [tag]` prints a pinned `uses:` line (`owner/repo@<sha> # vX.Y.Z`) for the latest release or a given tag, resolved directly from upstream tags.
-- `scripts/lint.sh [--online]` runs actionlint (with shellcheck on `run:` blocks), zizmor, and shellcheck on `.github/**/*.sh`. Exit 0 means clean. `--online` adds zizmor's impostor-commit and known-vulnerable-action audits.
-- To inspect an action's inputs directly, read its definition at the pinned SHA: `gh api "repos/OWNER/REPO/contents/action.yml?ref=SHA" --jq .content | base64 -d`.
+Script paths are relative to this skill's folder:
 
-Script paths are relative to this skill's folder.
+- `scripts/pin-action.sh <owner/repo[/path]> [tag]` prints a pinned `uses:` line (`owner/repo@<sha> # vX.Y.Z`) from upstream tags and exits `0`.
+- `scripts/lint.sh [--online]` runs native `actionlint`, `zizmor`, and `shellcheck` on workflows, composite actions, `run:` blocks, and `.github/**/*.sh`, exiting `0` when clean. When missing `PATH` binaries cause a non-zero exit, consult [references/install.md](references/install.md) and recommend installing them instead of skipping linting. `--online` needs a `GH_TOKEN` with public-repo read access and adds `impostor-commit`, `known-vulnerable-actions`, `ref-confusion`, and `stale-action-refs`.
+- Inspect an action's inputs at its pinned SHA via `gh api "repos/OWNER/REPO/contents/action.yml?ref=SHA" --jq .content | base64 -d`.
 
 ## Pick the branch
 
@@ -25,64 +25,56 @@ Script paths are relative to this skill's folder.
 
 ## Write
 
-1. **Survey.** Read the `.github/` tree, lockfile, and runtime version sources (`packageManager` in `package.json`, `.nvmrc`, `.tool-versions`). Note the package manager and existing composite actions to reuse.
-2. **Choose triggers.** Use `pull_request` for jobs that run PR code. Use `pull_request_target` only for metadata jobs (labels, triage) that never check out PR code. When fork PRs require privileged follow-ups (such as posting comments), use the two-workflow pattern in [TEMPLATES.md](TEMPLATES.md). Done when no job both holds a privilege (secrets, write tokens, `id-token: write`) and executes tainted code.
-3. **Draft** from the closest template in [TEMPLATES.md](TEMPLATES.md), then apply every item in the hardening checklist below.
-4. **Pin.** Run `scripts/pin-action.sh` to resolve all external actions to full commit SHAs. Done when every external `uses:` line contains a 40-character commit SHA with a version comment.
-5. **Lint.** Run `scripts/lint.sh`. Fix every reported error. Done when `scripts/lint.sh` exits 0.
-6. **Verify in CI.** Ask the user before pushing (the repo's git checkpoint applies). Then monitor the run with `gh run watch <id> --exit-status`. Done when you can report a passing run URL, or you have notified the user why the run could not be verified on GitHub.
+1. **Survey.** Read `.github/`, lockfiles, and runtime version files (such as `package.json`, `.nvmrc`, `pyproject.toml`, or `.tool-versions`). Done when you know the package manager, runtime source of truth, and existing composite actions to reuse.
+2. **Choose triggers.** Run untrusted PR code under `pull_request`; restrict `pull_request_target` and `issue_comment` to metadata-only jobs or split privileged follow-ups via [references/templates.md](references/templates.md). Done when no job combines secrets or write permissions with tainted code.
+3. **Draft and harden.** Start from the closest template and apply every item in the hardening checklist below. Done when every applicable checklist item is satisfied.
+4. **Pin.** Resolve external actions, reusable workflows, images, and binaries per the Supply chain checklist. Done when `scripts/pin-action.sh` exits `0` for every external `uses:`.
+5. **Lint.** Run `scripts/lint.sh` and fix every error. Done when `scripts/lint.sh` exits `0`.
+6. **Verify in CI.** Once pushed, watch the run with `gh run watch <id> --exit-status`. Done when you report a passing run URL or state why CI verification could not run.
 
 ## Review
 
-1. Run `scripts/lint.sh --online`. If the token cannot read public repos, run `scripts/lint.sh` and note that online audits were skipped.
-2. Check every workflow and composite action against the hardening checklist below and [GOTCHAS.md](GOTCHAS.md). Linters miss architectural flaws: a `workflow_run` job executing an artifact, a deploy concurrency group that cancels mid-deploy, or path filters on required checks.
-3. Report findings grouped by severity:
-   - Critical: Tainted code or data reaches a secret, write token, or `id-token`.
-   - High: Expression injection, unpinned actions, or untrusted writes to `$GITHUB_ENV`.
-   - Medium: Permissions broader than required, persisted checkout credentials, or long-lived cloud keys.
-   - Low: Missing timeouts, missing concurrency cancellation, or inline scripts longer than five lines.
+1. Run `scripts/lint.sh --online`. If `GH_TOKEN` cannot read public repos, run `scripts/lint.sh` and note that online audits were skipped.
+2. Audit every workflow and composite action against the hardening checklist and [references/gotchas.md](references/gotchas.md) for flaws linters miss (such as `workflow_run` trusting an artifact PR number, deploy concurrency cancelling mid-deploy, or path filters on required checks).
+3. Group findings by severity: Critical (tainted code or data reaches a secret, write token, or `id-token`), High (expression injection, unpinned actions or images, tainted `$GITHUB_ENV` writes), Medium (broad permissions, persisted checkout credentials, unverified binary downloads, long-lived cloud keys), Low (missing timeouts, missing concurrency cancellation, inline scripts over five lines).
 
-Done when the report states the number of files audited against every checklist item and lists all findings with line numbers and fixes, or confirms that none were found. See [SECURITY.md](SECURITY.md) for threat details.
+Done when the report states the count of audited files and lists all findings with line numbers and fixes, or confirms none were found. See [references/security.md](references/security.md) for attack mechanics.
 
 ## Debug
 
-1. **Inspect failure logs.** Run `gh run list --branch <branch> --limit 5`, followed by `gh run view <id> --log-failed`. Done when you can identify the failing command line, with secrets redacted.
-2. **Classify the issue.**
-   - Run never started or job was skipped: Consult the trigger section in [GOTCHAS.md](GOTCHAS.md).
-   - Workflow error (YAML syntax, expression syntax, permission failure): Run `scripts/lint.sh`, then check [GOTCHAS.md](GOTCHAS.md).
-   - Step error (command execution failure): Reproduce locally using the same command and runtime version defined in the setup step.
-3. **Collect debug traces.** When local reproduction is blocked, run `gh run rerun <id> --failed --debug` to enable runner diagnostic logs.
-4. **Fix and confirm.** Re-run `scripts/lint.sh`, confirm with the user before pushing, and verify with `gh run watch <id> --exit-status`.
+1. **Inspect logs.** Run `gh run list --branch <branch> --limit 5`, then `gh run view <id> --log-failed`. Done when you identify the failing command line with secrets redacted.
+2. **Classify.**
+   - Not started or skipped: Check triggers, `merge_group`, and expressions in `references/gotchas.md`.
+   - YAML, expression, or permission error: Run `scripts/lint.sh` and check `references/gotchas.md`.
+   - Step command failure: Reproduce locally with the workflow's command and runtime version.
+3. **Collect debug traces.** When local reproduction stalls, re-run with `gh run rerun <id> --failed --debug` for runner diagnostic logs.
+4. **Fix and confirm.** Re-run `scripts/lint.sh` and watch CI with `gh run watch <id> --exit-status`. Done when `scripts/lint.sh` exits `0` and the CI run passes or a remaining blocker is reported.
 
 ## Hardening checklist
 
 ### Trust boundaries
 
-- [ ] Untrusted pull request code never runs under `pull_request_target` or `workflow_run`.
-- [ ] No `${{ }}` expressions appear inside `run:` blocks or `actions/github-script` code. Context values pass through `env:` and are read as `"$VAR"`.
-- [ ] Artifacts and caches from untrusted runs are treated as data, not code. Download them to `${{ runner.temp }}`, validate contents (such as confirming a PR number matches `^[0-9]+$`), and never execute them directly.
-- [ ] Tainted values are never written to `$GITHUB_ENV` or `$GITHUB_PATH`. Multiline outputs in `$GITHUB_OUTPUT` use a cryptographically random delimiter (`openssl rand -hex 16`).
+- [ ] Run untrusted PR code under `pull_request`, never `pull_request_target`, `workflow_run`, `issue_comment`, or `discussion*`.
+- [ ] Pass context values through `env:` and read `"$VAR"`, with zero `${{ }}` inside `run:` or `actions/github-script`.
+- [ ] Download untrusted artifacts to `${{ runner.temp }}`, validate PR targets against `workflow_run.head_sha` and data schemas, and never execute them.
+- [ ] Keep tainted values out of `$GITHUB_ENV` and `$GITHUB_PATH`; delimit multiline `$GITHUB_OUTPUT` values with `openssl rand -hex 16`.
 
 ### Privilege and credentials
 
-- [ ] Top-level workflow permissions default to `permissions: {}`. Each job explicitly grants only the required permissions, with comments documenting why write scopes are needed.
-- [ ] Checkout steps specify `persist-credentials: false` unless the job explicitly commits or pushes to the repository.
-- [ ] Cloud authentication uses OpenID Connect (OIDC) via `permissions: id-token: write` and role assumption. No long-lived cloud access keys in secrets.
-- [ ] Reusable workflows pass specific named secrets rather than `secrets: inherit`.
-- [ ] Self-hosted runners are restricted to private repositories and use ephemeral environments.
+- [ ] Default top-level `permissions: {}` and grant each job only needed scopes with comments explaining write permissions.
+- [ ] Set `persist-credentials: false` on `actions/checkout` unless committing or pushing, and omit `allow-unsafe-pr-checkout: true`.
+- [ ] Use OIDC (`id-token: write`) and protected `environment:` blocks with branch and reviewer rules instead of long-lived secrets.
+- [ ] Pass explicit named secrets to `workflow_call` instead of `secrets: inherit`, and avoid `fromJSON(secrets.*)` so logs mask secrets.
+- [ ] Restrict self-hosted runners to private repositories with ephemeral environments.
 
 ### Supply chain and LTS versions
 
-- [ ] Every third-party action is pinned to an immutable 40-character commit SHA with a version comment via `scripts/pin-action.sh`.
-- [ ] Language runtimes (Node.js, Bun, Python) are locked to Active LTS or repo source-of-truth files (`packageManager` in `package.json`, `.nvmrc`).
-- [ ] Actions track current stable major release lines (e.g. `v4.x`, not unstable pre-releases or deprecated legacy lines).
-- [ ] Package managers install dependencies using frozen lockfiles (`bun install --frozen-lockfile`, `npm ci`, or `pnpm install --frozen-lockfile`).
-- [ ] Runners default to `ubuntu-latest`, or use explicit LTS images (`ubuntu-24.04`) when specific system packages are required.
-- [ ] Automated updates use a 7-day cooldown in Dependabot to protect against zero-day supply chain attacks.
+- [ ] Pin external actions and reusable workflows to 40-char SHAs via `scripts/pin-action.sh`, images to `@sha256:`, and downloaded binaries to SHA-256 checksums.
+- [ ] Lock runtimes to Active LTS or repo version files, and install dependencies with frozen lockfiles.
+- [ ] Track current stable major action lines, use `ubuntu-latest` or explicit LTS runners, and set a 7-day `cooldown` for `github-actions` in `.github/dependabot.yml`.
 
 ### Operational resilience
 
-- [ ] Every job specifies `timeout-minutes`.
-- [ ] Pull request workflows configure concurrency with `cancel-in-progress: true`. Deploy workflows configure concurrency with `cancel-in-progress: false`.
-- [ ] Inline `run:` blocks are limited to five lines of glue code. Complex logic lives in standalone scripts under `.github/scripts/` starting with `#!/usr/bin/env bash` and `set -euo pipefail`.
-- [ ] Step sequences repeated across multiple jobs are extracted into composite actions under `.github/actions/<name>/action.yml`.
+- [ ] Set `timeout-minutes` on every job, `cancel-in-progress: true` for PR workflows, and `cancel-in-progress: false` for deploy workflows.
+- [ ] Keep inline `run:` blocks to five lines or fewer; extract larger logic to standalone scripts such as `.github/scripts/*.sh` (`#!/usr/bin/env bash`, `set -euo pipefail`).
+- [ ] Extract repeated multi-step sequences into `.github/actions/<name>/action.yml` with explicit `shell:` on every `run:` step.
