@@ -69,6 +69,8 @@ Per [ADR 0003](../adr/0003-lighthouse-audit-isolation-and-tiered-storage.md), `L
 | **Warm** | `summary_json` SQLite column (~5 to 15 KB)  | Normalized Audit Summary: LCP/CLS attributions, prioritized Insight Audits, failed checks, distribution. |
 | **Cold** | `<artifactsDir>/<runId>/report.{json,html}` | Full Lighthouse JSON and standalone HTML Report Artifacts; removed automatically if DB insert fails.     |
 
+The `summary_json` column uses a tolerant JSON read boundary (`tolerantJsonText` in `packages/db/src/schema/lighthouse.ts` paired with `parseRunSummary` in `packages/lighthouse/src/infra/persistence/sqlite-runs.ts`). Unreadable or schema-invalid payloads load as `null` on `LighthouseRunRecord` so `computeRunDeltas` returns neutral insight diffs (`clsCulpritDelta: null`) instead of false improvements or regressions, while API and CLI display boundaries apply `EMPTY_LIGHTHOUSE_RUN_SUMMARY`.
+
 ## Artifact Configuration Seam (ADR 0002)
 
 `packages/lighthouse/src/config/artifacts-config.ts` resolves `<artifactsDir>` using injectable `env`, `cwd`, and `isStandalone` Configuration Seams:

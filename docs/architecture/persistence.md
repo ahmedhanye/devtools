@@ -20,16 +20,16 @@ flowchart TD
   Lazy --> FirstUse["First .read() / .write() / .ensureReady()"]
   FirstUse --> Pool{"memory: true?"}
   Pool -- Yes --> Mem["Isolated :memory: SQLite<br/>(no pool, no WAL)"]
-  Pool -- No --> FilePool["Canonical path ref-counted pool<br/>+ WAL pragmas + Phase 3 shutdown hook"]
-  Mem --> Init["initializeBaselineSchema()<br/>(fast-path sqlite_master check)"]
+  Pool -- No --> FilePool["Canonical path ref-counted pool<br/>+ WAL pragmas + per-registry lease hooks"]
+  Mem --> Init["initializeBaselineSchema()<br/>(lock-free watermark check)"]
   FilePool --> Init
   Init --> Write["handle.write(): BEGIN IMMEDIATE<br/>+ nestedTx savepoints + withSqliteBusyRetry"]
-  FilePool --> Shutdown["Phase 3 persistence flush<br/>(closeAllDbs / WAL checkpoint)"]
+  FilePool --> Shutdown["Phase 3 persistence lease release<br/>(WAL checkpoint + close at refCount 0)"]
 ```
 
-- **Statically bundled schema.** `packages/db/src/migrator.ts` statically imports `packages/db/drizzle/*.sql` (`with { type: "text" }`) and `drizzle/meta/_journal.json` (`with { type: "json" }`) so compiled single-file binaries (`dist/devtools`) initialize tables without external SQL files on disk.
-- **Idempotent first-access init.** When `autoInit !== false`, first access checks `sqlite_master` (`userTableCount === 0` fast-path) and applies the baseline schema plus `__devtools_migrations` ledger inside an immediate write transaction.
-- **Shutdown ordering.** File-backed pooled handles self-register on `ShutdownRegistry` Phase 3 (`persistence`) so SQLite closes only after HTTP `ingress` and background `work` finish.
+- **Statically bundled schema.** `packages/db/src/migrator.ts` statically imports `packages/db/drizzle/*.sql` (`with { type: "text" }`) and `drizzle/meta/_journal.json` (`with { type: "json" }`) so compiled single-file binaries (`dist/devtools`) initialize and upgrade tables without external SQL files on disk.
+- **Idempotent first-access init and upgrades.** When `autoInit !== false`, first access checks `sqlite_master` and the `__devtools_migrations` watermark read-only without a write lock. Empty databases apply all bundled migrations inside `BEGIN IMMEDIATE`, tracked databases apply only migrations newer than `MAX(created_at)`, up-to-date databases return immediately, and foreign databases with unrelated tables and no `__devtools_migrations` table stay untouched.
+- **Per-coordinator shutdown ordering.** Each pooled handle registers its own lease callback on its `ShutdownRegistry` Phase 3 (`persistence`) hook. Manual `close()` detaches that lease and unregisters the hook when the registry has no active leases left. A stopping coordinator releases only its own leases, so SQLite checkpoints WAL and closes only after HTTP `ingress` and background `work` finish and total `refCount` across all coordinators reaches zero.
 
 ## SQLite concurrency pragmas (ADR 0001)
 
