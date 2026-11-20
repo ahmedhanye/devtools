@@ -4,14 +4,27 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { API_ERROR_CODES } from "@devtools/core";
 import {
+  EMPTY_LIGHTHOUSE_RUN_SUMMARY,
   InvalidAuditOptionsError,
   type LighthouseRunRecord,
+  type LighthouseRunSummary,
 } from "@devtools/lighthouse";
 import {
   serializeAuditError,
   serializeLighthouseRunDetail,
   serializeLighthouseRunListItem,
 } from "../src/modules/lighthouse/serializers";
+
+const DEFAULT_SUMMARY: LighthouseRunSummary = {
+  lcpElement: null,
+  lcpPhases: null,
+  clsCulprits: [],
+  insights: [],
+  failedAudits: [],
+  runWarnings: ["Simulated throttling applied"],
+  runtimeError: null,
+  medianMetadata: null,
+};
 
 const DEFAULT_ROW: LighthouseRunRecord = {
   id: "run-ok",
@@ -29,16 +42,7 @@ const DEFAULT_ROW: LighthouseRunRecord = {
   fcpMs: 780,
   siMs: 1150,
   ttfbMs: 95,
-  summaryJson: {
-    lcpElement: null,
-    lcpPhases: null,
-    clsCulprits: [],
-    insights: [],
-    failedAudits: [],
-    runWarnings: [],
-    runtimeError: null,
-    medianMetadata: null,
-  },
+  summaryJson: DEFAULT_SUMMARY,
   jsonReportPath: "/tmp/run-ok/report.json",
   htmlReportPath: "/tmp/run-ok/report.html",
   durationMs: 4100,
@@ -74,7 +78,7 @@ describe("Lighthouse API Run DTO Serializers", () => {
     expect("summaryJson" in listItem).toBe(false);
 
     const detail = serializeLighthouseRunDetail(row, artifactsDir);
-    expect(detail.summary).toEqual(row.summaryJson);
+    expect(detail.summary).toEqual(DEFAULT_SUMMARY);
     expect("jsonReportPath" in detail).toBe(false);
 
     const corruptedDetail = serializeLighthouseRunDetail(
@@ -87,7 +91,16 @@ describe("Lighthouse API Run DTO Serializers", () => {
       artifactsDir,
     );
     expect(corruptedDetail.hasHtmlReport).toBe(false);
-    expect(corruptedDetail.summary.insights).toEqual([]);
+    expect(corruptedDetail.summary).toEqual(EMPTY_LIGHTHOUSE_RUN_SUMMARY);
+
+    const nullSummaryDetail = serializeLighthouseRunDetail(
+      {
+        ...row,
+        summaryJson: null,
+      },
+      artifactsDir,
+    );
+    expect(nullSummaryDetail.summary).toEqual(EMPTY_LIGHTHOUSE_RUN_SUMMARY);
   });
 
   it("serializeAuditError preserves domain error codes and falls back to INTERNAL_ERROR", () => {

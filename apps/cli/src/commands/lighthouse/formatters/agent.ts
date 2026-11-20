@@ -1,7 +1,8 @@
-import type {
-  LighthouseFormFactor,
-  LighthouseRunRecord,
-  NormalizedLighthouseRun,
+import {
+  EMPTY_LIGHTHOUSE_RUN_SUMMARY,
+  type LighthouseFormFactor,
+  type LighthouseRunRecord,
+  type NormalizedLighthouseRun,
 } from "@devtools/lighthouse";
 
 /**
@@ -86,7 +87,9 @@ export function formatAgentMarkdown(
       }
     : run.metrics;
 
-  const summary = isRow ? run.summaryJson : run.summary;
+  const summary = isRow
+    ? (run.summaryJson ?? EMPTY_LIGHTHOUSE_RUN_SUMMARY)
+    : run.summary;
 
   const md: string[] = [];
 

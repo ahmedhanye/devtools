@@ -272,6 +272,25 @@ describe("Lighthouse Formatters (Unit)", () => {
         "# Lighthouse Audit: https://example.com/ (mobile)",
       );
       expect(output).toContain("Performance: 85");
+      expect(output).toContain("main > section.hero > img.banner-img");
+      expect(output).toContain("header > div.announcement-bar");
+      expect(output).toContain("Reduce unused JavaScript");
+    });
+
+    test("handles a LighthouseRunRecord with null summaryJson safely", () => {
+      const damagedRow: LighthouseRunRecord = {
+        ...sampleRow1,
+        summaryJson: null,
+      };
+      const output = formatAgentMarkdown(damagedRow);
+      // oxlint-disable-next-line no-control-regex
+      expect(/\u001b\[/.test(output)).toBe(false);
+      expect(output).toContain(
+        "# Lighthouse Audit: https://example.com/ (mobile)",
+      );
+      expect(output).toContain("| LCP | 4,200 ms | <= 2,500 ms | POOR | - |");
+      expect(output).not.toContain("## High-Priority Element Attributions");
+      expect(output).not.toContain("## Prioritized Diagnostics & Action Items");
     });
   });
 

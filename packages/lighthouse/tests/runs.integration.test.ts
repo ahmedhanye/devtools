@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { openDb } from "@devtools/db";
+import { openDb, sql } from "@devtools/db";
 import {
   AmbiguousRunIdError,
   LighthouseRunNotFoundError,
@@ -367,7 +367,7 @@ describe("LighthouseStore Persistence (openLighthouseStore)", () => {
       expect(store.listRunsWithTotal().total).toBe(4);
     });
 
-    it("normalizes malformed summaryJson safely at the SQLite persistence seam", () => {
+    it("preserves null summaryJson for malformed rows and avoids false insight diffs in both directions", () => {
       const malformedSummary = {
         unexpected: true,
       } as unknown as NewLighthouseRunRecord["summaryJson"];
@@ -385,16 +385,191 @@ describe("LighthouseStore Persistence (openLighthouseStore)", () => {
             "bad-json" as unknown as NewLighthouseRunRecord["summaryJson"],
         }),
       );
+      store.insertRun(
+        makeSampleRow({
+          id: "valid-with-findings",
+          summaryJson: {
+            lcpElement: null,
+            lcpPhases: null,
+            clsCulprits: [
+              {
+                element: {
+                  selector: "header > div.banner",
+                  snippet: '<div class="banner"></div>',
+                  nodeLabel: "Banner",
+                  path: null,
+                  lhId: null,
+                  boundingRect: {
+                    top: 0,
+                    bottom: 50,
+                    left: 0,
+                    right: 300,
+                    width: 300,
+                    height: 50,
+                  },
+                },
+                score: 0.18,
+                causes: [],
+              },
+            ],
+            insights: [
+              {
+                id: "render-blocking-insight",
+                title: "Render blocking requests",
+                description: "Requests block initial render.",
+                score: 0.25,
+                scoreDisplayMode: "numeric",
+                displayValue: "Est savings: 420 ms",
+                metricSavings: { LCP: 420 },
+                replacesAudits: [],
+              },
+            ],
+            failedAudits: [],
+            runWarnings: [],
+            runtimeError: null,
+            medianMetadata: null,
+          },
+        }),
+      );
 
-      expect(inserted.summaryJson.clsCulprits).toEqual([]);
-      expect(inserted.summaryJson.insights).toEqual([]);
+      expect(inserted.summaryJson).toBeNull();
 
       const fetched = store.getRun("malformed-summary-1");
-      expect(fetched.summaryJson).toEqual(inserted.summaryJson);
+      expect(fetched.summaryJson).toBeNull();
 
-      const diff = store.diffRuns("malformed-summary-1", "malformed-summary-2");
-      expect(diff.deltas.insights.resolved).toEqual([]);
-      expect(diff.deltas.insights.regressed).toEqual([]);
+      const bothMalformed = store.diffRuns(
+        "malformed-summary-1",
+        "malformed-summary-2",
+      );
+      expect(bothMalformed.deltas.insights).toEqual({
+        resolved: [],
+        regressed: [],
+        clsCulpritDelta: null,
+      });
+
+      const validToMalformed = store.diffRuns(
+        "valid-with-findings",
+        "malformed-summary-1",
+      );
+      expect(validToMalformed.deltas.insights).toEqual({
+        resolved: [],
+        regressed: [],
+        clsCulpritDelta: null,
+      });
+
+      const malformedToValid = store.diffRuns(
+        "malformed-summary-1",
+        "valid-with-findings",
+      );
+      expect(malformedToValid.deltas.insights).toEqual({
+        resolved: [],
+        regressed: [],
+        clsCulpritDelta: null,
+      });
+    });
+
+    it("tolerates raw syntactically corrupt summary_json in SQLite across listRuns, getRun, and diffRuns", () => {
+      using callerDb = openDb({ memory: true });
+      using wrappedStore = openLighthouseStore({ db: callerDb, artifactsDir });
+
+      wrappedStore.insertRun(
+        makeSampleRow({
+          id: "valid-against-raw-corrupt",
+          performanceScore: 78,
+          lcpMs: 2400,
+          summaryJson: {
+            lcpElement: null,
+            lcpPhases: null,
+            clsCulprits: [
+              {
+                element: {
+                  selector: "header > div.banner",
+                  snippet: '<div class="banner"></div>',
+                  nodeLabel: "Banner",
+                  path: null,
+                  lhId: null,
+                  boundingRect: {
+                    top: 0,
+                    bottom: 50,
+                    left: 0,
+                    right: 300,
+                    width: 300,
+                    height: 50,
+                  },
+                },
+                score: 0.18,
+                causes: [],
+              },
+            ],
+            insights: [
+              {
+                id: "render-blocking-insight",
+                title: "Render blocking requests",
+                description: "Requests block initial render.",
+                score: 0.25,
+                scoreDisplayMode: "numeric",
+                displayValue: "Est savings: 420 ms",
+                metricSavings: { LCP: 420 },
+                replacesAudits: [],
+              },
+            ],
+            failedAudits: [],
+            runWarnings: [],
+            runtimeError: null,
+            medianMetadata: null,
+          },
+        }),
+      );
+
+      callerDb.write((tx) => {
+        tx.run(sql`
+          INSERT INTO lighthouse_runs (
+            id, url, final_url, form_factor, throttling_method,
+            performance_score, accessibility_score, best_practices_score, seo_score,
+            lcp_ms, cls, tbt_ms, fcp_ms, si_ms, ttfb_ms,
+            summary_json, json_report_path, html_report_path, duration_ms, created_at
+          ) VALUES (
+            'raw-corrupt-json-run', 'https://example.com', 'https://example.com/', 'mobile', 'simulate',
+            83, 100, 92, 98,
+            2100, 0.02, 45, 780, 1150, 95,
+            '{not-valid-json', '/tmp/raw-corrupt/report.json', '/tmp/raw-corrupt/report.html', 4100, 1793304000000
+          )
+        `);
+      });
+
+      const listed = wrappedStore.listRuns();
+      const corruptFromList = listed.find(
+        (run) => run.id === "raw-corrupt-json-run",
+      );
+      expect(corruptFromList).toBeDefined();
+      expect(corruptFromList?.summaryJson).toBeNull();
+
+      const fetched = wrappedStore.getRun("raw-corrupt-json-run");
+      expect(fetched.summaryJson).toBeNull();
+
+      const validToCorrupt = wrappedStore.diffRuns(
+        "valid-against-raw-corrupt",
+        "raw-corrupt-json-run",
+      );
+      expect(validToCorrupt.comparison.summaryJson).toBeNull();
+      expect(validToCorrupt.deltas.scores.performanceScore).toBe(5);
+      expect(validToCorrupt.deltas.metrics.lcpMs).toBe(-300);
+      expect(validToCorrupt.deltas.insights).toEqual({
+        resolved: [],
+        regressed: [],
+        clsCulpritDelta: null,
+      });
+
+      const corruptToValid = wrappedStore.diffRuns(
+        "raw-corrupt-json-run",
+        "valid-against-raw-corrupt",
+      );
+      expect(corruptToValid.baseline.summaryJson).toBeNull();
+      expect(corruptToValid.deltas.insights).toEqual({
+        resolved: [],
+        regressed: [],
+        clsCulpritDelta: null,
+      });
     });
   });
 });

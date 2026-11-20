@@ -30,7 +30,8 @@ export interface LighthouseRunRecord {
   fcpMs: number | null;
   siMs: number | null;
   ttfbMs: number | null;
-  summaryJson: LighthouseRunSummary;
+  /** Parsed warm summary payload, or `null` when persisted `summary_json` is missing or damaged. */
+  summaryJson: LighthouseRunSummary | null;
   jsonReportPath: string;
   htmlReportPath: string;
   durationMs: number;
@@ -40,7 +41,11 @@ export interface LighthouseRunRecord {
 /**
  * Insert payload for creating a {@link LighthouseRunRecord} inside {@link LighthouseStore.insertRun}.
  */
-export type NewLighthouseRunRecord = Omit<LighthouseRunRecord, "createdAt"> & {
+export type NewLighthouseRunRecord = Omit<
+  LighthouseRunRecord,
+  "createdAt" | "summaryJson"
+> & {
+  summaryJson: LighthouseRunSummary;
   createdAt?: Date;
 };
 

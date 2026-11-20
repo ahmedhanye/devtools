@@ -16,7 +16,7 @@ import {
   type ListLighthouseRunsOptions,
   type NewLighthouseRunRecord,
 } from "../../contracts";
-import { EMPTY_LIGHTHOUSE_RUN_SUMMARY, parseRunSummary } from "../../domain";
+import { parseRunSummary } from "../../domain";
 
 /**
  * Minimum character length permitted for short-UUID prefix lookups.
@@ -26,8 +26,7 @@ export const MIN_PREFIX_LENGTH = 6;
 function toLighthouseRunRecord(row: LighthouseRunRow): LighthouseRunRecord {
   return {
     ...row,
-    summaryJson:
-      parseRunSummary(row.summaryJson) ?? EMPTY_LIGHTHOUSE_RUN_SUMMARY,
+    summaryJson: parseRunSummary(row.summaryJson),
   };
 }
 

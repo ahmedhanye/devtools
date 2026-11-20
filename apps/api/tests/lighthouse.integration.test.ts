@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { createShutdownCoordinator } from "@devtools/core/node";
 import {
@@ -11,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { API_ERROR_CODES, ApiErrorResponseSchema } from "@devtools/core";
 import {
+  EMPTY_LIGHTHOUSE_RUN_SUMMARY,
   openLighthouseStore,
   type LighthouseBatchExecutionResult,
   type LighthouseStore,
@@ -581,6 +583,174 @@ describe("Lighthouse HTTP API Routes (/api/lighthouse)", () => {
       expect(parsed.deltas.insights.resolved).toEqual([
         { id: "unused-js", title: "Reduce unused JS" },
       ]);
+    });
+
+    it("handles malformed and raw-corrupt summary_json across /runs, /runs/:id, and /diff in both directions", async () => {
+      const dbPath = join(artifactsDir, "corrupt-summary.db");
+      using corruptStore = openLighthouseStore({ dbPath, artifactsDir });
+
+      const validId = "33333333-cccc-4333-8333-333333333333";
+      const malformedId = "44444444-dddd-4444-8444-444444444444";
+      const rawCorruptId = "55555555-eeee-4555-8555-555555555555";
+
+      const validSummary = {
+        lcpElement: null,
+        lcpPhases: null,
+        clsCulprits: [
+          {
+            element: {
+              selector: "header > div.banner",
+              snippet: '<div class="banner"></div>',
+              nodeLabel: "Banner",
+              path: null,
+              lhId: null,
+              boundingRect: {
+                top: 0,
+                bottom: 50,
+                left: 0,
+                right: 300,
+                width: 300,
+                height: 50,
+              },
+            },
+            score: 0.16,
+            causes: [],
+          },
+        ],
+        insights: [
+          {
+            id: "render-blocking-insight",
+            title: "Render blocking requests",
+            description: "Requests block initial render.",
+            score: 0.3,
+            scoreDisplayMode: "numeric",
+            displayValue: "Est savings: 420 ms",
+            metricSavings: { LCP: 420 },
+            replacesAudits: [],
+          },
+        ],
+        failedAudits: [],
+        runWarnings: [],
+        runtimeError: null,
+        medianMetadata: null,
+      };
+
+      corruptStore.insertRun(
+        makeSampleRow(artifactsDir, {
+          id: validId,
+          performanceScore: 72,
+          lcpMs: 2500,
+          summaryJson: validSummary,
+        }),
+      );
+      corruptStore.insertRun(
+        makeSampleRow(artifactsDir, {
+          id: malformedId,
+          performanceScore: 80,
+          lcpMs: 2000,
+          summaryJson: {
+            unexpected: true,
+          } as unknown as NewLighthouseRunRecord["summaryJson"],
+        }),
+      );
+
+      const rawDb = new Database(dbPath);
+      try {
+        rawDb
+          .query(
+            `INSERT INTO lighthouse_runs (
+              id, url, final_url, form_factor, throttling_method,
+              performance_score, accessibility_score, best_practices_score, seo_score,
+              lcp_ms, cls, tbt_ms, fcp_ms, si_ms, ttfb_ms,
+              summary_json, json_report_path, html_report_path, duration_ms, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(
+            rawCorruptId,
+            "https://example.com/",
+            "https://example.com/",
+            "mobile",
+            "simulate",
+            88,
+            95,
+            92,
+            98,
+            1800,
+            0.03,
+            90,
+            1000,
+            1500,
+            120,
+            "{not-valid-json",
+            join(artifactsDir, rawCorruptId, "report.json"),
+            join(artifactsDir, rawCorruptId, "report.html"),
+            3500,
+            Date.now(),
+          );
+      } finally {
+        rawDb.close();
+      }
+
+      const app = createApp({ store: corruptStore, artifactsDir });
+
+      const listRes = await app.request("/api/lighthouse/runs");
+      expect(listRes.status).toBe(200);
+      const listPayload = ListLighthouseRunsResponseSchema.parse(
+        await listRes.json(),
+      );
+      expect(listPayload.total).toBe(3);
+
+      const rawDetailRes = await app.request(
+        `/api/lighthouse/runs/${rawCorruptId}`,
+      );
+      expect(rawDetailRes.status).toBe(200);
+      const rawDetail = LighthouseRunDetailSchema.parse(
+        await rawDetailRes.json(),
+      );
+      expect(rawDetail.summary).toEqual(EMPTY_LIGHTHOUSE_RUN_SUMMARY);
+
+      const malformedDetailRes = await app.request(
+        `/api/lighthouse/runs/${malformedId}`,
+      );
+      expect(malformedDetailRes.status).toBe(200);
+      const malformedDetail = LighthouseRunDetailSchema.parse(
+        await malformedDetailRes.json(),
+      );
+      expect(malformedDetail.summary).toEqual(EMPTY_LIGHTHOUSE_RUN_SUMMARY);
+
+      const validToRawRes = await app.request(
+        `/api/lighthouse/diff?baseline=${validId}&comparison=${rawCorruptId}`,
+      );
+      expect(validToRawRes.status).toBe(200);
+      const validToRaw = LighthouseDiffResponseSchema.parse(
+        await validToRawRes.json(),
+      );
+      expect(validToRaw.baseline.summary).toEqual(validSummary);
+      expect(validToRaw.comparison.summary).toEqual(
+        EMPTY_LIGHTHOUSE_RUN_SUMMARY,
+      );
+      expect(validToRaw.deltas.scores.performanceScore).toBe(16);
+      expect(validToRaw.deltas.metrics.lcpMs).toBe(-700);
+      expect(validToRaw.deltas.insights).toEqual({
+        resolved: [],
+        regressed: [],
+        clsCulpritDelta: null,
+      });
+
+      const rawToValidRes = await app.request(
+        `/api/lighthouse/diff?baseline=${rawCorruptId}&comparison=${validId}`,
+      );
+      expect(rawToValidRes.status).toBe(200);
+      const rawToValid = LighthouseDiffResponseSchema.parse(
+        await rawToValidRes.json(),
+      );
+      expect(rawToValid.baseline.summary).toEqual(EMPTY_LIGHTHOUSE_RUN_SUMMARY);
+      expect(rawToValid.comparison.summary).toEqual(validSummary);
+      expect(rawToValid.deltas.insights).toEqual({
+        resolved: [],
+        regressed: [],
+        clsCulpritDelta: null,
+      });
     });
 
     it("returns 422 when query params are missing, 404 when not found, and 409 on ambiguous prefix", async () => {

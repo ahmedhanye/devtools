@@ -297,11 +297,11 @@ describe("LighthouseStore.runAudit & Isolated Worker Orchestration", () => {
       expect(result.run.fcpMs).toBe(850);
       expect(result.run.formFactor).toBe("desktop");
       expect(result.run.throttlingMethod).toBe("provided");
-      expect(result.run.summaryJson.lcpElement?.nodeLabel).toBe(
+      expect(result.run.summaryJson?.lcpElement?.nodeLabel).toBe(
         "iter-1-median",
       );
-      expect(result.run.summaryJson.medianMetadata?.totalRuns).toBe(3);
-      expect(result.run.summaryJson.medianMetadata?.selectedRunIndex).toBe(1);
+      expect(result.run.summaryJson?.medianMetadata?.totalRuns).toBe(3);
+      expect(result.run.summaryJson?.medianMetadata?.selectedRunIndex).toBe(1);
 
       expect(existsSync(result.run.jsonReportPath)).toBe(true);
       expect(existsSync(result.run.htmlReportPath)).toBe(true);

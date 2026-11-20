@@ -1065,29 +1065,83 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
       store.insertRun(
         makeSampleRow({
           id: "888888-bbb",
-          summaryJson:
-            "invalid-json" as unknown as typeof makeSampleRow extends (
-              ...args: unknown[]
-            ) => { summaryJson: infer T }
-              ? T
-              : never,
+          summaryJson: {
+            lcpElement: null,
+            lcpPhases: null,
+            clsCulprits: [
+              {
+                element: {
+                  selector: "main > div.ad-slot",
+                  snippet: '<div class="ad-slot"></div>',
+                  nodeLabel: "Ad Slot",
+                  path: null,
+                  lhId: null,
+                  boundingRect: {
+                    top: 0,
+                    bottom: 100,
+                    left: 0,
+                    right: 320,
+                    width: 320,
+                    height: 100,
+                  },
+                },
+                score: 0.2,
+                causes: [],
+              },
+            ],
+            insights: [
+              {
+                id: "modern-image-formats",
+                title: "Improve image delivery",
+                description: "Serve WebP/AVIF.",
+                score: 0.2,
+                scoreDisplayMode: "numeric",
+                displayValue: "Est savings: 350 ms",
+                metricSavings: { LCP: 350 },
+                replacesAudits: [],
+              },
+            ],
+            failedAudits: [],
+            runWarnings: [],
+            runtimeError: null,
+            medianMetadata: null,
+          },
         }),
       );
-      const stdout: string[] = [];
 
+      const malformedToValidOut: string[] = [];
       await runLighthouseDiffCommand(
         "777777",
         "888888",
         { json: true },
         {
           openStore: () => store,
-          log: (msg) => stdout.push(msg),
+          log: (msg) => malformedToValidOut.push(msg),
         },
       );
+      const parsedForward = JSON.parse(malformedToValidOut.join("\n"));
+      expect(parsedForward.deltas.insights).toEqual({
+        resolved: [],
+        regressed: [],
+        clsCulpritDelta: null,
+      });
 
-      const parsed = JSON.parse(stdout.join("\n"));
-      expect(parsed.deltas.insights.resolved).toEqual([]);
-      expect(parsed.deltas.insights.regressed).toEqual([]);
+      const validToMalformedOut: string[] = [];
+      await runLighthouseDiffCommand(
+        "888888",
+        "777777",
+        { json: true },
+        {
+          openStore: () => store,
+          log: (msg) => validToMalformedOut.push(msg),
+        },
+      );
+      const parsedReverse = JSON.parse(validToMalformedOut.join("\n"));
+      expect(parsedReverse.deltas.insights).toEqual({
+        resolved: [],
+        regressed: [],
+        clsCulpritDelta: null,
+      });
     });
 
     test("exits with 1 when diff ID cannot be resolved", async () => {
