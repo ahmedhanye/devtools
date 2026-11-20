@@ -116,7 +116,7 @@ export interface CollectCoverageOptions {
 export type GitRunner = (
   args: string[],
   cwd: string,
-) => { status: number | null; stdout: string };
+) => { status: number | null; stdout: string; stderr?: string };
 
 /**
  * Parsed CLI invocation options for `collect-coverage.ts`.
@@ -232,16 +232,27 @@ export function resolveTargetsForFiles(
 function defaultGitRunner(
   args: string[],
   cwd: string,
-): { status: number | null; stdout: string } {
+): { status: number | null; stdout: string; stderr: string } {
   const res = spawnSync("git", args, { cwd, encoding: "utf8" });
   return {
     status: res.status,
     stdout: typeof res.stdout === "string" ? res.stdout : "",
+    stderr: typeof res.stderr === "string" ? res.stderr : "",
   };
+}
+
+function formatGitFailureDetail(result: {
+  status: number | null;
+  stdout: string;
+  stderr?: string;
+}): string {
+  const output = (result.stderr ?? "").trim() || result.stdout.trim();
+  return output || `exit code ${result.status ?? "unknown"}`;
 }
 
 /**
  * Queries committed, staged, unstaged, and untracked files relative to `baseRef` to infer changed targets.
+ * Fails closed with an actionable error whenever git cannot inspect the base diff or working tree.
  */
 function collectChangedFilePaths(
   repoRoot: string,
@@ -260,20 +271,32 @@ function collectChangedFilePaths(
     ["diff", "--name-only", `${baseRef}...HEAD`],
     repoRoot,
   );
-  if (branchDiff.status === 0) {
-    addLines(branchDiff.stdout);
+  if (branchDiff.status !== 0) {
+    const cleanBase = baseRef.replace(/^origin\//, "");
+    throw new Error(
+      `Could not diff against "${baseRef}...HEAD" under --changed. ` +
+        `Ensure the base ref exists locally (e.g. run "git fetch origin ${cleanBase}" or pass "--base <ref>").\n` +
+        `Git error: ${formatGitFailureDetail(branchDiff)}`,
+    );
   }
-  const unstaged = gitRunner(["diff", "--name-only"], repoRoot);
-  if (unstaged.status === 0) addLines(unstaged.stdout);
+  addLines(branchDiff.stdout);
 
-  const staged = gitRunner(["diff", "--cached", "--name-only"], repoRoot);
-  if (staged.status === 0) addLines(staged.stdout);
-
-  const untracked = gitRunner(
+  const workingTreeCommands: string[][] = [
+    ["diff", "--name-only"],
+    ["diff", "--cached", "--name-only"],
     ["ls-files", "--others", "--exclude-standard"],
-    repoRoot,
-  );
-  if (untracked.status === 0) addLines(untracked.stdout);
+  ];
+
+  for (const args of workingTreeCommands) {
+    const result = gitRunner(args, repoRoot);
+    if (result.status !== 0) {
+      throw new Error(
+        `Failed to inspect working tree changes with "git ${args.join(" ")}" under --changed.\n` +
+          `Git error: ${formatGitFailureDetail(result)}`,
+      );
+    }
+    addLines(result.stdout);
+  }
 
   return Array.from(collected);
 }
@@ -285,7 +308,7 @@ function collectChangedFilePaths(
  * @param args - CLI arguments excluding `bun` and script path.
  * @param options - Optional repository root, environment map, and git runner seam.
  * @returns Parsed {@link CollectCoverageCliResult}.
- * @throws {Error} When an unknown flag, missing flag value, or unknown workspace target is passed.
+ * @throws {Error} When an unknown flag, missing flag value, unknown workspace target, or `--changed` git failure occurs.
  */
 export function parseCollectCoverageCliArgs(
   args: readonly string[],
