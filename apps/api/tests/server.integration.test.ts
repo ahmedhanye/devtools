@@ -86,6 +86,64 @@ describe("Standalone Server Lifecycle", () => {
     }
   });
 
+  test("keeps a shared file-backed DB healthy on server 2 after stopping server 1", async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "devtools-srv-shared-db-"));
+    const sharedDbPath = join(tmpDir, "shared.db");
+    let server1: ServerInstance | null = null;
+    let server2: ServerInstance | null = null;
+
+    try {
+      server1 = startServer({
+        port: 0,
+        hostname: "127.0.0.1",
+        env: { DEVTOOLS_DB_PATH: sharedDbPath },
+      });
+      server2 = startServer({
+        port: 0,
+        hostname: "127.0.0.1",
+        env: { DEVTOOLS_DB_PATH: sharedDbPath },
+      });
+
+      const res1 = await fetch(
+        `http://127.0.0.1:${server1.port}/api/lighthouse/runs`,
+      );
+      expect(res1.status).toBe(200);
+      expect(
+        ListLighthouseRunsResponseSchema.parse(await res1.json()).total,
+      ).toBe(0);
+
+      const res2Before = await fetch(
+        `http://127.0.0.1:${server2.port}/api/lighthouse/runs`,
+      );
+      expect(res2Before.status).toBe(200);
+      expect(
+        ListLighthouseRunsResponseSchema.parse(await res2Before.json()).total,
+      ).toBe(0);
+
+      await server1.stop();
+      server1 = null;
+
+      const res2After = await fetch(
+        `http://127.0.0.1:${server2.port}/api/lighthouse/runs`,
+      );
+      expect(res2After.status).toBe(200);
+      expect(
+        ListLighthouseRunsResponseSchema.parse(await res2After.json()).total,
+      ).toBe(0);
+
+      await server2.stop();
+      server2 = null;
+    } finally {
+      if (server1) {
+        await server1.stop();
+      }
+      if (server2) {
+        await server2.stop();
+      }
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
   test("serves Lighthouse routes + SSE over live HTTP socket with injected store", async () => {
     const artifactsDir = mkdtempSync(join(tmpdir(), "devtools-srv-lh-"));
     try {

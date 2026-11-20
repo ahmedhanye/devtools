@@ -1,10 +1,36 @@
 import {
+  customType,
   index,
   integer,
   real,
   sqliteTable,
   text,
 } from "drizzle-orm/sqlite-core";
+
+function isJsonRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+const tolerantJsonText = customType<{
+  data: Record<string, unknown> | null;
+  driverData: string;
+}>({
+  dataType() {
+    return "text";
+  },
+  toDriver(value) {
+    return JSON.stringify(value);
+  },
+  fromDriver(value) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      return null;
+    }
+    return isJsonRecord(parsed) ? parsed : null;
+  },
+});
 
 /**
  * Persistence table storing hot category scores, Core Web Vitals, warm `summary_json`,
@@ -48,9 +74,7 @@ export const lighthouseRuns = sqliteTable(
     /** Time to First Byte (TTFB) in milliseconds. */
     ttfbMs: real("ttfb_ms"),
     /** Warm structured Audit Summary JSON payload validated at the Lighthouse persistence boundary. */
-    summaryJson: text("summary_json", { mode: "json" })
-      .$type<Record<string, unknown>>()
-      .notNull(),
+    summaryJson: tolerantJsonText("summary_json").notNull(),
     /** Absolute path to the cold `report.json` LHR artifact on disk. */
     jsonReportPath: text("json_report_path").notNull(),
     /** Absolute path to the cold `report.html` viewer artifact on disk. */

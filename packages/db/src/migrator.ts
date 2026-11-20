@@ -85,19 +85,57 @@ function hasUserTables(sqlite: Database): boolean {
   );
 }
 
+function hasMigrationsTable(sqlite: Database): boolean {
+  const row = sqlite
+    .query<{ found: number }, [string]>(
+      "SELECT 1 AS found FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1",
+    )
+    .get(DEFAULT_MIGRATIONS_TABLE);
+  return row !== null;
+}
+
+function getLastAppliedMigrationMillis(sqlite: Database): number {
+  const row = sqlite
+    .query<{ last_created_at: number | string | null }, []>(
+      `SELECT COALESCE(MAX(created_at), -1) AS last_created_at FROM "${DEFAULT_MIGRATIONS_TABLE}"`,
+    )
+    .get();
+  return Number(row?.last_created_at ?? -1);
+}
+
+function getPendingMigrations(sqlite: Database): readonly EmbeddedMigration[] {
+  if (!hasUserTables(sqlite)) {
+    return EMBEDDED_MIGRATIONS;
+  }
+  if (!hasMigrationsTable(sqlite)) {
+    return [];
+  }
+  const lastAppliedMillis = getLastAppliedMigrationMillis(sqlite);
+  return EMBEDDED_MIGRATIONS.filter(
+    (migration) => migration.folderMillis > lastAppliedMillis,
+  );
+}
+
 /**
- * Applies the embedded baseline schema inside an immediate transaction (`BEGIN IMMEDIATE`)
- * if and only if the target SQLite database contains zero user tables (`sqlite_master`).
+ * Applies pending embedded schema migrations inside an immediate transaction (`BEGIN IMMEDIATE`).
+ *
+ * @remarks
+ * - Empty databases (zero user tables) receive all embedded migrations and create `__devtools_migrations`.
+ * - Tracked databases with `__devtools_migrations` check their latest applied `created_at` watermark
+ *   via a fast read-only query before opening a write lock, then re-check inside `BEGIN IMMEDIATE`
+ *   and apply only newer migrations (`folderMillis > lastAppliedMillis`).
+ * - Foreign databases containing unrelated user tables without `__devtools_migrations` are left untouched.
  *
  * @param sqlite - Open `bun:sqlite` database connection.
  */
 export function initializeBaselineSchema(sqlite: Database): void {
-  if (hasUserTables(sqlite)) {
+  if (getPendingMigrations(sqlite).length === 0) {
     return;
   }
 
   const applyImmediate = sqlite.transaction(() => {
-    if (!hasUserTables(sqlite)) {
+    const pending = getPendingMigrations(sqlite);
+    if (pending.length > 0) {
       sqlite.run(`
         CREATE TABLE IF NOT EXISTS "${DEFAULT_MIGRATIONS_TABLE}" (
           id SERIAL PRIMARY KEY,
@@ -108,7 +146,7 @@ export function initializeBaselineSchema(sqlite: Database): void {
       const insertStmt = sqlite.query(
         `INSERT INTO "${DEFAULT_MIGRATIONS_TABLE}" ("hash", "created_at") VALUES (?, ?)`,
       );
-      for (const migration of EMBEDDED_MIGRATIONS) {
+      for (const migration of pending) {
         for (const statement of migration.statements) {
           sqlite.run(statement);
         }

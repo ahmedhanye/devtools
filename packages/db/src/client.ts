@@ -25,7 +25,7 @@ export interface OpenDbOptions {
   /** Force an isolated in-memory SQLite instance regardless of environment variables. */
   memory?: boolean;
   /**
-   * Automatically initialize the baseline schema when opening a brand-new empty database.
+   * Automatically initialize empty databases and apply pending embedded migrations on tracked databases.
    * Pass `false` only in error-boundary tests that verify uninitialized DB failures.
    * @defaultValue true
    */
@@ -55,7 +55,7 @@ export interface OpenDbOptions {
 export interface DbHandle {
   /** Resolved target path (`":memory:"` or absolute filesystem path). */
   readonly path: string;
-  /** Materializes the SQLite connection, configures WAL/PRAGMAs, and applies empty-DB auto-init. */
+  /** Materializes the SQLite connection, configures WAL/PRAGMAs, and applies pending embedded migrations. */
   ensureReady(): void;
   /** Executes a read operation against the Drizzle ORM database client. */
   read<T>(fn: (db: DevtoolsDb) => T): T;
@@ -65,6 +65,11 @@ export interface DbHandle {
   close(): void;
   /** Releases this handle automatically when used with `using`. */
   [Symbol.dispose](): void;
+}
+
+interface RegistryLeaseGroup {
+  readonly unregister: () => void;
+  readonly leases: Set<() => void>;
 }
 
 interface SharedConnection {
@@ -77,7 +82,7 @@ interface SharedConnection {
   activeTx: DevtoolsDb | null;
   autoInitApplied: boolean;
   closed: boolean;
-  readonly shutdownHooks: Map<ShutdownRegistry, () => void>;
+  readonly shutdownHooks: Map<ShutdownRegistry, RegistryLeaseGroup>;
 }
 
 const filePool = new Map<string, SharedConnection>();
@@ -116,8 +121,9 @@ function forceCloseConnection(conn: SharedConnection): void {
   if (!conn.isMemory) {
     filePool.delete(conn.key);
   }
-  for (const unregister of conn.shutdownHooks.values()) {
-    unregister();
+  for (const group of conn.shutdownHooks.values()) {
+    group.leases.clear();
+    group.unregister();
   }
   conn.shutdownHooks.clear();
   if (!conn.isMemory) {
@@ -130,22 +136,38 @@ function forceCloseConnection(conn: SharedConnection): void {
   conn.sqlite.close(true);
 }
 
-function registerConnectionShutdownHook(
+function registerLeaseShutdownHook(
   conn: SharedConnection,
   registry: ShutdownRegistry,
-): void {
-  if (conn.shutdownHooks.has(registry)) {
-    return;
+  releaseLease: () => void,
+): () => void {
+  let group = conn.shutdownHooks.get(registry);
+  if (group) {
+    group.leases.add(releaseLease);
+  } else {
+    const leases = new Set<() => void>([releaseLease]);
+    const hookOptions = conn.isMemory ? undefined : { id: `db:${conn.key}` };
+    const unregister = registry.register(
+      "persistence",
+      () => {
+        for (const release of Array.from(leases)) {
+          release();
+        }
+      },
+      hookOptions,
+    );
+    group = { unregister, leases };
+    conn.shutdownHooks.set(registry, group);
   }
-  const hookOptions = conn.isMemory ? undefined : { id: `db:${conn.key}` };
-  const unregister = registry.register(
-    "persistence",
-    () => {
-      forceCloseConnection(conn);
-    },
-    hookOptions,
-  );
-  conn.shutdownHooks.set(registry, unregister);
+
+  const activeGroup = group;
+  return () => {
+    activeGroup.leases.delete(releaseLease);
+    if (activeGroup.leases.size === 0) {
+      conn.shutdownHooks.delete(registry);
+      activeGroup.unregister();
+    }
+  };
 }
 
 function applyAutoInitIfNeeded(
@@ -239,7 +261,25 @@ export function openDb(options: OpenDbOptions = {}): DbHandle {
   const shutdownRegistry = options.shutdown ?? hostShutdown;
 
   let conn: SharedConnection | null = null;
+  let detachShutdownHook: (() => void) | null = null;
   let handleClosed = false;
+
+  const close = (): void => {
+    if (handleClosed) {
+      return;
+    }
+    handleClosed = true;
+    if (!conn || conn.closed) {
+      return;
+    }
+    const activeConn = conn;
+    detachShutdownHook?.();
+    detachShutdownHook = null;
+    activeConn.refCount -= 1;
+    if (activeConn.refCount <= 0) {
+      forceCloseConnection(activeConn);
+    }
+  };
 
   const ensureConnection = (): SharedConnection => {
     if (handleClosed || conn?.closed) {
@@ -247,17 +287,20 @@ export function openDb(options: OpenDbOptions = {}): DbHandle {
     }
 
     if (conn) {
-      applyAutoInitIfNeeded(conn, autoInit, maxBusyRetries);
       return conn;
     }
 
     if (!isMemory) {
       const existing = filePool.get(resolvedPath);
       if (existing && !existing.closed) {
+        applyAutoInitIfNeeded(existing, autoInit, maxBusyRetries);
         existing.refCount += 1;
         conn = existing;
-        applyAutoInitIfNeeded(conn, autoInit, maxBusyRetries);
-        registerConnectionShutdownHook(conn, shutdownRegistry);
+        detachShutdownHook = registerLeaseShutdownHook(
+          conn,
+          shutdownRegistry,
+          close,
+        );
         return conn;
       }
     }
@@ -269,22 +312,12 @@ export function openDb(options: OpenDbOptions = {}): DbHandle {
       busyTimeoutMs,
       maxBusyRetries,
     );
-    registerConnectionShutdownHook(conn, shutdownRegistry);
+    detachShutdownHook = registerLeaseShutdownHook(
+      conn,
+      shutdownRegistry,
+      close,
+    );
     return conn;
-  };
-
-  const close = (): void => {
-    if (handleClosed) {
-      return;
-    }
-    handleClosed = true;
-    if (!conn || conn.closed) {
-      return;
-    }
-    conn.refCount -= 1;
-    if (conn.refCount <= 0) {
-      forceCloseConnection(conn);
-    }
   };
 
   return {
