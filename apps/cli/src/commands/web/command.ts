@@ -66,6 +66,29 @@ function checkInteractive(deps?: WebCommandDeps): boolean {
   return isStreamTTY(process.stdin) && isStreamTTY(process.stdout);
 }
 
+function handlePortPromptError(
+  error: unknown,
+  output: OutputPort,
+  deps?: WebCommandDeps,
+): null {
+  const isPromptCancel =
+    deps?.signal?.aborted === true ||
+    (error instanceof Error && error.name === "ExitPromptError");
+  if (isPromptCancel) {
+    if (!deps?.signal?.aborted) {
+      exitProcess(130, deps);
+    }
+    return null;
+  }
+  output.writeStderr(
+    pc.red(
+      `Error: Interactive port conflict prompt failed: ${error instanceof Error ? error.message : String(error)}`,
+    ),
+  );
+  exitProcess(1, deps);
+  return null;
+}
+
 async function promptPortChange(
   targetPort: number,
   nextPort: number,
@@ -85,22 +108,7 @@ async function promptPortChange(
     }
     return nextPort;
   } catch (error) {
-    const isPromptCancel =
-      deps?.signal?.aborted === true ||
-      (error instanceof Error && error.name === "ExitPromptError");
-    if (isPromptCancel) {
-      if (!deps?.signal?.aborted) {
-        exitProcess(130, deps);
-      }
-      return null;
-    }
-    output.writeStderr(
-      pc.red(
-        `Error: Interactive port conflict prompt failed: ${error instanceof Error ? error.message : String(error)}`,
-      ),
-    );
-    exitProcess(1, deps);
-    return null;
+    return handlePortPromptError(error, output, deps);
   }
 }
 
