@@ -28,6 +28,6 @@ _Avoid_: Outer shell, process wrapper, main thread
 The exported library interface decoupled from the executable wrapper so callers and tests can invoke commands in-process.
 _Avoid_: CLI export, programmatic wrapper, script hook
 
-**Shutdown Coordinator**:
-The deterministic 3-phase teardown coordinator (`ingress` -> `work` -> `persistence`) exposing a shared downward `AbortSignal` and bounded per-phase hook execution across CLI, daemon, API, and persistence boundaries.
-_Avoid_: Ad-hoc cleanup handler, global teardown callback
+**Teardown**:
+The per-instance scoped LIFO cleanup helper (`createTeardown`) exposing a downward `AbortSignal` and sequential reverse-registration cleanup across CLI, daemon, and API boundaries without global registries.
+_Avoid_: Ad-hoc cleanup handler, global teardown callback, phase registry

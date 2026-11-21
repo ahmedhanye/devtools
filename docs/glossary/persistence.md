@@ -1,6 +1,6 @@
 # Persistence Context
 
-Domain terms for local database storage, lazy schema initialization, handle pooling, and configuration seams.
+Domain terms for local database storage, lazy schema initialization, handle ownership, idle-close, and configuration seams.
 
 ## Language
 
@@ -9,12 +9,16 @@ The deterministic path selection rule resolving database locations separately fo
 _Avoid_: DB path resolver, database locator
 
 **Lazy Schema Initialization**:
-The first-use SQLite initialization hook (`initializeBaselineSchema`) verifying or applying the bundled Drizzle schema inside an immediate write transaction without requiring eager startup migrations.
+The first-use SQLite initialization hook (`initializeBaselineSchema`) checking SHA-256 migration hashes read-only before applying missing bundled Drizzle migrations inside an immediate write transaction.
 _Avoid_: DB sync, schema push, manual migrator, startup migration runner
 
-**Database Handle Pool**:
-The ref-counted per-process map pooling file-backed `bun:sqlite` connections by canonical resolved path via `openDb` while keeping `:memory:` handles isolated.
-_Avoid_: Global singleton connection, ambient db global
+**Database Session**:
+The borrowed read and write contract (`DbSession`) passed to feature packages (`@devtools/lighthouse`) without `close()` so stores cannot dispose caller-owned connections.
+_Avoid_: Shared db global, raw connection handle
+
+**Database Handle**:
+The composition-root SQLite lifecycle owner (`DbHandle extends DbSession`) created by `openDb` with explicit `close()`, `[Symbol.dispose]()`, and 30-second automatic idle-close on file-backed connections.
+_Avoid_: Global singleton connection, pooled db lease
 
 **Configuration Seam**:
 The injectable options interface allowing callers and tests to supply environment maps or settings explicitly without reading or mutating ambient process globals.
