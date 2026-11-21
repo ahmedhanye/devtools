@@ -1,56 +1,41 @@
-# Browser Automation Architecture
+# Browser automation architecture
 
-Architecture, Chromium resolution waterfall algorithm, binary verification, and managed cache management for `packages/browser`.
+Chromium Browser Resolution Waterfall, executable verification, Managed Browser Cache, and headless session ownership for `packages/browser`.
 
-## Package structure
+## Module responsibilities
 
-`packages/browser` manages Chromium browser detection, resolution, and local installation:
+| Path                                | Responsibility                                                                        | Entrypoint                      |
+| :---------------------------------- | :------------------------------------------------------------------------------------ | :------------------------------ |
+| `packages/browser/src/config.ts`    | Managed Browser Cache path, Chromium sandbox policy, and configuration seams.         | `packages/browser/src/index.ts` |
+| `packages/browser/src/waterfall.ts` | 3-tier Browser Resolution Waterfall with injectable `WaterfallDependencies`.          | `packages/browser/src/index.ts` |
+| `packages/browser/src/detector.ts`  | Executable `X_OK` check, `--version` probe, and OS/tool path discovery.               | `packages/browser/src/index.ts` |
+| `packages/browser/src/installer.ts` | Chrome for Testing (`chrome-headless-shell`) download and unpack into cache.          | `packages/browser/src/index.ts` |
+| `packages/browser/src/launcher.ts`  | Headless Chrome session launcher (`launchBrowserSession`) and `AbortSignal` teardown. | `packages/browser/src/index.ts` |
+| `packages/browser/src/errors.ts`    | Actionable errors (`BrowserNotFoundError`, `InvalidBrowserPathError`).                | `packages/browser/src/index.ts` |
 
-```text
-packages/browser/
-├── src/
-│   ├── config.ts              # Cache directory resolution & env seams
-│   ├── detector.ts            # Executable verification & path detection
-│   ├── errors.ts              # Actionable domain error classes
-│   ├── index.ts               # Public library entrypoint
-│   ├── installer.ts           # Chrome for Testing downloader & unpacker
-│   ├── types.ts               # Browser resolution & probe contracts
-│   └── waterfall.ts           # 3-tier Chromium resolution waterfall
-└── tests/                     # Unit test suites with dependency injection
-```
-
-## The 3-tier Chromium resolution waterfall
-
-When DevTools requires a Chromium browser executable (for headless scraping, automation, or testing), it resolves the binary path using a 3-tier waterfall algorithm:
+## Browser Resolution Waterfall
 
 ```mermaid
 flowchart TD
-  Start([Resolve Browser Executable]) --> CheckOverride{Explicit Override?<br/>--chrome-path or DEVTOOLS_CHROME_PATH}
-  CheckOverride -- Yes --> VerifyOverride[Verify Executable Path & Version]
-  VerifyOverride -- Valid --> Found([Return BrowserResolution])
-  VerifyOverride -- Invalid --> ErrorOverride[Throw InvalidBrowserPathError]
-  CheckOverride -- No --> CheckCache{Managed Cache Probe<br/>~/.devtools/browsers/}
+  Start(["Resolve Chromium Executable"]) --> CheckOverride{"Explicit browser override?<br/>--chrome-path or DEVTOOLS_CHROME_PATH"}
+  CheckOverride -- Yes --> VerifyOverride["Verify Executable Path and Version"]
+  VerifyOverride -- Valid --> Found(["Return BrowserResolution"])
+  VerifyOverride -- Invalid --> ErrorOverride["Throw InvalidBrowserPathError"]
+  CheckOverride -- No --> CheckCache{"Managed Browser Cache<br/>~/.devtools/browsers/"}
   CheckCache -- Found --> Found
-  CheckCache -- Not Found --> CheckProbes{System & Tool Probes<br/>Chrome, Edge, Brave, Playwright}
+  CheckCache -- Not Found --> CheckProbes{"System and Tool Probes<br/>Chrome, Edge, Brave, Playwright"}
   CheckProbes -- Found --> Found
-  CheckProbes -- Not Found --> TerminalStop[Throw BrowserNotFoundError<br/>Remediation: devtools browser install]
+  CheckProbes -- Not Found --> TerminalStop["Throw BrowserNotFoundError<br/>Remediation: devtools browser install"]
 ```
 
-### Waterfall evaluation tiers
-
-1. **Tier 1: Explicit override**:
-   - Checks CLI flag `--chrome-path` or environment variable `DEVTOOLS_CHROME_PATH` (followed by `CHROME_PATH`).
-   - If present, verifies executable permissions and version output. Throws `InvalidBrowserPathError` if invalid.
-2. **Tier 2: Managed cache & system discovery**:
-   - Probes the local managed cache directory (`~/.devtools/browsers/` or resolved via `DEVTOOLS_BROWSERS_DIR`).
-   - Probes known operating system paths for existing Google Chrome or Chromium installations.
-   - Probes alternative Chromium browsers (Microsoft Edge, Brave).
-   - Probes test tool cache directories (Playwright, Puppeteer).
-3. **Tier 3: Terminal remediation stop**:
-   - If no compatible binary is discovered, throws `BrowserNotFoundError` detailing actionable remediation instructing the user to run `devtools browser install`.
+| Tier | Sources evaluated                                                                                                                         | Failure behavior                                                      |
+| :--: | :---------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------- |
+|  1   | Explicit browser override (`--chrome-path`, `DEVTOOLS_CHROME_PATH`, then `CHROME_PATH`).                                                  | Throws `InvalidBrowserPathError` immediately if invalid.              |
+|  2   | Managed Browser Cache (`~/.devtools/browsers/` or `DEVTOOLS_BROWSERS_DIR`), OS Chrome/Chromium, Edge, Brave, Playwright/Puppeteer caches. | Continues to next probe until a valid binary is verified.             |
+|  3   | Terminal remediation stop.                                                                                                                | Throws `BrowserNotFoundError` pointing to `devtools browser install`. |
 
 ## Binary verification and cache management
 
-1. **Executable verification**: `verifyBrowserExecutable` ensures candidate binaries have execute permissions (`X_OK`), runs a smoke test invocation (`--version` or PowerShell ProductVersion on Windows) with a strict execution timeout, and extracts version metadata.
-2. **Managed installation**: `installBrowser` resolves the latest stable build ID for `chrome-headless-shell`, invokes `@puppeteer/browsers` to download and unpack into `~/.devtools/browsers/`, and returns the installed executable path.
-3. **Hermetic testing seam**: `waterfall.ts` accepts an optional `deps: WaterfallDependencies` seam to inject mock file probes and version testers, enabling deterministic testing without requiring physical browser downloads during CI runs.
+- **Executable verification.** `verifyBrowserExecutable` checks execute permission (`X_OK`), runs a bounded `--version` check (or PowerShell `ProductVersion` on Windows), and parses version metadata.
+- **Managed installation.** `installBrowser` resolves the latest stable `chrome-headless-shell` build via `@puppeteer/browsers`, unpacks into the Managed Browser Cache, and returns the executable path.
+- **Hermetic testing seam.** `waterfall.ts` accepts `deps?: WaterfallDependencies` so unit and integration tests mock filesystem and version probes without downloading Chromium binaries.

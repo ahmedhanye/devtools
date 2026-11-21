@@ -8,13 +8,13 @@ disable-model-invocation: true
 
 Surface substantive architectural friction and propose **deepening opportunities** that turn shallow modules into deep ones for testability and AI-navigability. Keep repository files unmodified during exploration and reporting.
 
-Use the exact vocabulary from [`codebase-design`](../codebase-design/SKILL.md) (**module**, **interface**, **implementation**, **depth**, **seam**, **adapter**, **leverage**, **locality**) rather than substitutes like "component", "service", "API", or "boundary". Ground domain names in `GLOSSARY.md` (and linked context glossaries), and respect decisions in `ARCHITECTURE.md` (and linked architecture guides and ADRs).
+Use the exact vocabulary from [`codebase-design`](../codebase-design/SKILL.md) (**module**, **interface**, **implementation**, **depth**, **seam**, **adapter**, **leverage**, **locality**) rather than substitutes like "component", "service", "API", or "boundary". Ground domain names in `GLOSSARY.md`, and respect decisions in `ARCHITECTURE.md` (and linked architecture guides and ADRs).
 
 ## Process
 
 ### 1. Explore subsystems deeply
 
-1. **Load design rules and repository context.** Read `codebase-design` and [`DEEPENING.md`](../codebase-design/DEEPENING.md) for depth and dependency rules. Read `GLOSSARY.md` and `ARCHITECTURE.md`, then load the linked context glossaries, architecture guides, and ADRs covering the target scope.
+1. **Load design rules and repository context.** Read `codebase-design` and [`DEEPENING.md`](../codebase-design/DEEPENING.md) for depth and dependency rules. Read `GLOSSARY.md` and `ARCHITECTURE.md`, then load the linked architecture guides and ADRs covering the target scope.
 2. **Set thorough scope.** If the user named a module, subsystem, or pain point, include it together with its callers and tests. Otherwise, discover source roots from `ARCHITECTURE.md` or project manifests and run `git log -n 100 --name-only --pretty=format: -- <source-roots>` (excluding docs, lockfiles, and CI churn), combining high-churn source areas with the major subsystems in `ARCHITECTURE.md`.
 3. **Inspect full modules, callers, and tests.** Explore the scoped hot spots in one fresh read-only subagent by default (fanning out to 2 or 3 only when scanning truly independent subsystems with disjoint callers). Pass a distilled summary of relevant ADRs and glossary terms in the brief, and cap subagent replies to concise candidate cards with exact file paths so the coordinator spot-checks only the 3 to 5 shortlisted candidate seams rather than re-reading every scanned file. Read complete module implementations, call sites, and tests rather than skimming headers or sorting for tiny files, looking for:
    - Domain concepts fragmented across files that force jumping to trace one flow
@@ -45,7 +45,7 @@ Completion criterion: `architecture_review_<scope>.md` is written to the session
 Once the user picks a candidate, follow [`grilling`](../grilling/SKILL.md) to settle caller behavior and constraints first, then seam placement, dependency adapters, interface shape, and replacement tests round by round.
 
 - **Design It Twice artifact and brief.** When comparing radically different interface shapes with [`DESIGN-IT-TWICE.md`](../codebase-design/DESIGN-IT-TWICE.md), this artifact workflow supersedes `DESIGN-IT-TWICE.md`'s in-chat Step 1 and Step 3 presentation rules. Scope each subagent brief to exact verified file paths, settled constraints, and existing `.scratch/research/` reports instead of wildcards, capping each subagent reply to concise interface sketches and trade-offs. Write the problem framing, a Mermaid diagram and comparison table, the candidate designs, the contrast on **depth**, **locality**, and **seam placement**, and the recommendation to `design_it_twice_<topic>.md` in the session artifact directory. Link that artifact in chat with a brief summary and decision prompt.
-- **Keep the domain model and ADRs current.** When a deepened module introduces or sharpens a glossary term, update `GLOSSARY.md` (and linked context glossaries) with [`domain-modeling`](../domain-modeling/SKILL.md). When a settled change supersedes an ADR or a candidate is rejected for a load-bearing reason, offer to record or update an ADR and wait for confirmation.
+- **Keep the domain model and ADRs current.** When a deepened module introduces or sharpens a glossary term, update `GLOSSARY.md` with [`domain-modeling`](../domain-modeling/SKILL.md). When a settled change supersedes an ADR or a candidate is rejected for a load-bearing reason, offer to record or update an ADR and wait for confirmation.
 
 Completion criterion: All open architectural decisions for the chosen candidate are settled, recorded in session artifacts (and confirmed glossary or ADR files), and confirmed by the user.
 

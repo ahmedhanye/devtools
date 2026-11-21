@@ -1,151 +1,58 @@
 # Integration testing
 
-Guidelines and patterns for writing gray-box integration tests (`*.integration.test.ts` via `test:integration`) across module seams, socketless Hono HTTP routes, loopback daemons, in-memory SQLite databases, cross-package adapters, and documentation loaders. See [`TESTING.md`](../../TESTING.md) and [`box-testing.md`](box-testing.md) for workspace mappings.
+Patterns for authoring gray-box integration tests (`*.integration.test.ts` via `test:integration`) across socketless Hono routes, ephemeral Daemons, `:memory:` SQLite stores, and cross-package adapter seams. See [`TESTING.md`](../../TESTING.md) and [`box-testing.md`](box-testing.md) for workspace mappings and wire-probe rules.
 
-## 1. Socketless HTTP route and middleware testing (`apps/api`)
+## 1. Socketless HTTP routes and security middleware (`apps/api`)
 
-Instantiate isolated Hono applications using `createApp()` from `apps/api/src/index.ts` and execute requests in memory with `app.request()`. Do not bind TCP ports when testing route handlers, CORS headers, loopback protection, or error envelopes:
+Instantiate isolated apps via `createApp()` from `apps/api/src/index.ts` and invoke `app.request()` directly in memory without binding TCP ports. Validate all payloads with Zod (`HealthResponseSchema`, `ApiErrorResponseSchema`, `@devtools/lighthouse/schemas`):
 
 ```ts
-import { describe, expect, it } from "bun:test";
-import {
-  API_ERROR_CODES,
-  ApiErrorResponseSchema,
-  HealthResponseSchema,
-} from "@devtools/core";
-import { createApp } from "../src";
+const app = createApp();
+const res = await app.request("/api/health");
+expect(res.status).toBe(200);
+expect(HealthResponseSchema.parse(await res.json()).status).toBe("ok");
+```
 
-describe("Hono API routes and security middleware", () => {
-  it("returns 200 and schema-valid health payload on GET /api/health", async () => {
-    const app = createApp();
-    const res = await app.request("/api/health");
+- **Reference suites:** `apps/api/tests/health.integration.test.ts`, `apps/api/tests/lighthouse.integration.test.ts`, `apps/api/tests/lighthouse-sse.integration.test.ts`, `apps/api/tests/server.integration.test.ts`.
 
-    expect(res.status).toBe(200);
-    const parsed = HealthResponseSchema.parse(await res.json());
-    expect(parsed.status).toBe("ok");
-  });
+## 2. Ephemeral Daemon lifecycle (`apps/cli`)
 
-  it("rejects mutating requests with non-loopback Origin with 403 FORBIDDEN error envelope", async () => {
-    const app = createApp();
-    const res = await app.request("/api/health", {
-      method: "POST",
-      headers: {
-        Origin: "http://evil.example.com",
-      },
-    });
+Start the Daemon via `startDaemon({ port: 0, host: "127.0.0.1" })` so the OS assigns a free ephemeral port (`daemon.port`), and always call `await activeDaemon.stop()` in `afterEach`:
 
-    expect(res.status).toBe(403);
-    const parsed = ApiErrorResponseSchema.parse(await res.json());
-    expect(parsed.error.code).toBe(API_ERROR_CODES.FORBIDDEN);
-  });
-
-  it("returns 404 NOT_FOUND envelope on unknown routes", async () => {
-    const app = createApp();
-    const res = await app.request("/api/nonexistent");
-
-    expect(res.status).toBe(404);
-    const parsed = ApiErrorResponseSchema.parse(await res.json());
-    expect(parsed.error.code).toBe(API_ERROR_CODES.NOT_FOUND);
-  });
+```ts
+afterEach(async () => {
+  await activeDaemon?.stop();
+  activeDaemon = null;
 });
 ```
 
-## 2. Ephemeral loopback daemon testing (`apps/cli`)
+- **Reference suites:** `apps/cli/tests/daemon.integration.test.ts`, `apps/cli/tests/lighthouse.integration.test.ts`.
 
-When testing the unified loopback daemon (`startDaemon` in `apps/cli/src/daemon.ts`), pass `port: 0` so the OS assigns an unused ephemeral port. Always stop the daemon and reset the database singleton in `afterEach`:
+## 3. In-memory SQLite Database Handles (`packages/db`)
 
-```ts
-import { afterEach, describe, expect, it } from "bun:test";
-import { HealthResponseSchema } from "@devtools/core";
-import { resetDb } from "@devtools/db";
-import { type DaemonInstance, startDaemon } from "../src/daemon";
-
-describe("Loopback daemon lifecycle", () => {
-  let activeDaemon: DaemonInstance | null = null;
-
-  afterEach(async () => {
-    if (activeDaemon) {
-      await activeDaemon.stop();
-      activeDaemon = null;
-    }
-    resetDb();
-  });
-
-  it("boots on ephemeral port 0 and serves both static HTML and /api/health", async () => {
-    activeDaemon = startDaemon({ port: 0, host: "127.0.0.1" });
-    expect(activeDaemon.port).toBeGreaterThan(0);
-
-    const baseUrl = `http://127.0.0.1:${activeDaemon.port}`;
-
-    const htmlRes = await fetch(`${baseUrl}/`);
-    expect(htmlRes.status).toBe(200);
-    expect(await htmlRes.text()).toContain("<!DOCTYPE html>");
-
-    const apiRes = await fetch(`${baseUrl}/api/health`);
-    expect(apiRes.status).toBe(200);
-    expect(HealthResponseSchema.parse(await apiRes.json()).status).toBe("ok");
-  });
-});
-```
-
-## 3. In-memory SQLite persistence and migrations (`packages/db`)
-
-Run persistence integration tests against `:memory:` SQLite instances via `createSqliteConnection({ path: ":memory:" })`, `createDb({ connection })`, and `runMigrations(db)`. Verify migration idempotency and transaction rollbacks:
+Use `using handle = openDb({ memory: true })` to verify Lazy Schema Initialization, rollback on throwing `handle.write()` transactions, nested savepoints, and handle disposal with zero disk side effects:
 
 ```ts
-import { describe, expect, it } from "bun:test";
-import {
-  createDb,
-  createSqliteConnection,
-  eq,
-  runMigrations,
-  systemMetadata,
-} from "../src";
+using handle = openDb({ memory: true });
+expect(() =>
+  handle.write((tx) => {
+    tx.insert(systemMetadata)
+      .values({ key: "k", value: "v", updatedAt: new Date() })
+      .run();
+    throw new Error("Abort");
+  }),
+).toThrow("Abort");
 
-describe("SQLite migrations and persistence invariants", () => {
-  it("applies migrations idempotently on an in-memory database", () => {
-    const sqlite = createSqliteConnection({ path: ":memory:" });
-    const testDb = createDb({ connection: sqlite });
-    try {
-      expect(() => runMigrations(testDb)).not.toThrow();
-      expect(() => runMigrations(testDb)).not.toThrow();
-
-      const rows = testDb.select().from(systemMetadata).all();
-      expect(Array.isArray(rows)).toBe(true);
-    } finally {
-      sqlite.close();
-    }
-  });
-
-  it("rolls back all writes when a transaction throws", () => {
-    const sqlite = createSqliteConnection({ path: ":memory:" });
-    const testDb = createDb({ connection: sqlite });
-    try {
-      runMigrations(testDb);
-
-      expect(() => {
-        testDb.transaction((tx) => {
-          tx.insert(systemMetadata)
-            .values({ key: "schema_check", value: "v1", updatedAt: new Date() })
-            .run();
-          throw new Error("Abort transaction");
-        });
-      }).toThrow("Abort transaction");
-
-      const found = testDb
-        .select()
-        .from(systemMetadata)
-        .where(eq(systemMetadata.key, "schema_check"))
-        .all();
-      expect(found).toHaveLength(0);
-    } finally {
-      sqlite.close();
-    }
-  });
-});
+const row = handle.read((db) =>
+  db.select().from(systemMetadata).where(eq(systemMetadata.key, "k")).get(),
+);
+expect(row).toBeUndefined();
 ```
 
-## 4. Cross-package adapter and repository seams (`packages/browser`, `packages/lighthouse`)
+- **Reference suite:** `packages/db/tests/db.integration.test.ts`.
 
-- **Injectable browser, process, and network seams.** In `packages/browser` (`detector.ts`, `installer.ts`) and `packages/lighthouse` (`runner.ts`), inject fake browser launchers, execution seams, process spawners, or HTTP fetchers at the adapter boundary rather than downloading headless browser archives or launching real Chrome processes in integration tests.
-- **Persistence and query round-trips.** Test `@devtools/lighthouse` persistence helpers (`insertLighthouseRun`, `resolveLighthouseRun`, `listLighthouseRunsWithTotal`, `persistLighthouseAudit` in `packages/lighthouse/src/runs.ts` and `runner.ts`) against a migrated `:memory:` database and temporary `artifactsDir` to verify that `lighthouse_runs` records, short-ID prefix lookups, warm `summary_json` payloads, and cold report artifacts persist accurately.
+## 4. Cross-package adapter and store seams (`packages/browser`, `packages/lighthouse`)
+
+- **Injectable external seams.** Inject fake probes, HTTP fetchers, or Chrome launch/iteration ports at adapter boundaries (`packages/browser/src/detector.ts`, `packages/browser/src/installer.ts`, `packages/lighthouse/src/application/execute-batch.ts`, `packages/lighthouse/src/infra/runtime/iteration.ts`) rather than downloading browser archives or launching real Chrome during integration runs.
+- **Store round-trips.** Exercise `createLighthouseStore({ db, artifactsDir })` over `using db = openDb({ memory: true })` (`insertRun`, `getRun`, `listRunsWithTotal`, `diffRuns`, `resolveReportHtmlPath`, `persistBatch`) against an isolated `:memory:` database and temporary `artifactsDir` to verify short-ID prefix range lookups, warm Audit Summaries, and cold Report Artifact rollback on failure.
+- **Reference suites:** `packages/browser/tests/detector.integration.test.ts`, `packages/browser/tests/installer.integration.test.ts`, `packages/lighthouse/tests/runner.integration.test.ts`, `packages/lighthouse/tests/runs.integration.test.ts`.

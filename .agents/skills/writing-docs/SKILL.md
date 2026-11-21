@@ -7,7 +7,7 @@ description: "Write, structure, and update project documentation across root *.m
 
 Authoring guide for repository documentation across `docs/**`, package and app READMEs, and root `*.md` files (`README.md`, `ARCHITECTURE.md`, `CODE_OF_CONDUCT.md`, `CODING_STANDARDS.md`, `CONTRIBUTING.md`, `GLOSSARY.md`, `REVIEW.md`, `SECURITY.md`, and `TESTING.md`).
 
-Apply [`/unslop`](../unslop/SKILL.md) to all prose. For Architecture Decision Records (`docs/adr/`) and domain glossaries (`GLOSSARY.md`, `docs/glossary/`), read and follow [`domain-modeling`](../domain-modeling/SKILL.md) and obtain explicit maintainer confirmation before authoring or editing any ADR.
+Apply [`/unslop`](../unslop/SKILL.md) to all prose. For Architecture Decision Records (`docs/adr/`) and the domain glossary (`GLOSSARY.md`), read and follow [`domain-modeling`](../domain-modeling/SKILL.md) and obtain explicit maintainer confirmation before authoring or editing any ADR.
 
 ## Core authoring principles
 
@@ -16,7 +16,7 @@ Apply [`/unslop`](../unslop/SKILL.md) to all prose. For Architecture Decision Re
 - **Verify facts against live code first.** Read live source files, manifests, configs, and CLI `--help` output before writing or updating claims. Ban volatile literals that silently rot, such as patch version strings, hardcoded CI check counts, terminal directory listings, or file-by-file ASCII trees.
 - **Keep one source of truth.** Record each contract, table, diagram, or procedure in one canonical file and link to it elsewhere. Maintain clear folder ownership: architecture docs own topology, data flow, and lifecycles (*how it works*); coding standards own authoring rules and checklists (*how to write it*); testing and contributing docs own verification and workflow procedures.
 - **Point to code instead of copying it.** Reference repository-relative paths (`path/to/file.ext#L10-L25`) and exported symbol names (`ClassName.method`) instead of pasting full files or functions. Keep inline snippets to short 5 to 12 line syntax or pattern skeletons.
-- **Use canonical domain language.** Reuse exact terms from `GLOSSARY.md` and `docs/glossary/*.md` and replace synonyms listed under `_Avoid_`.
+- **Use canonical domain language.** Reuse exact terms from `GLOSSARY.md` and replace synonyms listed under `_Avoid_`.
 
 ## Token efficiency and structure
 

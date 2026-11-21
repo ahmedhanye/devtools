@@ -2,7 +2,8 @@
 
 ## Context
 
-- **Documentation.** Always read the relevant guide before acting: `TESTING.md` for tests, `CODING_STANDARDS.md` for code and APIs, `REVIEW.md` for verification and diffs, `ARCHITECTURE.md` for system design and the ADR index (`docs/adr/`), `CONTRIBUTING.md` for git, issue, and PR workflows, and `GLOSSARY.md` for domain terms.
+- **Documentation.** Always read the relevant guide before acting: `TESTING.md` for tests, `CODING_STANDARDS.md` for code and APIs, `REVIEW.md` for verification and diffs, `ARCHITECTURE.md` for system design, and `CONTRIBUTING.md` for git, issue, and PR workflows.
+- **Domain vocabulary and ADRs.** Check `GLOSSARY.md` to keep domain naming consistent and `docs/adr/` (indexed in `ARCHITECTURE.md`) to respect settled architectural decisions.
 
 ## Execution boundaries
 

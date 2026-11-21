@@ -1,56 +1,62 @@
-# Persistence and Database Architecture
+# Persistence and database architecture
 
-Architecture, embedded SQLite foundation, Drizzle ORM schema, and migration lifecycles for `packages/db`.
+Embedded SQLite foundation, `DbSession` vs. `DbHandle` ownership, automatic idle-close, WAL concurrency, lazy schema initialization, and multi-environment path resolution for `packages/db`.
 
-## Embedded persistence engine
+## Module responsibilities
 
-`packages/db` provides local persistence using an embedded SQLite database powered by `bun:sqlite` and managed through [Drizzle ORM](https://orm.drizzle.team/):
+| Path                          | Responsibility                                                                                      | Entrypoint                          |
+| :---------------------------- | :-------------------------------------------------------------------------------------------------- | :---------------------------------- |
+| `packages/db/drizzle/`        | Versioned Drizzle SQL migration files and `meta/_journal.json`.                                     | Statically bundled by `migrator.ts` |
+| `packages/db/src/schema/`     | Drizzle tables (`system.ts` for `system_metadata`, `lighthouse.ts` for `lighthouse_runs`).          | `packages/db/src/schema/index.ts`   |
+| `packages/db/src/client.ts`   | Lazy `openDb` (`DbSession` / `DbHandle`), 30 s idle-close, `BEGIN IMMEDIATE`, savepoints.           | `packages/db/src/index.ts`          |
+| `packages/db/src/config.ts`   | Multi-environment path resolution (`resolveDatabaseTargetPath`, `resolveDatabasePath`).             | `packages/db/src/index.ts`          |
+| `packages/db/src/migrator.ts` | Bundled SHA-256 SQL lazy schema initialization (`initializeBaselineSchema`, `EMBEDDED_SQL_BY_TAG`). | `packages/db/src/index.ts`          |
 
-```text
-packages/db/
-├── drizzle/                   # Versioned SQL migration files & _journal.json
-├── src/
-│   ├── schema/
-│   │   ├── system.ts          # System records & registration schemas
-│   │   ├── lighthouse.ts      # Lighthouse audit runs & summary JSON schemas
-│   │   └── index.ts           # Schema aggregation & exports
-│   ├── client.ts              # Drizzle ORM wrapper & query methods
-│   ├── config.ts              # Database path resolution & env seams
-│   ├── connection.ts          # bun:sqlite connection factory
-│   ├── declarations.d.ts      # Embedded *.sql module type declarations
-│   ├── migrator.ts            # Embedded & folder migration execution runner
-│   └── index.ts               # Public package entrypoint
-└── tests/                     # In-memory & embedded migration test suites
+## Lazy handle ownership and idle-close lifecycle
+
+```mermaid
+flowchart TD
+  Open["openDb(options)"] --> Lazy["Return lazy DbHandle<br/>(zero files created; exposes DbSession)"]
+  Lazy --> FirstUse["First .read() / .write() / .ensureReady()"]
+  FirstUse --> Kind{"memory: true?"}
+  Kind -- Yes --> Mem["Isolated :memory: SQLite<br/>(no WAL, idle-close disabled)"]
+  Kind -- No --> File["File-backed SQLite + WAL pragmas<br/>(30 s .unref() idle timer)"]
+  Mem --> Init["initializeBaselineSchema()<br/>(read-only SHA-256 hash check)"]
+  File --> Init
+  Init --> Write["handle.write(): BEGIN IMMEDIATE<br/>+ nestedTx SAVEPOINT"]
+  File --> Idle["30 s idle or explicit handle.close()<br/>(busy_timeout=0 -> optimize -> close(true))"]
+  Idle -. "Subsequent read/write before close()" .-> File
 ```
 
-## Journal mode and crash resilience (ADR 0001)
+- **Ownership split (`DbSession` vs. `DbHandle`).** `openDb()` returns an owner-only `DbHandle` (exposing `close()` and `[Symbol.dispose]()`) for application composition roots (`apps/cli`, `apps/api`). Feature packages such as `@devtools/lighthouse` accept only a borrowed `DbSession` (`path`, `ensureReady()`, `read()`, `write()`), preventing stores from closing caller-managed connections.
+- **Lazy physical open and automatic 30 s idle-close.** File-backed handles defer opening SQLite until first access. After 30 seconds of inactivity (configurable via `idleTimeoutMs`, disabled when `0` or `:memory:`), an `.unref()`'d timer sets `PRAGMA busy_timeout = 0` so `PRAGMA optimize` skips immediately under external writers instead of stalling the event loop, then calls `sqlite.close(true)` to finalize Drizzle's uncached prepared statements and clean up `-wal` / `-shm` sidecars immediately. Later calls before explicit `handle.close()` reopen transparently (and self-heal if the file was deleted while idle).
+- **Statically bundled schema and SHA-256 migration tracking.** `packages/db/src/migrator.ts` statically imports `packages/db/drizzle/*.sql` (`with { type: "text" }`) and `drizzle/meta/_journal.json` (`with { type: "json" }`) so compiled single-file binaries (`dist/devtools`) initialize and upgrade tables without external SQL files on disk.
+- **Idempotent first-access init and upgrades.** When `autoInit !== false`, first access checks `sqlite_master` and `__devtools_migrations` (`id INTEGER PRIMARY KEY AUTOINCREMENT`, `hash`, `created_at`) read-only without a write lock. Empty databases apply all embedded migrations inside `BEGIN IMMEDIATE`, tracked databases apply only migrations whose SHA-256 hash is missing, up-to-date databases return immediately, and foreign databases with unrelated tables and no `__devtools_migrations` table stay untouched.
 
-Per [ADR 0001](../adr/0001-embedded-database-foundation.md), SQLite connections are configured with crash-resilient pragmas on initialization:
+## SQLite concurrency pragmas (ADR 0001)
 
-1. **Write-Ahead Logging (WAL)**: `PRAGMA journal_mode = WAL` enables concurrent readers alongside a single active writer without blocking read queries.
-2. **Synchronous normal**: `PRAGMA synchronous = NORMAL` provides durable, crash-safe writes while avoiding fsync disk bottlenecks.
-3. **Foreign key enforcement**: `PRAGMA foreign_keys = ON` guarantees referential integrity at the database engine level.
-4. **Busy timeout**: `PRAGMA busy_timeout = 5000` retries locked database operations for up to 5 seconds before raising exceptions, mitigating contention between CLI commands and the background daemon.
+Per [ADR 0001](../adr/0001-embedded-database-foundation.md), file-backed connections apply these pragmas on open (in-memory databases skip WAL and `synchronous`):
 
-## Embedded migrations and startup lifecycle
+| Pragma         | Value    | Purpose                                                                      |
+| :------------- | :------- | :--------------------------------------------------------------------------- |
+| `journal_mode` | `WAL`    | Allows concurrent readers alongside one active writer without read blocking. |
+| `synchronous`  | `NORMAL` | Preserves crash safety in WAL mode without per-commit `fsync` stalls.        |
+| `foreign_keys` | `ON`     | Enforces referential integrity at the SQLite engine level.                   |
+| `busy_timeout` | `5000`   | Waits up to 5 seconds on lock contention before raising `SQLITE_BUSY`.       |
 
-1. **Statically bundled migrations**: `packages/db/src/migrator.ts` statically imports Drizzle SQL migration scripts (`packages/db/drizzle/*.sql` via `with { type: "text" }`) and `drizzle/meta/_journal.json` (`with { type: "json" }`) so `runMigrations()` runs self-contained embedded migrations (`runEmbeddedMigrations`) inside compiled single-file executables (`bun build --compile`) without relying on external migration files on disk. Passing an explicit `options.migrationsFolder` still delegates to `drizzle-orm/bun-sqlite/migrator`.
-2. **Startup migration runner**: When the loopback daemon boots (`apps/cli/src/daemon.ts`), it initializes SQLite (`getDb`) and executes `runMigrations(daemonDb)` before opening HTTP network ports.
-3. **Migration idempotency**: Migrations track applied timestamps and SHA-256 SQL digests in the `__devtools_migrations` internal table. Running `runMigrations()` repeatedly on an up-to-date database is a safe, idempotent no-op.
+## Multi-environment path resolution
 
-## Configuration seams and in-memory testing (ADR 0002)
+`packages/db/src/config.ts` consumes `@devtools/core/node` (`findWorkspaceRoot`, `isStandaloneRuntime`) with injectable `env`, `cwd`, `memory`, `isStandalone`, and `idleTimeoutMs` configuration seams:
 
-1. **Path resolution seam**: `packages/db/src/config.ts` isolates path resolution and accepts an injectable `options.env` seam:
-   - Evaluates `customPath`, `DEVTOOLS_DB_PATH`, or `DATABASE_URL` if defined.
-   - Resolves to `:memory:` in automated test environments (`NODE_ENV === "test"` or `BUN_ENV === "test"`).
-   - Resolves to `<repo_root>/.devtools/devtools.db` in local workspace development (`NODE_ENV !== "production"`).
-   - Defaults to `~/.devtools/devtools.db` under the user's home directory in production.
-2. **In-memory test isolation**: Unit test suites instantiate databases using `createDb(":memory:")` or `createConnection(":memory:")`. This creates an ephemeral, lightning-fast database in RAM that requires zero disk cleanup and eliminates cross-test state pollution. In-memory databases automatically omit WAL pragma execution.
+| Priority | Condition                                                  | Resolved target                                 |
+| :------: | :--------------------------------------------------------- | :---------------------------------------------- |
+|    1     | `memory: true`                                             | `:memory:`                                      |
+|    2     | `customPath`, `DEVTOOLS_DB_PATH`, or `DATABASE_URL` is set | `:memory:` or path resolved from `cwd`          |
+|    3     | `NODE_ENV === "test"` or `BUN_ENV === "test"`              | `:memory:`                                      |
+|    4     | `isStandaloneRuntime()` or `NODE_ENV === "production"`     | `~/.devtools/devtools.db`                       |
+|    5     | Local workspace development (fallback)                     | `<workspace_root or cwd>/.devtools/devtools.db` |
 
-## 3-tier audit storage schema (ADR 0003)
+> [!TIP]
+> Pass `openDb({ memory: true })` in tests for isolated in-memory databases with zero disk I/O and explicit `using` / `.close()` cleanup.
 
-Per [ADR 0003](../adr/0003-lighthouse-audit-isolation-and-tiered-storage.md), `packages/db/src/schema/lighthouse.ts` defines the `lighthouse_runs` table supporting 3-tier performance audit storage:
-
-1. **Hot relational columns**: Core run attributes (`url`, `final_url`, `form_factor`, `throttling_method`), the 4 category scores (0–100), and the 6 Core Web Vitals (`lcp_ms`, `cls`, `tbt_ms`, `fcp_ms`, `si_ms`, `ttfb_ms`) are stored in indexed columns for fast queries without parsing large JSON payloads.
-2. **Warm summary payload**: The `summary_json` column stores a structured, normalized JSON summary with LCP and CLS attribution, prioritized insight diagnostics, and multi-run distribution metadata.
-3. **Cold disk references**: The `json_report_path` and `html_report_path` columns store absolute disk paths pointing to full Lighthouse report artifacts under `<artifactsDir>/<runId>/`.
+For the 3-tier `lighthouse_runs` schema implemented in `packages/db/src/schema/lighthouse.ts`, see [Performance auditing architecture](lighthouse.md#3-tier-storage-architecture).

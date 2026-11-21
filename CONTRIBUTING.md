@@ -1,82 +1,41 @@
 # Contributing to DevTools
 
-DevTools is a developer tooling monorepo providing utilities and workflows across CLI, daemon, API, and frontend interfaces.
+Setup instructions, development lifecycle, and operational guides for contributing to the DevTools monorepo.
 
 ## Getting started
 
 ### Prerequisites
 
-- [Bun](https://bun.sh/) 1.4.2 or higher
-- [GitHub CLI (`gh`)](https://cli.github.com/) 2.60.0 or higher
-- Git 2.40.0 or higher
+- [Bun](https://bun.sh/) `1.4.2` or higher
+- [GitHub CLI (`gh`)](https://cli.github.com/) `2.46.0` or higher (`2.94.0+` adds native `--parent` and `--blocked-by`; guides below include `gh api` fallbacks)
+- Git `2.40.0` or higher
 
 ### Local setup
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/AhmedHanye/devtools.git
-   cd devtools
-   ```
-2. Install dependencies and set up git hooks:
-   ```bash
-   bun install
-   ```
+```bash
+git clone https://github.com/AhmedHanye/devtools.git
+cd devtools
+bun install
+```
 
-## Development commands
+## Verification workflow
 
-Run checks across the monorepo during development:
+Follow [Review and verification guide](REVIEW.md) to run narrow, path-scoped checks during edits and the matching completion gate (or `bun run verify` for root or multi-workspace changes) before opening a pull request.
 
-- **Lint and format checks:**
-  ```bash
-  bun run check
-  ```
-- **Typecheck all workspaces:**
-  ```bash
-  bun run typecheck
-  ```
-- **Run test suites:**
-  ```bash
-  bun run test
-  ```
-- **Fast local verification:**
-  ```bash
-  bun run verify:fast
-  ```
-- **Canonical local verification (on-demand):**
-  ```bash
-  bun run verify
-  ```
+## Contribution lifecycle
 
-## Contribution workflow
+1. **Start from a tracking issue.** Claim an open ticket and check out its linked branch per [Issue tracking and management](docs/contributing/issues.md).
+2. **Stage and commit logical changes.** Stage files by path and write Conventional Commits following [Commits](docs/contributing/commits.md). Keep issue references out of commit subjects.
+3. **Verify and push.** Run the path-scoped completion check in [REVIEW.md](REVIEW.md#scope-and-verification-matrix), push commits, and handle post-push review replies per [Pushing changes and review synchronization](docs/contributing/push.md).
+4. **Open, review, and merge the pull request.** Follow [Pull requests](docs/contributing/pull-request.md) for title, template, label, evidence, single-PR, and stacked-PR rules. Squash merge only once all required checks pass and reviewers resolve all threads.
 
-1. **Start with an issue:** Every pull request links to an open tracking issue. Create a linked working branch:
-   ```bash
-   gh issue develop <ticket_number> --checkout
-   ```
-2. **Commit changes:** Follow [Conventional Commits](https://www.conventionalcommits.org/) (`<type>(<scope>): <description>`). Types `feat:` and `fix:` trigger automated semantic releases. Keep issue references in pull request descriptions rather than commit subjects.
-3. **Stage atomic changes:** Stage specific files by path and inspect staged contents:
-   ```bash
-   git add <path>
-   git diff --cached --stat
-   ```
-4. **Open a pull request:**
-   ```bash
-   gh pr create --assignee "@me" --fill
-   ```
-   Follow [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md) and ensure the description includes `Closes #<ticket_number>`. Inspect the linked issue and parent Spec descriptions (`gh issue view <ticket_number> --json number,title,body,state,labels` and `gh api repos/{owner}/{repo}/issues/<ticket_number>/parent`), updating any completed checklist tasks (`- [ ]` to `- [x]`) using `gh issue edit`.
-5. **Push changes and resolve review comments:** Follow [Pushing changes and review synchronization](docs/contributing/push.md) to verify readiness, push commits, and resolve review threads post-push.
-6. **Merge via squash merge:**
-   ```bash
-   gh pr merge <pr_number> --squash --body "" --delete-branch
-   ```
+## Contributing guides
 
-## Documentation
-
-Detailed operational guides live under `docs/contributing/`:
-
-- [Pushing changes and review synchronization](docs/contributing/push.md): Verification, push execution, and post-push review thread resolution.
-- [Pull requests and code review](docs/contributing/pull-requests.md): Review thread resolution and merge requirements.
-- [Stacked pull requests](docs/contributing/stacked-prs.md): Decomposing large changesets (>5,000 LOC or >80 files) into ordered, reviewable PR chains.
-- [Issue tracking and management](docs/contributing/issues.md): Hierarchy, sub-issues, dependencies, and project lifecycle.
-- [Commits and atomic changes](docs/contributing/commits.md): Commit types, subject formats, and staging.
-- [Releases and distribution](docs/contributing/releases.md): Release Please workflow and standalone binary compilation.
+| Guide                                                                   | Read when                                                                                             |
+| :---------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------- |
+| [Issue tracking and management](docs/contributing/issues.md)            | Creating Specs or Tickets, claiming work, linking sub-issues, or updating project board statuses.     |
+| [Commits](docs/contributing/commits.md)                                 | Choosing commit types and scopes, formatting headers or bodies, or splitting logical changes.         |
+| [Pull requests](docs/contributing/pull-request.md)                      | Opening, updating, stacking, or merging pull requests (routes to single-PR, stacked-PR, and replies). |
+| [Pull request comments](docs/contributing/pull-request/comments.md)     | Inspecting, classifying, and replying to unresolved pull request review threads.                      |
+| [Pushing changes and review synchronization](docs/contributing/push.md) | Running pre-push gates, pushing branches or stacks, inspecting active PRs, and replying to reviews.   |
+| [Releases and distribution](docs/contributing/releases.md)              | Understanding Release Please triggers, version bumps, and standalone binary release artifacts.        |

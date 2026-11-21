@@ -1,47 +1,41 @@
 # Pushing changes and review synchronization
 
-Guidelines for verifying branch readiness, executing remote pushes, correlating pull requests, and resolving review comments after pushing.
+Guidelines for verifying branch readiness, pushing commits, inspecting active pull requests, and replying to review comments after pushing.
 
 ## Pre-push quality gate
 
-Before pushing to the remote repository, ensure all local verification checks pass:
+Before pushing to `origin`, run the completion check matching your changed paths in [Review and verification guide](../../REVIEW.md#scope-and-verification-matrix) (or `bun run verify` for root configs or executable multi-workspace changes; doc-only changes stop after their matching completion check, and stacked PR branches pass `BASE_REF="<parent-layer-branch>"`).
 
-```bash
-bun run verify:fast
-```
-
-For major milestones, slices, or before opening a final pull request, run the full verification suite:
-
-```bash
-bun run verify
-```
+`lefthook.yml` also runs a parallel `pre-push` hook executing whole-repo `typecheck`, `fallow:dead-code`, `fallow:arch`, `fallow:health`, and `fallow:dupes` automatically on every `git push`.
 
 ## Remote push execution
-
-Execute pushes non-interactively:
 
 - **Standard branch push:**
   ```bash
   git push origin <branch>
   ```
 - **Stacked PR branches (`gh-stack`):**
-  Synchronize rebased branches and PR metadata across the stack per [Stacked Pull Requests](stacked-prs.md) (use `--prune` to remove branches for merged PRs):
+  When committing fixes on a lower stack branch, cascade-rebase upper branches first (`gh stack rebase --upstack --no-trunk`) before running `git fetch origin && gh stack push`, or pull trunk, rebase, push, and prune merged branches per [Stacked pull requests](pull-request/stacked-prs.md):
   ```bash
-  gh stack sync
+  gh stack rebase --upstack --no-trunk
+  git fetch origin && gh stack push
+  # Or, after lower layers merge:
+  gh stack sync --prune
   ```
+  In non-interactive shells, a diverged stack causes `gh stack sync` to print `Sync aborted` and exit `0` without pushing, so confirm the command output reports pushed branches before replying to review comments.
 
 ## Active pull request inspection
 
-After pushing to the remote repository, check if an open pull request already exists for the active branch:
+Check whether an open pull request already exists for the current branch:
 
 ```bash
 gh pr list --head $(git branch --show-current) --json number,title,state,url
 ```
 
-If no pull request exists yet, follow [Pull requests and code review](pull-requests.md) to open one when ready.
+If no pull request exists yet, open one following [Pull requests](pull-request.md).
 
-## Post-push review thread resolution
+## Post-push review comment replies
 
-Branch protection requires all review comment threads to be resolved before merge eligibility. Review threads must only be resolved **after** the corresponding code fix has been committed and successfully pushed to GitHub. This ensures the pull request diff on GitHub displays the updated code.
+When the branch has an open pull request and the pushed commits address comments on that pull request, reply to each addressed comment right after pushing (never before pushing, so the remote diff shows the updated code) following [Reply to a review comment](pull-request/comments.md#2-reply-to-a-review-comment).
 
-Follow the inspection, investigation, and resolution actions in [Pull request comments and thread resolution](pr-comments.md).
+For querying open threads before replying, see [Pull request comments](pull-request/comments.md).

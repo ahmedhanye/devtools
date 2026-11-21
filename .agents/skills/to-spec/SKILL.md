@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 Turn decisions already made in conversation and repository context into a clear problem-and-outcome spec rather than running a fresh requirements interview.
 
-1. **Discover conventions and context.** Inspect available repository issue docs and templates (such as `CONTRIBUTING.md`, linked issue guides, and `.github/ISSUE_TEMPLATE/`), relevant architecture or domain docs when present, affected areas of the codebase, and live GitHub labels and active milestones.
+1. **Discover conventions and context.** Inspect available repository issue docs and templates (such as `CONTRIBUTING.md`, linked issue guides, and `.github/ISSUE_TEMPLATE/`), relevant `GLOSSARY.md` terms and `ARCHITECTURE.md` constraints (including linked ADRs) when present, affected areas of the codebase, and live GitHub labels and active milestones.
 
    Completion criterion: Available repository issue rules, live labels and milestones, and affected context read.
 

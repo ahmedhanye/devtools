@@ -1,84 +1,49 @@
-# Monorepo Package Standards
+# Monorepo package standards
 
-Architectural guidelines, boundary rules, and development practices for shared domain packages under `packages/*`.
+Authoring rules, direct source exports, Configuration Seams, and workspace scaffolding conventions for shared domain packages under `packages/*`.
 
 ## Headless domain isolation
 
-1. **Unidirectional dependency ordering**: Packages under `packages/*` are headless domain libraries (`@devtools/core`, `@devtools/db`, `@devtools/browser`, `@devtools/lighthouse`). They supply shared business logic, schemas, and persistence primitives:
-   - Packages must **never** import from applications (`apps/*`) or documentation (`site/`).
-   - Packages follow a strict hierarchy: `@devtools/core` is a zero-dependency foundation; `@devtools/db` and `@devtools/browser` depend on `@devtools/core`; `@devtools/lighthouse` depends on `@devtools/core`, `@devtools/db`, and `@devtools/browser` while exposing a browser-safe, `zod`-only `@devtools/lighthouse/schemas` subpath (`packages/lighthouse/src/schemas.ts`) for `apps/frontend` via `.fallowrc.json` boundary rules. Sibling packages must not form circular references.
-2. **Framework independence**: Headless packages must remain independent of frontend UI frameworks (React, Next.js) and HTTP routing engines (Hono). Keep domain models and business rules pure and decoupled from delivery mechanisms.
-3. **Packages are headless domain libraries, not process orchestrators**: Packages must not spawn runtime child processes (such as `Bun.spawn` executing external scripts or worker processes) to manage internal execution flow. Monorepo packages provide programmatic libraries, leaving long-running background orchestration, process supervision, worker threads, and queue concurrency to application boundary layers (`apps/api`, `apps/cli`).
+For workspace dependency topology and enforced `.fallowrc.json` zones, see [Monorepo architecture](../architecture/monorepo.md#dependency-boundaries). When authoring inside `packages/*`:
 
-## Direct source exports
+- **Framework independence.** Keep packages free of React, Next.js, and Hono. Domain models and logic remain independent of UI and HTTP delivery layers.
+- **No internal process orchestration.** Packages are programmatic libraries, not process supervisors. Do not spawn worker scripts (`Bun.spawn`) to manage internal control flow; leave job concurrency and supervision to `apps/api` and `apps/cli` per [ADR 0005](../adr/0005-in-process-lighthouse-execution.md).
+- **Direct source exports.** Declare direct TypeScript entrypoints in `package.json` `exports` (`"."`, `"./node"`, `"./schema"`, `"./schemas"`) pointing to `./src/*.ts` rather than `dist/`. Consuming workspaces import only public subpath exports, never internal paths such as `@devtools/db/src/client`.
 
-1. **Subpath exports mapping to TypeScript source**: Internal monorepo packages declare direct source exports in their `package.json` instead of requiring build artifacts (`dist/`):
-   ```json
-   {
-     "name": "@devtools/db",
-     "main": "./src/index.ts",
-     "exports": {
-       ".": "./src/index.ts",
-       "./schema": "./src/schema/index.ts",
-       "./migrator": "./src/migrator.ts"
-     }
-   }
-   ```
-2. **Bundler resolution**: Consuming workspaces resolve TypeScript files on the fly via `moduleResolution: "bundler"`, eliminating build delays and ensuring immediate feedback during development.
-3. **Explicit public seams**: Only symbols exported from designated subpath entrypoints (`src/index.ts`, `src/schema/index.ts`, `src/migrator.ts`, `src/schemas.ts`) constitute the public API. Consuming applications must never import internal paths directly (e.g. `@devtools/db/src/internal/connection`).
+## Configuration seams
 
-## Configuration seams and ADR 0002
+> [!IMPORTANT]
+> Oxlint denies `node/no-process-env` across `packages/**/src/**`, allowing `process.env` reads exclusively inside designated `config.ts` and `config/artifacts-config.ts` modules.
 
-1. **No ambient `process.env` reads**: Never access `process.env` inside domain functions, models, or service classes. Ambient environment reads create race conditions in concurrent test suites and couple libraries to Node/Bun host environments.
-2. **Centralized configuration modules**: Isolate all environment variable resolution into a single `config.ts` file per package.
-3. **Injectable environment seams**: Every configuration resolver must accept an optional `options.env` parameter:
-   ```ts
-   export interface ResolveDatabasePathOptions {
-     env?: Record<string, string | undefined>;
-     customPath?: string;
-   }
+Centralize environment resolution into one configuration module per package and accept an injectable `options.env` Configuration Seam:
 
-   export function resolveDatabasePath(
-     options: ResolveDatabasePathOptions = {},
-   ): string {
-     const env = options.env ?? process.env;
-     const envPath =
-       options.customPath ?? env.DEVTOOLS_DB_PATH ?? env.DATABASE_URL;
-     if (envPath) {
-       return envPath === ":memory:"
-         ? ":memory:"
-         : resolve(process.cwd(), envPath);
-     }
-     if (env.NODE_ENV === "test" || env.BUN_ENV === "test") {
-       return ":memory:";
-     }
-     if (env.NODE_ENV !== "production") {
-       const root = findWorkspaceRoot() ?? process.cwd();
-       return resolve(root, ".devtools", "devtools.db");
-     }
-     return join(homedir(), ".devtools", "devtools.db");
-   }
-   ```
-4. **Static verification**: Oxlint enforces this boundary across `packages/**/src/**` by denying `node/no-process-env`, allowing exceptions exclusively in designated `config.ts` modules.
+```ts
+export interface ResolveConfigOptions {
+  env?: EnvMap;
+  cwd?: () => string;
+  isStandalone?: boolean;
+}
+```
 
-## Deep module design
+See `packages/db/src/config.ts`, `packages/browser/src/config.ts`, and `packages/lighthouse/src/config/artifacts-config.ts` for canonical implementations.
 
-1. **Depth as leverage**: Follow deep module principles: expose a minimal, stable public surface area that conceals substantial internal complexity (such as SQLite connection pooling, WAL mode initialization, or Chromium binary resolution).
-2. **Seam discipline**: Introduce seams (e.g. dependency injection for file probes or network calls) only where testing or genuine variation requires it. Avoid speculative abstractions or single-use interfaces.
+## Deep modules
+
+- **Minimal public surface.** Hide internal complexity (connection pooling, WAL retries, Chromium probes) behind a small, stable exported API.
+- **Purposeful seams.** Add injectable dependency seams only where testing or real runtime variation requires them. Avoid single-use speculative abstractions.
 
 ## Workspace package scaffolding
 
-When adding or removing a workspace package under `apps/*` or `packages/*`:
+When adding or removing a workspace under `apps/*` or `packages/*`:
 
-1. **Review boundaries**: Update `.coderabbit.yaml` (`reviews.path_instructions`) with architectural boundaries and domain review contracts for the package.
-2. **Architecture boundary zones**: Update `.fallowrc.json` with new architecture boundary zones and import rules if the package introduces new structural layers.
-3. **TypeScript configuration**: Configure `tsconfig.json` in the package to extend `tsconfig.base.json` and declare inter-workspace dependencies using the `workspace:*` protocol.
+1. **Review boundaries.** Update `.coderabbit.yaml` (`reviews.path_instructions`) with domain review contracts.
+2. **Architecture zones.** Update `.fallowrc.json` import rules if the workspace adds or changes dependency layers.
+3. **TypeScript config.** Extend `../../tsconfig.base.json` in the workspace `tsconfig.json` and link sibling packages via `"workspace:*"`.
 
-## Telemetry suppression for dependencies
+## Telemetry suppression
 
-When introducing or updating a tool, CLI, or library:
+When adding or upgrading any CLI, tool, or dependency:
 
-1. **Audit telemetry**: Check whether the package collects telemetry, crash reports, or usage analytics.
-2. **Native configuration**: Disable telemetry through native configuration files when supported (such as `core.disableTelemetry` in Storybook).
-3. **Environment kill switches**: Add the package kill switch environment variable to `.env.example` and `.github/workflows/*.yml`.
-4. **Standard privacy flags**: Honor `DO_NOT_TRACK=1` alongside tool-specific kill switches.
+1. Check whether the tool collects telemetry, crash reports, or analytics.
+2. Disable telemetry in native config files where supported (such as `core.disableTelemetry` in Storybook).
+3. Add package kill-switch environment variables to `.env.example` and `.github/workflows/*.yml`, alongside `DO_NOT_TRACK=1`.

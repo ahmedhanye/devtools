@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 Break a spec, plan, or conversation into vertical tracer-bullet tickets with explicit blocking dependencies.
 
-1. **Load source and repository conventions.** Read the referenced spec, file, or issue (including comments) or synthesize the current conversation. Inspect available repository issue docs and templates (such as `CONTRIBUTING.md`, linked issue guides, and `.github/ISSUE_TEMPLATE/`), relevant codebase boundaries, and live GitHub labels and parent issue details when publishing to GitHub.
+1. **Load source and repository conventions.** Read the referenced spec, file, or issue (including comments) or synthesize the current conversation. Inspect available repository issue docs and templates (such as `CONTRIBUTING.md`, linked issue guides, and `.github/ISSUE_TEMPLATE/`), relevant codebase boundaries, relevant `GLOSSARY.md` terms and `ARCHITECTURE.md` constraints (including linked ADRs), and live GitHub labels and parent issue details when publishing to GitHub.
 
    Completion criterion: Source work loaded in full, available repository issue rules and live labels checked, and affected boundaries understood.
 

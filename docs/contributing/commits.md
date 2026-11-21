@@ -1,70 +1,75 @@
-# Commits and atomic changes
+# Commits
 
-Guidelines for writing Conventional Commits, clean commit subjects, and staging atomic changesets.
+Guidelines for writing Conventional Commits, choosing scopes, keeping history release-safe, and staging coherent logical changes.
 
 ## Conventional commits
 
-Commit messages follow the Conventional Commits specification:
+Commit messages and pull request titles follow the Conventional Commits specification:
 
 ```text
-<type>(<scope>): <imperative description>
+<type>[optional (<scope>)][optional !]: <imperative description>
 ```
 
 > [!IMPORTANT]
-> **Type isolation.** Every commit represents exactly one type of work. Never combine distinct types in a single commit. For example, test suites and test helpers (`*.test.ts`, `*.test.tsx`, or files under `tests/`) belong strictly to the `test` commit type (`test(<scope>): ...`), and must never be committed alongside `feat`, `fix`, `chore`, or `refactor` changes.
+> **Primary-intent rule (bundle tests with code).** Name each commit after the main outcome it delivers and include its matching tests (`*.test.ts`, `*.test.tsx`, `tests/**`) in the same commit so every commit stays buildable, testable, and revertible. Reserve `test:` strictly for standalone test work with no production code change (missing coverage, flaky test fixes, or test harness refactors).
 
 ### Commit types
 
-- `feat`: Adds a new feature or user-facing capability (runtime scopes only; excludes test files).
-- `fix`: Patches a bug or defect (runtime scopes and security dependency patches only; excludes test files).
-- `chore`: Maintenance, dependencies, toolchain, or internal automation updates (`chore(ci)`, `chore(scripts)`, `chore(deps)`, or root `chore:`; excludes test files).
-- `docs`: Documentation changes, architectural records, and agent instructions or rules (`docs(agents)`).
-- `style`: Formatting or cosmetic changes with zero logic impact.
-- `refactor`: Code change that neither fixes a bug nor adds a feature (excludes test files).
-- `perf`: Performance improvement (excludes test files).
-- `test`: Adding or refactoring test suites (all `*.test.ts`, `*.test.tsx`, and `tests/**` files belong strictly to this type).
-- `build`: Changes affecting the build system or root bundling configuration.
-- `revert`: Reverts a previous commit.
+| Type       | Triggers release | Use for                                                                                            |
+| :--------- | :--------------- | :------------------------------------------------------------------------------------------------- |
+| `feat`     | Minor (`0.X.0`)  | New end-user runtime capability (include matching tests).                                          |
+| `fix`      | Patch (`0.0.X`)  | Runtime bug fix or security dependency patch (`fix(deps)`) (include matching tests).               |
+| `perf`     | Patch (`0.0.X`)  | Runtime performance improvement (include matching tests).                                          |
+| `revert`   | Patch (`0.0.X`)  | Reverts a previous runtime commit.                                                                 |
+| `ci`       | No               | GitHub Actions workflows, composite actions, Dependabot, and `.coderabbit.yaml` (preferred).       |
+| `chore`    | No               | Maintenance, routine dependency bumps (`chore(deps)`), internal scripts, or root config updates.   |
+| `docs`     | No               | Repository documentation, ADRs, glossaries, documentation site content, and `.agents/` guidelines. |
+| `style`    | No               | Formatting or cosmetic edits with zero logic impact.                                               |
+| `refactor` | No               | Internal restructuring that neither fixes a bug nor adds a feature (include updated tests).        |
+| `test`     | No               | Standalone test additions, missing coverage, flaky-test fixes, or test helper refactors.           |
+| `build`    | No               | Build system, compiler, or bundling configuration changes.                                         |
 
-> [!NOTE]
-> `ci` is a scope, not a commit type. CI workflow and GitHub action updates must always use `chore(ci): <description>`.
+> [!TIP]
+> Prefer `ci: <description>` over `chore(ci): <description>` for CI, workflow, and reviewer configuration updates.
 
-### Scope taxonomy and type-scope matrix
+### Canonical scopes and release safety
 
-Use single-noun lowercase scopes that map to physical repository directories. Never combine or comma-separate scopes:
+Scopes are **optional** and appear as bold prefixes (`**cli:**`) in the Release Please changelog. Both local `commitlint` and CI enforce clean scope syntax (lowercase letters, numbers, hyphens, or a single `area/subarea` slash; no spaces, commas, or `(repo)`) rather than a closed hardcoded allowlist:
 
-| Domain                      | Scopes                                                                              | Allowed types                                                         | Rules                                                                                                                                                                                         |
-| --------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Runtime packages & apps** | `api`, `cli`, `frontend`, `site`, `browser`, `core`, `db`, `lighthouse`             | `feat`, `fix`, `chore`, `refactor`, `perf`, `test`, `style`, `revert` | Modifying user-facing apps or runtime libraries. `feat` and `fix` trigger automated releases via Release Please. Scope is required for `feat` and `fix`. Test files must use `test(<scope>)`. |
-| **Documentation**           | `adr`, `architecture`, `standards`, `contributing`, `glossary`, `testing`, `review` | `docs`                                                                | Documentation sections under `docs/<scope>/` and their corresponding root index documents.                                                                                                    |
-| **Agents & governance**     | `agents`                                                                            | `docs`                                                                | Everything under `.agents/` (skills, rules, prompts, instructions, internal skill scripts) and `skills-lock.json`. Always use `docs(agents)`.                                                 |
-| **Continuous integration**  | `ci`                                                                                | `chore`                                                               | Workflows and actions under `.github/` and `.coderabbit.yaml`. Always use `chore(ci)`.                                                                                                        |
-| **Internal scripts**        | `scripts`                                                                           | `chore`, `refactor`, `perf`, `test`                                   | Development utilities under `scripts/`. Never use `feat` or `fix` to prevent accidental production releases.                                                                                  |
-| **Dependencies**            | `deps`                                                                              | `chore`, `fix`                                                        | Dependency version bumps (`bun.lock` and workspace manifests). `fix(deps)` is reserved for security vulnerability fixes.                                                                      |
-| **Root configurations**     | _(none)_                                                                            | `chore`, `build`, `docs`                                              | Root configurations (`bunfig.toml`, `lefthook.yml`, etc.) and general root markdown files omit the scope entirely (for example, `chore: bump toolchain`). Do not use `(repo)`.                |
+- **Default to workspace names.** Use canonical workspace names so changelogs stay uniform: `api`, `cli`, `frontend`, `browser`, `core`, `db`, `lighthouse`, `site`, `deps`, `scripts`, `agents`. Avoid synonyms such as `ui` or `web` (use `frontend`) or `lh` (use `lighthouse`).
+- **Allow clearer domain or sub-scopes when helpful.** Use a concise subsystem or slash sub-scope (for example, `cli/audit` or `lighthouse/runner`) when it makes a changelog entry clearer to users.
+- **Omit scope for cross-cutting or root work.** Leave the scope empty (`feat: ...`, `refactor: ...`, `chore: ...`, `docs: ...`, `ci: ...`) when a change spans multiple equal areas or root files. Never use `(repo)` or comma-separated scopes (`api,cli`).
+
+> [!WARNING]
+> **Release safety (`exclude-paths`).** Release Please skips a commit only when _every_ modified file falls under excluded paths (`.agents`, `.github`, `docs`, `scripts`, `site`). Never use release-triggering types (`feat`, `fix`, `perf`, `revert`) for non-runtime areas, especially when a PR also touches `package.json` or `bun.lock`, or it will trigger an accidental CLI release. Reserve `fix(deps)` strictly for security dependency patches.
 
 ### Clean commit subjects
 
-Keep commit subjects focused on the change by placing issue references (such as `Closes #123`) in pull request descriptions. Commitlint rules reject issue references in commit subjects to keep git logs concise.
+- **Header length.** Keep local commit headers at **72 characters or fewer** and PR titles at **65 characters or fewer** (**64** at PR `#1000+`) so GitHub's ` (#NNN)` suffix stays within 72 characters on `main`.
+- **Imperative mood, no trailing period, no `#123`.** Write commands to the codebase (for example, `add`, `fix`, `remove`) and track issues in PR descriptions (`Closes #123`) rather than commit subjects.
+- **Breaking changes.** Mark breaking runtime changes with `!:` in the header (for example, `feat(cli)!: remove legacy --output flag`) so Release Please triggers a major bump even with empty squash commit bodies.
 
-Examples:
+Examples: `feat(cli): add lighthouse audit command`, `fix(frontend): resolve layout shift on mobile viewports`, `refactor(lighthouse): extract hexagonal runner ports`, `docs: update contributing and release guides`, `ci: validate pull request titles deterministically`.
 
-- `feat(cli): add initial health check command`
-- `fix(frontend): resolve layout shift on mobile viewports`
-- `docs: update repository quickstart and setup guide`
-- `chore: bump root toolchain dependencies`
-- `chore(ci): update workflow actions`
+### Commit bodies
 
-## Atomic commits
+Commit bodies are **optional**. Omit the body whenever the header is self-explanatory.
 
-Every branch commit represents a single logical domain change. Never mix documentation, internal rules, and runtime code into one commit. Never stage an entire dirty working tree with `git add .` or `git commit -a`.
+Write a short 1 to 3 sentence body (separated by one blank line, wrapped around 72 characters; `commitlint` rejects lines over 100 characters unless they contain URLs) only when the **why**, constraint, or trade-off is not obvious from the header or diff. Avoid bulleted diff recaps that merely restate changed files or symbols:
 
-### Dividing changes
+```text
+fix(cli): return exit code 2 on missing config path
 
-When work touches multiple directories or concerns, divide changes into separate atomic commits before pushing:
+Prevent silent fallback to default settings when the user passes an
+explicit --config path that does not exist on disk.
+```
 
-- **Single-domain isolation.** Stage only files belonging to the mapped scope of the commit. For instance, stage `packages/core/**` under `feat(core): ...`, and stage related `docs/**` in a separate `docs(architecture): ...` commit.
-- **Strict test isolation.** All test files (`*.test.ts`, `*.test.tsx`, or files under `tests/`) must be committed separately under the `test` commit type (for example, `test(<scope>): ...`). Never mix test files into `feat`, `fix`, `chore`, or `refactor` commits.
-- **Revertability.** A change that may need to be rolled back on its own belongs in its own commit.
-- **Separation of concerns.** Keep unrelated tasks apart. Separate refactoring from behavior changes, vendor and lockfile updates from feature code, and documentation from tooling rules.
-- **Hook enforcement.** Pre-commit and commit-msg hooks in `lefthook.yml` run formatting, linting, secret detection, commit message grammar, and atomic boundary verification on every `git commit`. Do not bypass hooks with `--no-verify`.
+## Coherent logical commits
+
+Each commit represents **one coherent, buildable, revertible logical change**, regardless of how many folders it needs to touch:
+
+- **Keep coupled files together.** Stage production code, its matching tests, required cross-package contract updates, and any lockfile/manifest changes that belong to the same logical change in one commit so every commit compiles and passes tests on its own.
+- **Split unrelated work.** Separate unrelated refactors, bug fixes, dependency bumps, or documentation updates into distinct commits; never blindly stage a dirty tree with `git add .` or `git commit -a`.
+- **Avoid mechanical micro-splitting.** Do not chop one cohesive change into per-folder or test-only micro-commits.
+- **Let hooks run.** Allow [lefthook.yml](../../lefthook.yml) `pre-commit` and `commit-msg` hooks to validate staged changes automatically; never pass `--no-verify`.
+- **Push and reply to PR feedback.** After committing, push changes and handle any active PR comment replies per [Pushing changes and review synchronization](push.md).

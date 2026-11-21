@@ -1,42 +1,37 @@
-# Frontend Application Architecture
+# Frontend application architecture
 
-Architecture, Feature-Sliced Design (FSD) v2.1 structure, Next.js App Router boundary, and hydration boundaries for `apps/frontend`.
+Feature-Sliced Design (FSD) v2.1 topology, Next.js App Router static export, and Daemon asset delivery for `apps/frontend`.
 
-## Architectural design and layer hierarchy
+## Layer topology and delivery flow
 
-`apps/frontend` is a Next.js web dashboard structured according to **Feature-Sliced Design (FSD) v2.1**:
+```mermaid
+flowchart LR
+  subgraph FSD ["apps/frontend/src (FSD v2.1 top-down)"]
+    App["app/<br/>(App Router boundary adapters)"] --> Pages["pages/<br/>(Page compositions)"]
+    Pages --> Features["features/<br/>(On demand)"]
+    Features --> Entities["entities/<br/>(On demand)"]
+    Entities --> Shared["shared/<br/>(UI, lib, api, tokens)"]
+  end
 
-```text
-apps/frontend/src/
-├── app/                  # Next.js App Router adapters, providers, route entrypoints
-├── pages/                # Full-page compositions and page-scoped state (e.g. dashboard/ui/page.tsx)
-├── features/             # User interactions carrying business value (created on demand via Pages First rule)
-├── entities/             # Business domain entities (created on demand via Pages First rule)
-└── shared/               # Reusable UI primitives, utility libraries, design system tokens
+  App --> Build["next build<br/>(output: export)"]
+  Build --> Dist["apps/frontend/dist"]
+  Dist --> Daemon["apps/cli Daemon<br/>(serves /* alongside /api/*)"]
 ```
 
-### Layer responsibilities
+| Layer       | Responsibility                                                                                                           | Public boundary             |
+| :---------- | :----------------------------------------------------------------------------------------------------------------------- | :-------------------------- |
+| `app/`      | Thin App Router boundary adapters (`page.next.tsx`, `layout.next.tsx`) declaring metadata and global providers.          | Next.js `pageExtensions`    |
+| `pages/`    | Full-page compositions, page-scoped state, and query orchestration (default home per pages-first extraction rule).       | `pages/<slice>/index.ts`    |
+| `features/` | Reusable user interactions carrying business value, extracted only when shared across distinct pages.                    | `features/<slice>/index.ts` |
+| `entities/` | Reusable domain models and entity cards, extracted only when shared across distinct pages.                               | `entities/<slice>/index.ts` |
+| `shared/`   | Reusable UI primitives (`@base-ui/react`), Tailwind `cn`, semantic theme tokens, and tear-free client hydration helpers. | `shared/<segment>/index.ts` |
 
-1. **`app/`**: Thin routing adapters containing layout metadata, global providers, and catch-all routes. Delegates feature presentation immediately to FSD pages in `src/pages/<page>/`.
-2. **`pages/`**: Compositional page views uniting features and entities into coherent screens. Holds page-level state and orchestrates queries.
-3. **`features/`**: User-driven interactions delivering direct business value (e.g. triggering a browser download or toggling daemon configurations).
-4. **`entities/`**: Domain entities representing business models, status cards, and entity stores.
-5. **`shared/`**: Reusable UI blocks, Tailwind utility wrappers (`cn`), design tokens, and browser hydration helpers (`useIsMounted`, `useNativeSearchParams`).
+## Static export and Daemon delivery
 
-### The "Pages First" extraction rule
+`apps/frontend/next.config.ts` sets `output: "export"`, `distDir: "dist"`, and `pageExtensions: ["next.tsx", "next.ts"]`:
 
-All UI components, fetching logic, and state management begin inside `src/pages/<page>/`. Logic is extracted to lower layers (`features/`, `entities/`, `shared/`) only when actively reused across distinct pages and serving a focused, single responsibility.
+- `bun --filter @devtools/frontend build` compiles static HTML, CSS, and client JS bundles into `apps/frontend/dist`.
+- `startDaemon` (`apps/cli/src/commands/web/daemon.ts`) serves these static files on `/*` while mounting `@devtools/api` on `/api/*`, avoiding a separate production Next.js server process.
+- `apps/frontend` imports only browser-safe workspace packages (`@devtools/core` and `@devtools/lighthouse/schemas`), enforced by `.fallowrc.json`.
 
-## Static export and daemon delivery
-
-`apps/frontend` operates in static export mode:
-
-- `next.config.ts` sets `output: "export"` and `distDir: "dist"`.
-- During build, Next.js generates static HTML, CSS, and client JavaScript bundles into `apps/frontend/dist`.
-- The CLI loopback daemon (`startDaemon`) serves these pre-rendered files on root HTTP paths (`/`), enabling single-process deployment without running an active Node/Next.js server in production.
-
-## Hydration safety and browser boundaries
-
-1. **Tear-free client rendering**: Client-only UI subtrees are guarded with `useIsMounted()` from `@/shared/lib`, which uses `useSyncExternalStore` to ensure synchronous, tear-free hydration without layout shifts or re-rendering cascades.
-2. **Static search parameter resolution**: Search parameters are accessed via `useNativeSearchParams()` to prevent Next.js from enforcing dynamic server rendering or requiring top-level Suspense boundaries.
-3. **Browser global guards**: All invocations of `window`, `document`, and web storage APIs are guarded with `typeof window !== "undefined"` and provide server-safe fallback values.
+For FSD authoring rules, Storybook portable stories, React 19 standards, and tear-free client hydration hooks, see [Frontend standards](../coding-standards/frontend.md).

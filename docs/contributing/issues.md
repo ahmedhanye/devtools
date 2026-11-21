@@ -1,129 +1,73 @@
 # Issue tracking and management
 
-Guidelines for GitHub Issues, Spec and Ticket hierarchy, project status tracking, and linked branch workflows.
+Conventions for creating, linking, and updating GitHub Specs and Tickets in this repository.
 
-## Issue CLI commands
+## Specs vs. Tickets
 
-Issues and specs live as GitHub issues. Use the `gh` CLI for operations; the repository target is inferred from `git remote -v`.
+Work splits into two issue kinds in [`.github/ISSUE_TEMPLATE/`](../../.github/ISSUE_TEMPLATE/):
 
-GitHub shares one number space across issues and pull requests. When inspecting a reference, resolve the number with `gh pr view <number> --json number,title` first, then fall back to `gh issue view <number> --json number,title`. Always pass explicit `--json` projections to avoid deprecated classic project queries.
+| Kind       | Template                                                | Native Type                                | Labels                       | Milestone                        | Role                                                                                       |
+| :--------- | :------------------------------------------------------ | :----------------------------------------- | :--------------------------- | :------------------------------- | :----------------------------------------------------------------------------------------- |
+| **Spec**   | [`spec.yml`](../../.github/ISSUE_TEMPLATE/spec.yml)     | `Feature`                                  | `type:spec`                  | Active milestone when applicable | Tracks a capability or multi-slice effort and owns child sub-issues                        |
+| **Ticket** | [`ticket.yml`](../../.github/ISSUE_TEMPLATE/ticket.yml) | `Task` (`Bug` / `Feature` when overridden) | Matching `type:*` & `area:*` | None                             | Delivers one actionable slice (`feat`, `bug`, `docs`, `infra`, `research`, or `Task` work) |
 
-- **Create an issue:** `gh issue create --title "<title>" --body "..."`
-- **Create a Spec issue:** `gh issue create --title "<title>" --label "type:spec" --milestone "<milestone>" --body "..."`
-- **Create a Ticket issue:** `gh issue create --title "<title>" --label "type:feat" --body "..."`
-- **Search issues by title:** `gh issue list --search "<title>" --json number --jq '.[0].number'`
-- **Read an issue:** `gh issue view <number> --json number,title,body,labels,state,comments`
-- **List open issues:** `gh issue list --state open --json number,title,body,labels,comments`
-- **Comment on an issue:** `gh issue comment <number> --body "..."`
-- **Edit labels:** `gh issue edit <number> --add-label "..."` or `--remove-label "..."`
+Repository areas group under five labels: `area:backend` (`api`, `core`, `db`, `browser`, `lighthouse`), `area:cli` (`cli`), `area:frontend` (`frontend`), `area:docs` (`docs` and `site`), and `area:tooling` (`.github`, `scripts`, `.agents`). Check live labels (`gh label list`) and milestones (`gh api --paginate repos/{owner}/{repo}/milestones --jq '.[].title'`) rather than guessing names. Draft multi-slice Specs using [`.github/ISSUE_TEMPLATE/spec.yml`](../../.github/ISSUE_TEMPLATE/spec.yml), and split child Tickets using [`.github/ISSUE_TEMPLATE/ticket.yml`](../../.github/ISSUE_TEMPLATE/ticket.yml) linked via the sub-issue and dependency commands below.
 
-## Hierarchy and dependencies
+## Issue bodies and titles
 
-The project organizes work into Specs and Tickets:
+- **Clean titles.** Omit bracketed prefixes (`[Spec]:`, `[Ticket]:`, `[Slice]:`, `[Bug]:`) and Conventional Commit prefixes (`feat(...):`, `fix(...):`, `chore(...):`). Track kind, type, and area through GitHub Issue Types and labels.
+- **Matching sections.** Mirror [`spec.yml`](../../.github/ISSUE_TEMPLATE/spec.yml) (`Overview and problem`, `Expected outcome and acceptance criteria`, optional `Scope and boundaries`) or [`ticket.yml`](../../.github/ISSUE_TEMPLATE/ticket.yml) (`Problem`, `Expected outcome`, `Acceptance criteria`).
+- **Problem and outcome only.** Describe the problem and observable expected behavior across public interfaces. Leave out internal file paths, helper names, implementation steps, and standards already documented in [`CODING_STANDARDS.md`](../../CODING_STANDARDS.md) or [`TESTING.md`](../../TESTING.md). Cite a CLI flag, route, or status code only when that external interface is part of the contract.
+- **Native hierarchy.** Use GitHub Sub-Issues and native `blocked_by` dependencies instead of duplicating parent links, child lists, or `Blocked by: #...` lines in markdown bodies.
 
-- **Specs** track milestone capabilities.
-- **Tickets** deliver vertical slices that can stand alone or link to a parent Spec as sub-issues.
+## GitHub CLI and API reference
 
-### Query and link hierarchy
+Because issues and pull requests share one number space on GitHub, resolve an unknown reference with `gh pr view <n> --json number,title` before `gh issue view <n> --json number,title`, and pass `--json` on queries to avoid deprecated project lookups.
 
-- **Inspect sub-issues:** Query existing sub-issues for a parent issue:
-  ```bash
-  gh api --paginate repos/{owner}/{repo}/issues/<number>/sub_issues --jq '.[] | {number: .number, title: .title, state: .state}'
-  ```
-- **Attach ticket to parent Spec:** Link a child ticket:
-  ```bash
-  gh api --method POST repos/{owner}/{repo}/issues/<spec_number>/sub_issues \
-    -F sub_issue_id=<ticket_db_id>
-  ```
-  Use capital `-F` to pass the database ID as an integer.
-- **Add dependency:** Declare a blocking relationship:
-  ```bash
-  gh api --method POST repos/{owner}/{repo}/issues/<ticket_number>/dependencies/blocked_by \
-    -F issue_id=<blocker_db_id>
-  ```
-- **Resolve database ID:** Look up numeric database ID:
-  ```bash
-  gh api repos/{owner}/{repo}/issues/<number> --jq .id
-  ```
-- **Resolve parent Spec:** Look up the parent Spec number for a ticket:
-  ```bash
-  gh api repos/{owner}/{repo}/issues/<ticket_number>/parent --jq .number 2>/dev/null
-  ```
-- **Single source of truth:** Omit manual parent links, child checklists, and `Blocked by: #...` lines from markdown bodies when native issue hierarchy and dependencies are enabled.
-- **Milestones:** Assigned strictly to Specs to track deliverables. Tickets do not receive milestones. Query active milestone titles:
-  ```bash
-  gh api --paginate repos/{owner}/{repo}/milestones --jq '.[].title'
-  ```
-- **List available unassigned tickets:**
-  ```bash
-  gh issue list --state open --assignee "" --label "type:feat"
-  ```
+| Action                              | Command                                                                                                                                             |
+| :---------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Create a Spec                       | `gh issue create --title "<title>" --label "type:spec" [--milestone "<milestone>"] --body "..."`                                                    |
+| Create a Ticket                     | `gh issue create --title "<title>" --label "<type-label>" --label "<area-label>" --body "..."`                                                      |
+| Set native Issue Type (`gh 2.46.0`) | `gh api --method PATCH repos/{owner}/{repo}/issues/<number> -f type="<Feature\|Task\|Bug>"`                                                         |
+| List open unassigned tickets        | `gh issue list --state open --assignee "" --json number,title,labels`                                                                               |
+| Resolve database ID                 | `gh api repos/{owner}/{repo}/issues/<number> --jq .id`                                                                                              |
+| Link child Ticket to parent Spec    | `gh api --method POST repos/{owner}/{repo}/issues/<spec_number>/sub_issues -F sub_issue_id=<ticket_db_id>`                                          |
+| Add blocking dependency             | `gh api --method POST repos/{owner}/{repo}/issues/<ticket_number>/dependencies/blocked_by -F issue_id=<blocker_db_id>`                              |
+| Query blocking dependencies         | `gh api --paginate repos/{owner}/{repo}/issues/<ticket_number>/dependencies/blocked_by --jq '[.[] \| select(.state == "open") \| {number, title}]'` |
+| Query child sub-issues              | `gh api --paginate repos/{owner}/{repo}/issues/<spec_number>/sub_issues --jq '.[] \| {number, title, state}'`                                       |
+| Query parent Spec                   | `gh api repos/{owner}/{repo}/issues/<ticket_number>/parent 2>/dev/null \| jq -r '.number // empty'`                                                 |
+
+Because `gh issue create` bypasses issue templates and leaves the native Issue Type unset, run the `PATCH` command immediately after creation to set `Feature`, `Task`, or `Bug`.
+
+## Branching, updates, and closing
+
+1. **Claim a ticket.** Start from a clean tree on up-to-date `main`, assign `@me`, and check out the linked branch:
+   ```bash
+   gh issue edit <ticket_number> --add-assignee @me
+   gh issue develop <ticket_number> --base main --checkout
+   ```
+   If a linked branch already exists, list full branch names without PTY truncation (`gh issue develop <ticket_number> --list | cut -f1`), then run `git fetch origin <branch> && git checkout <branch>`.
+2. **Keep requirements stable.** Post technical discoveries, blocker updates, and scope decisions as issue comments rather than rewriting ticket requirements. When criteria pass, toggle `- [ ]` to `- [x]` via `gh issue edit <number> --body "$UPDATED_BODY"`.
+3. **Auto-close via PR.** Include `Closes #<ticket_number>` in the pull request description so merging closes the ticket automatically. Leave any parent Spec open until all child tickets finish.
 
 ## Project board status lifecycle
 
-Status is tracked on GitHub Project boards (`Todo`, `In Progress`, `In Review`, `Done`). `Done` transitions are handled automatically on PR merge via `Closes #<issue>`. Repository `status:*` labels are not used.
+Project `#8` (`DevTools`) uses `PVT_kwHOBtOqTs4BlBUk` with status field `PVTSSF_lAHOBtOqTs4BlBUkzhjvvg4`:
 
-Ensure the token has the `project` scope before running project commands:
+| Status        | Option ID  |
+| :------------ | :--------- |
+| `Todo`        | `2ed95dcd` |
+| `In Progress` | `47fc9ee4` |
+| `In Review`   | `27903ead` |
+| `Done`        | `98236657` |
+
+Add or update an issue status when `project` scope is available (skip rather than blocking if the active token lacks `project` scope):
 
 ```bash
-gh auth refresh -s project
-```
-
-To update status on a project board:
-
-```bash
-ITEM_ID=$(gh project item-add <project_number> --owner <owner> --url "https://github.com/<owner>/<repo>/issues/<issue_number>" --format json --jq .id 2>/dev/null || true)
+ITEM_ID=$(gh project item-add 8 --owner AhmedHanye --url "https://github.com/AhmedHanye/devtools/issues/<number>" --format json --jq .id 2>/dev/null || true)
 if [ -n "$ITEM_ID" ]; then
-  gh project item-edit --id "$ITEM_ID" --project-id "<project_id>" --field-id "<status_field_id>" --single-select-option-id "<option_id>"
+  gh project item-edit --id "$ITEM_ID" --project-id "PVT_kwHOBtOqTs4BlBUk" --field-id "PVTSSF_lAHOBtOqTs4BlBUkzhjvvg4" --single-select-option-id "<option_id>"
 fi
 ```
 
-### Claiming a ticket and branch checkout
-
-Before branching:
-
-1. Verify a clean working tree:
-   ```bash
-   git status --porcelain
-   ```
-2. Update local `main`:
-   ```bash
-   git checkout main && git pull origin main
-   ```
-3. Assign `@me`, create the linked branch, and transition status to `In Progress`:
-   ```bash
-   gh issue edit <ticket_number> --add-assignee @me
-   gh issue develop <ticket_number> --checkout
-   ```
-   If using project board tracking, transition the item status using the `gh project item-edit` command documented in [Project board status lifecycle](#project-board-status-lifecycle) with `<in_progress_option_id>`.
-
-If the linked branch was already created, list linked branches and check out the branch by name:
-
-```bash
-gh issue develop <ticket_number> --list
-git checkout <branch_name>
-```
-
-### Parent spec synchronization
-
-When any child ticket moves to `In Progress`, update the parent Spec to `In Progress` on the project board:
-
-```bash
-if PARENT_RESP=$(gh api repos/{owner}/{repo}/issues/<ticket_number>/parent 2>&1); then
-  PARENT_NUM=$(echo "$PARENT_RESP" | jq -r .number)
-  PARENT_ITEM_ID=$(gh project item-add <project_number> --owner <owner> --url "https://github.com/<owner>/<repo>/issues/${PARENT_NUM}" --format json --jq .id 2>/dev/null || true)
-  if [ -n "$PARENT_ITEM_ID" ]; then
-    gh project item-edit --id "$PARENT_ITEM_ID" --project-id "<project_id>" --field-id "<status_field_id>" --single-select-option-id "<in_progress_option_id>"
-  fi
-fi
-```
-
-Parent Specs remain `In Progress` until all child tickets reach `Done` and the maintainer reviews the Spec.
-
-## Issue tracking conventions
-
-- **Clean title conventions**: Issue titles must not include bracketed prefixes (such as `[Spec]:`, `[Slice]:`, `[Bug]:`). Issue type and scope are tracked exclusively through GitHub labels (`type:spec`, `type:feat`, `type:bug`).
-- Tickets serve as immutable behavioral contracts once created. Requirements, failure modes, and acceptance criteria text must not be altered after work begins.
-- Updating checklist status: When task lists exist in ticket or parent Spec descriptions, contributors should check off completed items (`- [ ]` to `- [x]`) using `gh issue edit <number> --body "$UPDATED_BODY"` as vertical slices and criteria are verified. Do not reword or delete the criteria text itself.
-- Post technical discoveries, blocker updates, and operational decisions as issue comments rather than editing original ticket requirements.
-- Closing tickets is handled automatically when the linked pull request merges into `main`. Do not close tickets manually prior to merge.
+When starting a child ticket, set both the ticket and any parent Spec to `In Progress`.

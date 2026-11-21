@@ -1,18 +1,20 @@
-# Context Glossary Format
+# Glossary format
 
-Domain glossaries live under `docs/glossary/` and are mapped from `GLOSSARY.md` at the repository root.
+Domain vocabulary lives in `GLOSSARY.md` at the repository root. Split into separate glossaries only if a lean glossary genuinely spans two domains a reader should not hold at once.
 
 ## Structure
 
 ```md
-# {Context Name}
+# Glossary
 
-{One or two sentence description of what this context is and why it exists.}
+Canonical domain vocabulary for <Project>.
 
 ## Language
 
+### <Context Name>
+
 **Order**:
-{A one or two sentence description of the term}
+A customer request committing to purchase items.
 _Avoid_: Purchase, transaction
 
 **Invoice**:
@@ -30,14 +32,15 @@ _Avoid_: Client, buyer, account
 
 ## Rules
 
+- **Unique domain concepts only.** Before adding a term, ask whether it is unique to this project's domain or a general programming concept; only the former belongs.
 - **Be opinionated.** When multiple words exist for the same concept, pick the best one and list the others under `_Avoid_`.
 - **Keep definitions tight.** One or two sentences max. Define what it IS, not what it does.
-- **Only include terms specific to this project's context.** General programming concepts (timeouts, error types, utility patterns) don't belong even if the project uses them extensively.
+- **Keep domain terms pure.** Omit code symbols, file paths, magic numbers, and general programming patterns (timeouts, error types, configuration seams, framework conventions).
 - **No CI/CD, lint rules, or git tracking concepts.** Verification gates belong in `TESTING.md`. Issue hierarchies belong in `CONTRIBUTING.md`.
-- **Flagged ambiguities are strictly bounded.** Only include `## Flagged ambiguities` when an overloaded or confusable term caused genuine friction during design. Limit each entry to a maximum of two sentences explaining the boundary distinction. Never record implementation details, schema definitions, runtime specs, or ticket histories.
+- **No architecture duplication.** Omit relationship maps or component topology that duplicate `ARCHITECTURE.md`.
+- **Flagged ambiguities are strictly bounded.** Only include `## Flagged ambiguities` when an overloaded or confusable term causes genuine friction during design. Limit each entry to a maximum of two sentences explaining the boundary distinction. Never record implementation details, schema definitions, runtime specs, or ticket histories.
 
-## Repository Location & Mapping
+## Repository location
 
-- Root glossary map: `GLOSSARY.md` at the repository root.
-- Context glossaries: `docs/glossary/<context>.md`.
+- Domain glossary: `GLOSSARY.md` at the repository root.
 - Architectural decisions: `docs/adr/0001-*.md` (indexed in `ARCHITECTURE.md`).
