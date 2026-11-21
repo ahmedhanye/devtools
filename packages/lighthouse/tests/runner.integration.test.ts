@@ -5,16 +5,17 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InvalidBrowserPathError } from "@devtools/browser";
-import { closeAllDbs } from "@devtools/db";
+import { openDb, type DbHandle } from "@devtools/db";
 import {
   AuditCancelledError,
+  createLighthouseStore,
   executeLighthouseBatch,
   InvalidAuditOptionsError,
-  openLighthouseStore,
   type ExecuteIterationParams,
   type LighthouseProgressEvent,
   type LighthouseStore,
@@ -92,6 +93,7 @@ function makeMockIterationResult(
 }
 
 describe("LighthouseStore.runAudit & Isolated Worker Orchestration", () => {
+  let db: DbHandle;
   let store: LighthouseStore;
   let tempArtifactsDir: string;
 
@@ -101,15 +103,15 @@ describe("LighthouseStore.runAudit & Isolated Worker Orchestration", () => {
       `devtools-lh-runner-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     mkdirSync(tempArtifactsDir, { recursive: true });
-    store = openLighthouseStore({
-      memory: true,
+    db = openDb({ memory: true });
+    store = createLighthouseStore({
+      db,
       artifactsDir: tempArtifactsDir,
     });
   });
 
   afterEach(() => {
-    store.close();
-    closeAllDbs();
+    db.close();
     rmSync(tempArtifactsDir, { recursive: true, force: true });
   });
 
@@ -181,13 +183,14 @@ describe("LighthouseStore.runAudit & Isolated Worker Orchestration", () => {
     expect(secondPersisted.previousRun?.id).toBe(persisted.run.id);
   });
 
-  it("cleans up written cold artifact directory when DB write fails during persistBatch", () => {
-    const closedStore = openLighthouseStore({
-      memory: true,
+  it("cleans up written cold artifact directory when DB write or abort signal fails during persistBatch", () => {
+    const closedDb = openDb({ memory: true });
+    closedDb.ensureReady();
+    closedDb.close();
+    const closedStore = createLighthouseStore({
+      db: closedDb,
       artifactsDir: tempArtifactsDir,
     });
-    closedStore.ensureReady();
-    closedStore.close();
 
     const batch = {
       validatedUrl: "https://example.com/rollback",
@@ -232,6 +235,29 @@ describe("LighthouseStore.runAudit & Isolated Worker Orchestration", () => {
       "Database handle is closed",
     );
     expect(readdirSync(tempArtifactsDir)).toHaveLength(0);
+
+    const aborted = new AbortController();
+    aborted.abort();
+    expect(() => store.persistBatch(batch, { signal: aborted.signal })).toThrow(
+      AuditCancelledError,
+    );
+    expect(readdirSync(tempArtifactsDir)).toHaveLength(0);
+
+    // Best-effort rmSync rollback must not mask the original mkdirSync/ENOTDIR error
+    const occupiedFile = join(tempArtifactsDir, "occupied-file");
+    writeFileSync(occupiedFile, "not a directory");
+    let caughtError: unknown;
+    try {
+      store.persistBatch(batch, { artifactsDir: occupiedFile });
+    } catch (err: unknown) {
+      caughtError = err;
+    }
+    expect(caughtError).toBeInstanceOf(Error);
+    expect((caughtError as NodeJS.ErrnoException).code).toBe("ENOTDIR");
+    expect((caughtError as NodeJS.ErrnoException).syscall).toBe("mkdir");
+    expect((caughtError as Error).message).toContain("mkdir");
+    expect((caughtError as Error).message).not.toContain(", rm ");
+    expect(store.listRuns()).toHaveLength(0);
   });
 
   it("executes a multi-run audit against a local HTTP fixture, selects 1 Representative Run, writes 1 report.{json,html} pair, and persists 1 row in SQLite", async () => {
@@ -319,7 +345,7 @@ describe("LighthouseStore.runAudit & Isolated Worker Orchestration", () => {
     }
   });
 
-  it("passes options.env to openLighthouseStore (auto-initializing empty DB)", async () => {
+  it("passes options.env to createLighthouseStore with explicit openDb handle (auto-initializing empty DB)", async () => {
     const customDbPath = join(tempArtifactsDir, "isolated-test.db");
 
     const mockResult = makeMockIterationResult(
@@ -331,12 +357,15 @@ describe("LighthouseStore.runAudit & Isolated Worker Orchestration", () => {
       "db-test",
     );
 
-    using customStore = openLighthouseStore({
+    const isolatedEnv = {
+      DEVTOOLS_DB_PATH: customDbPath,
+      NODE_ENV: "test",
+    };
+    using customDb = openDb({ env: isolatedEnv });
+    const customStore = createLighthouseStore({
+      db: customDb,
       artifactsDir: tempArtifactsDir,
-      env: {
-        DEVTOOLS_DB_PATH: customDbPath,
-        NODE_ENV: "test",
-      },
+      env: isolatedEnv,
     });
 
     const capturedEnvs: Array<Record<string, string | undefined> | undefined> =

@@ -10,7 +10,12 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { findWorkspaceRoot } from "@devtools/core/node";
-import { resolveArtifactsDir, resolveSafeHtmlReportPath } from "../src/config";
+import {
+  resolveArtifactsDir,
+  resolveArtifactsTargetDir,
+  resolveCanonicalArtifactsDir,
+  resolveSafeHtmlReportPath,
+} from "../src/config";
 
 describe("resolveArtifactsDir (4-tier precedence waterfall)", () => {
   const tempRoot = join(tmpdir(), `devtools-lh-config-${Date.now()}`);
@@ -168,9 +173,26 @@ describe("resolveSafeHtmlReportPath (Artifact symlink & path confinement)", () =
     symlinkSync(outsideHtmlPath, symlinkEscapePath);
 
     try {
+      expect(
+        resolveArtifactsTargetDir(join(artifactsDir, "never-created")),
+      ).toBe(join(artifactsDir, "never-created"));
+      expect(existsSync(join(artifactsDir, "never-created"))).toBe(false);
+
+      const canonicalBase = resolveCanonicalArtifactsDir(artifactsDir);
+      expect(canonicalBase).toBe(artifactsDir);
+      expect(
+        resolveCanonicalArtifactsDir(join(artifactsDir, "missing")),
+      ).toBeNull();
+
       expect(resolveSafeHtmlReportPath(validHtmlPath, artifactsDir)).toBe(
         validHtmlPath,
       );
+      expect(
+        resolveSafeHtmlReportPath(validHtmlPath, artifactsDir, canonicalBase),
+      ).toBe(validHtmlPath);
+      expect(
+        resolveSafeHtmlReportPath(validHtmlPath, artifactsDir, null),
+      ).toBeNull();
       expect(resolveSafeHtmlReportPath("", artifactsDir)).toBeNull();
       expect(
         resolveSafeHtmlReportPath(validHtmlPath, join(artifactsDir, "missing")),

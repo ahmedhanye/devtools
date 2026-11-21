@@ -1,8 +1,11 @@
 import {
   and,
+  asc,
   desc,
   eq,
+  gte,
   lighthouseRuns,
+  lt,
   ne,
   sql,
   type DevtoolsDb,
@@ -12,6 +15,7 @@ import {
   AmbiguousRunIdError,
   LighthouseRunNotFoundError,
   type FindPreviousRunOptions,
+  type LighthouseRunListRecord,
   type LighthouseRunRecord,
   type ListLighthouseRunsOptions,
   type NewLighthouseRunRecord,
@@ -23,11 +27,48 @@ import { parseRunSummary } from "../../domain";
  */
 export const MIN_PREFIX_LENGTH = 6;
 
+const LIST_RUN_COLUMNS = {
+  id: lighthouseRuns.id,
+  url: lighthouseRuns.url,
+  finalUrl: lighthouseRuns.finalUrl,
+  formFactor: lighthouseRuns.formFactor,
+  throttlingMethod: lighthouseRuns.throttlingMethod,
+  performanceScore: lighthouseRuns.performanceScore,
+  accessibilityScore: lighthouseRuns.accessibilityScore,
+  bestPracticesScore: lighthouseRuns.bestPracticesScore,
+  seoScore: lighthouseRuns.seoScore,
+  lcpMs: lighthouseRuns.lcpMs,
+  cls: lighthouseRuns.cls,
+  tbtMs: lighthouseRuns.tbtMs,
+  fcpMs: lighthouseRuns.fcpMs,
+  siMs: lighthouseRuns.siMs,
+  ttfbMs: lighthouseRuns.ttfbMs,
+  jsonReportPath: lighthouseRuns.jsonReportPath,
+  htmlReportPath: lighthouseRuns.htmlReportPath,
+  durationMs: lighthouseRuns.durationMs,
+  createdAt: lighthouseRuns.createdAt,
+};
+
 function toLighthouseRunRecord(row: LighthouseRunRow): LighthouseRunRecord {
   return {
     ...row,
     summaryJson: parseRunSummary(row.summaryJson),
   };
+}
+
+function computePrefixUpperBound(prefix: string): string | null {
+  const chars = Array.from(prefix);
+  for (let idx = chars.length - 1; idx >= 0; idx -= 1) {
+    const rawCode = chars[idx]?.codePointAt(0);
+    if (rawCode !== undefined) {
+      const code = rawCode >= 0xd800 && rawCode <= 0xdfff ? 0xfffd : rawCode;
+      if (code < 0x10ffff) {
+        const nextCode = code === 0xd7ff ? 0xe000 : code + 1;
+        return chars.slice(0, idx).join("") + String.fromCodePoint(nextCode);
+      }
+    }
+  }
+  return null;
 }
 
 function escapeLikePattern(value: string): string {
@@ -84,24 +125,24 @@ function getLighthouseRunById(
 }
 
 /**
- * Lists Lighthouse run records ordered by `createdAt` descending with optional filters.
+ * Lists lightweight Lighthouse run records ordered by `createdAt` descending with optional filters
+ * (omits the heavy `summaryJson` column).
  */
 export function listLighthouseRuns(
   db: DevtoolsDb,
   options: ListLighthouseRunsOptions = {},
-): LighthouseRunRecord[] {
+): LighthouseRunListRecord[] {
   const limit = options.limit ?? 50;
   const offset = options.offset ?? 0;
 
   return db
-    .select()
+    .select(LIST_RUN_COLUMNS)
     .from(lighthouseRuns)
     .where(buildListRunsCondition(options))
     .orderBy(desc(lighthouseRuns.createdAt))
     .limit(limit)
     .offset(offset)
-    .all()
-    .map(toLighthouseRunRecord);
+    .all();
 }
 
 /**
@@ -123,16 +164,24 @@ function countLighthouseRuns(
 }
 
 /**
- * Lists paginated Lighthouse run records alongside the total matching row count.
+ * Lists paginated Lighthouse run records alongside the total matching row count
+ * inside a single deferred SQLite snapshot transaction.
  */
 export function listLighthouseRunsWithTotal(
   db: DevtoolsDb,
   options: ListLighthouseRunsOptions = {},
-): { runs: LighthouseRunRecord[]; total: number } {
-  return {
-    runs: listLighthouseRuns(db, options),
-    total: countLighthouseRuns(db, options),
-  };
+): { runs: LighthouseRunListRecord[]; total: number } {
+  return db.transaction(
+    (tx) => {
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Drizzle SQLiteTransaction exposes the full DevtoolsDb query surface inside transactions.
+      const txDb = tx as unknown as DevtoolsDb;
+      return {
+        runs: listLighthouseRuns(txDb, options),
+        total: countLighthouseRuns(txDb, options),
+      };
+    },
+    { behavior: "deferred" },
+  );
 }
 
 /**
@@ -181,12 +230,19 @@ export function resolveLighthouseRun(
     );
   }
 
-  const escaped = escapeLikePattern(query);
+  const prefix = /^[0-9a-fA-F-]+$/.test(query) ? query.toLowerCase() : query;
+  const upperBound = computePrefixUpperBound(prefix);
 
   const matches = db
     .select()
     .from(lighthouseRuns)
-    .where(sql`${lighthouseRuns.id} LIKE ${escaped + "%"} ESCAPE '/'`)
+    .where(
+      upperBound !== null
+        ? and(gte(lighthouseRuns.id, prefix), lt(lighthouseRuns.id, upperBound))
+        : gte(lighthouseRuns.id, prefix),
+    )
+    .orderBy(asc(lighthouseRuns.id))
+    .limit(6)
     .all();
 
   if (matches.length > 1) {

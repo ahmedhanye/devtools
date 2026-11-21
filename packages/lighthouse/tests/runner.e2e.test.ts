@@ -1,15 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { openDb, type DbHandle } from "@devtools/db";
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  openLighthouseStore,
+  createLighthouseStore,
   type LighthouseProgressEvent,
   type LighthouseStore,
 } from "../src";
 
 describe("Live Lighthouse Headless Chrome Navigation (E2E)", () => {
   let tempArtifactsDir: string;
+  let db: DbHandle;
   let store: LighthouseStore;
 
   beforeEach(() => {
@@ -18,14 +20,15 @@ describe("Live Lighthouse Headless Chrome Navigation (E2E)", () => {
       `devtools-lh-e2e-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     mkdirSync(tempArtifactsDir, { recursive: true });
-    store = openLighthouseStore({
-      memory: true,
+    db = openDb({ memory: true });
+    store = createLighthouseStore({
+      db,
       artifactsDir: tempArtifactsDir,
     });
   });
 
   afterEach(() => {
-    store.close();
+    db.close();
     rmSync(tempArtifactsDir, { recursive: true, force: true });
   });
 

@@ -10,6 +10,7 @@ import type {
   LighthouseDiffDeltas,
   LighthouseFormFactor,
   LighthouseProgressEvent,
+  LighthouseRunListRecord,
   LighthouseRunRecord,
   LighthouseThrottlingMethod,
   ListLighthouseRunsOptions,
@@ -102,22 +103,22 @@ export type ExecuteLighthouseBatchOptions = Omit<
 >;
 
 /**
- * Unified domain store managing Lighthouse SQLite persistence and cold report artifacts.
+ * Domain persistence and audit orchestration interface over a borrowed `DbSession`.
  */
 export interface LighthouseStore {
   /** Resolved SQLite target path (`":memory:"` or absolute filesystem path). */
   readonly dbPath: string;
-  /** Resolves (and creates if missing) the cold report artifacts root directory. */
+  /** Resolves the cold report artifacts root directory path without creating directories on disk. */
   resolveArtifactsDir(overrideDir?: string): string;
   /** Eagerly opens the underlying SQLite handle and verifies schema readiness. */
   ensureReady(): void;
   /** Inserts a canonical {@link NewLighthouseRunRecord} inside an immediate write transaction. */
   insertRun(row: NewLighthouseRunRecord): LighthouseRunRecord;
-  /** Lists persisted runs ordered by `createdAt` descending. */
-  listRuns(options?: ListLighthouseRunsOptions): LighthouseRunRecord[];
+  /** Lists persisted runs (without heavy `summaryJson`) ordered by `createdAt` descending. */
+  listRuns(options?: ListLighthouseRunsOptions): LighthouseRunListRecord[];
   /** Lists paginated runs alongside total matching count in one read snapshot. */
   listRunsWithTotal(options?: ListLighthouseRunsOptions): {
-    runs: LighthouseRunRecord[];
+    runs: LighthouseRunListRecord[];
     total: number;
   };
   /** Resolves a run by full ID or 6+ char prefix, or the latest run when `idOrPrefix` is omitted. */
@@ -144,14 +145,11 @@ export interface LighthouseStore {
     options?: {
       artifactsDir?: string;
       onProgress?: (event: LighthouseProgressEvent) => void;
+      signal?: AbortSignal;
     },
   ): LighthouseAuditExecutionResult;
   /** Executes a multi-run Lighthouse audit batch and persists its representative run unless aborted. */
   runAudit(
     options: RunLighthouseAuditOptions,
   ): Promise<LighthouseAuditExecutionResult>;
-  /** Releases the owned `@devtools/db` handle (no-op if caller supplied `options.db`). */
-  close(): void;
-  /** Disposes this store automatically when used with `using`. */
-  [Symbol.dispose](): void;
 }

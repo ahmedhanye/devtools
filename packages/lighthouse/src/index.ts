@@ -5,14 +5,22 @@
  * @packageDocumentation
  */
 export type {
+  AuditJobManager,
+  AuditJobManagerOptions,
+  AuditJobStreamEvent,
   BrowserResolverPort,
   ExecuteIterationParams,
   ExecuteLighthouseBatchOptions,
+  LighthouseAuditRunner,
   LighthouseIterationExecutor,
   LighthouseStore,
   RunLighthouseAuditOptions,
 } from "./application";
-export { resolveSafeHtmlReportPath } from "./config";
+export {
+  resolveArtifactsTargetDir,
+  resolveCanonicalArtifactsDir,
+  resolveSafeHtmlReportPath,
+} from "./config";
 export {
   AmbiguousRunIdError,
   AuditCancelledError,
@@ -21,6 +29,11 @@ export {
   LighthouseRunNotFoundError,
   WorkerExecutionError,
   type AttributedElement,
+  type AuditJob,
+  type AuditJobError,
+  type AuditSseCompleteEvent,
+  type AuditSseErrorEvent,
+  type AuditSseProgressEvent,
   type ClsCulprit,
   type ClsCulpritCause,
   type ElementBoundingRect,
@@ -39,16 +52,29 @@ export {
   type LighthouseMedianMetadata,
   type LighthouseProgressEvent,
   type LighthouseProgressStage,
+  type LighthouseRunDetail,
+  type LighthouseRunListItem,
+  type LighthouseRunListRecord,
   type LighthouseRunRecord,
   type LighthouseRunSummary,
   type LighthouseThrottlingMethod,
   type ListLighthouseRunsOptions,
   type NewLighthouseRunRecord,
+  type NormalizedLighthouseAuditRequest,
   type NormalizedLighthouseRun,
   type RawLhrAuditItem,
   type RawLighthouseResult,
   type SingleIterationResult,
 } from "./contracts";
 export { EMPTY_LIGHTHOUSE_RUN_SUMMARY, parseRunSummary } from "./domain";
+export {
+  serializeAuditError,
+  serializeLighthouseRunDetail,
+  serializeLighthouseRunListItem,
+} from "./serializers";
 export type { LighthouseStoreOptions } from "./infra/persistence/store-factory";
-export { executeLighthouseBatch, openLighthouseStore } from "./wiring";
+export {
+  createAuditJobManager,
+  createLighthouseStore,
+  executeLighthouseBatch,
+} from "./wiring";

@@ -39,6 +39,11 @@ export interface LighthouseRunRecord {
 }
 
 /**
+ * Lightweight persisted Lighthouse run projection omitting `summaryJson` for list views.
+ */
+export type LighthouseRunListRecord = Omit<LighthouseRunRecord, "summaryJson">;
+
+/**
  * Insert payload for creating a {@link LighthouseRunRecord} inside {@link LighthouseStore.insertRun}.
  */
 export type NewLighthouseRunRecord = Omit<

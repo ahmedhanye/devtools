@@ -2,13 +2,15 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { EnvMap } from "@devtools/core";
-import type { ShutdownRegistry } from "@devtools/core/node";
-import { openDb, type DbHandle } from "@devtools/db";
+import type { DbSession, DevtoolsDb } from "@devtools/db";
 import type {
   ExecuteLighthouseBatchOptions,
   LighthouseStore,
 } from "../../application";
-import { resolveArtifactsDir, resolveSafeHtmlReportPath } from "../../config";
+import {
+  resolveArtifactsTargetDir,
+  resolveSafeHtmlReportPath,
+} from "../../config";
 import type {
   LighthouseAuditExecutionResult,
   LighthouseBatchExecutionResult,
@@ -24,21 +26,11 @@ import {
 } from "./sqlite-runs";
 
 /**
- * Configuration options for creating a lazy {@link LighthouseStore} via `openLighthouseStore`.
+ * Configuration options for creating a {@link LighthouseStore} backed by a borrowed {@link DbSession}.
  */
 export interface LighthouseStoreOptions {
-  /** Optional explicit SQLite database path or `":memory:"`. */
-  dbPath?: string;
-  /** Force an isolated in-memory SQLite store (`":memory:"`). */
-  memory?: boolean;
-  /**
-   * Automatically initialize the empty SQLite schema on first access.
-   * Pass `false` only in negative error-boundary tests.
-   * @defaultValue true
-   */
-  autoInit?: boolean;
-  /** Optional pre-opened `@devtools/db` handle (caller retains ownership on `close()`). */
-  db?: DbHandle;
+  /** Caller-borrowed `@devtools/db` session (never closed by the store). */
+  db: DbSession;
   /** Optional explicit artifacts base directory override. */
   artifactsDir?: string;
   /** Optional isolated environment variable map overriding `process.env`. */
@@ -47,13 +39,15 @@ export interface LighthouseStoreOptions {
   cwd?: () => string;
   /** Optional standalone binary runtime seam overriding `Bun.isStandaloneExecutable`. */
   isStandalone?: boolean;
-  /** Optional shutdown registry for Phase 3 (`"persistence"`) cleanup hook registration. */
-  shutdown?: ShutdownRegistry;
 }
 
 /**
- * Creates a managed SQLite + artifact {@link LighthouseStore} backed by `@devtools/db`
+ * Creates a SQLite + artifact {@link LighthouseStore} over a borrowed {@link DbSession}
  * and an injected multi-run batch executor.
+ *
+ * @param options - Borrowed DB session and optional artifact directory seams.
+ * @param runBatch - Batch execution runner used by {@link LighthouseStore.runAudit}.
+ * @returns Stateful {@link LighthouseStore} without DB connection ownership.
  */
 export function createSqliteLighthouseStore(
   options: LighthouseStoreOptions,
@@ -61,21 +55,10 @@ export function createSqliteLighthouseStore(
     batchOptions: ExecuteLighthouseBatchOptions,
   ) => Promise<LighthouseBatchExecutionResult>,
 ): LighthouseStore {
-  const ownsDb = options.db === undefined;
-  const dbHandle =
-    options.db ??
-    openDb({
-      path: options.dbPath,
-      memory: options.memory,
-      autoInit: options.autoInit,
-      env: options.env,
-      cwd: options.cwd,
-      isStandalone: options.isStandalone,
-      shutdown: options.shutdown,
-    });
+  const dbSession = options.db;
 
-  const getArtifactsDir = (overrideDir?: string): string =>
-    resolveArtifactsDir({
+  const getArtifactsTargetDir = (overrideDir?: string): string =>
+    resolveArtifactsTargetDir({
       customDir: overrideDir ?? options.artifactsDir,
       env: options.env,
       cwd: options.cwd,
@@ -83,7 +66,7 @@ export function createSqliteLighthouseStore(
     });
 
   const getRun = (idOrPrefix?: string) =>
-    dbHandle.read((db) =>
+    dbSession.read((db) =>
       idOrPrefix !== undefined
         ? resolveLighthouseRun(db, idOrPrefix)
         : getLatestLighthouseRun(db),
@@ -93,21 +76,23 @@ export function createSqliteLighthouseStore(
     batch,
     persistOptions = {},
   ) => {
-    const runId = randomUUID();
-    const baseArtifactsDir = getArtifactsDir(persistOptions.artifactsDir);
-    const runArtifactDir = join(baseArtifactsDir, runId);
-    mkdirSync(runArtifactDir, { recursive: true });
+    throwIfAborted(persistOptions.signal);
 
+    const runId = randomUUID();
+    const baseArtifactsDir = getArtifactsTargetDir(persistOptions.artifactsDir);
+    const runArtifactDir = join(baseArtifactsDir, runId);
     const jsonReportPath = join(runArtifactDir, "report.json");
     const htmlReportPath = join(runArtifactDir, "report.html");
-    writeFileSync(jsonReportPath, batch.reportJson, "utf-8");
-    writeFileSync(htmlReportPath, batch.reportHtml, "utf-8");
-
     const { normalized } = batch;
+
     let run: LighthouseAuditExecutionResult["run"];
     let previousRun: LighthouseAuditExecutionResult["previousRun"];
     try {
-      const txResult = dbHandle.write((tx) => {
+      mkdirSync(runArtifactDir, { recursive: true });
+      writeFileSync(jsonReportPath, batch.reportJson, "utf-8");
+      writeFileSync(htmlReportPath, batch.reportHtml, "utf-8");
+
+      const txResult = dbSession.write((tx) => {
         const previous = findPreviousLighthouseRun(tx, {
           url: batch.validatedUrl,
           formFactor: batch.formFactor,
@@ -138,7 +123,11 @@ export function createSqliteLighthouseStore(
       run = txResult.run;
       previousRun = txResult.previousRun;
     } catch (err: unknown) {
-      rmSync(runArtifactDir, { recursive: true, force: true });
+      try {
+        rmSync(runArtifactDir, { recursive: true, force: true });
+      } catch {
+        // Ignore rollback cleanup errors so the primary failure propagates intact
+      }
       throw err;
     }
 
@@ -157,33 +146,27 @@ export function createSqliteLighthouseStore(
     };
   };
 
-  const close = (): void => {
-    if (ownsDb) {
-      dbHandle.close();
-    }
-  };
-
   return {
-    dbPath: dbHandle.path,
+    dbPath: dbSession.path,
 
     resolveArtifactsDir(overrideDir) {
-      return getArtifactsDir(overrideDir);
+      return getArtifactsTargetDir(overrideDir);
     },
 
     ensureReady() {
-      dbHandle.ensureReady();
+      dbSession.ensureReady();
     },
 
     insertRun(row) {
-      return dbHandle.write((tx) => insertLighthouseRun(tx, row));
+      return dbSession.write((tx) => insertLighthouseRun(tx, row));
     },
 
     listRuns(listOptions) {
-      return dbHandle.read((db) => listLighthouseRuns(db, listOptions));
+      return dbSession.read((db) => listLighthouseRuns(db, listOptions));
     },
 
     listRunsWithTotal(listOptions) {
-      return dbHandle.read((db) =>
+      return dbSession.read((db) =>
         listLighthouseRunsWithTotal(db, listOptions),
       );
     },
@@ -191,26 +174,33 @@ export function createSqliteLighthouseStore(
     getRun,
 
     findPreviousRun(findOptions) {
-      return dbHandle.read((db) => findPreviousLighthouseRun(db, findOptions));
+      return dbSession.read((db) => findPreviousLighthouseRun(db, findOptions));
     },
 
     diffRuns(baselineIdOrPrefix, comparisonIdOrPrefix) {
-      return dbHandle.read((db) => {
-        const baseline = resolveLighthouseRun(db, baselineIdOrPrefix);
-        const comparison = resolveLighthouseRun(db, comparisonIdOrPrefix);
-        return {
-          baseline,
-          comparison,
-          deltas: computeRunDeltas(baseline, comparison),
-        };
-      });
+      return dbSession.read((db) =>
+        db.transaction(
+          (tx) => {
+            // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Drizzle SQLiteTransaction exposes the full DevtoolsDb query surface inside transactions.
+            const txDb = tx as unknown as DevtoolsDb;
+            const baseline = resolveLighthouseRun(txDb, baselineIdOrPrefix);
+            const comparison = resolveLighthouseRun(txDb, comparisonIdOrPrefix);
+            return {
+              baseline,
+              comparison,
+              deltas: computeRunDeltas(baseline, comparison),
+            };
+          },
+          { behavior: "deferred" },
+        ),
+      );
     },
 
     resolveReportHtmlPath(idOrPrefix) {
       const run = getRun(idOrPrefix);
       const safePath = resolveSafeHtmlReportPath(
         run.htmlReportPath,
-        getArtifactsDir(),
+        getArtifactsTargetDir(),
       );
       return { run, safePath };
     },
@@ -226,13 +216,8 @@ export function createSqliteLighthouseStore(
       return persistBatch(batch, {
         artifactsDir: auditOptions.artifactsDir,
         onProgress: auditOptions.onProgress,
+        signal: auditOptions.signal,
       });
-    },
-
-    close,
-
-    [Symbol.dispose]() {
-      close();
     },
   };
 }

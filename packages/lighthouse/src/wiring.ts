@@ -1,10 +1,17 @@
 import { resolveBrowserPath } from "@devtools/browser";
 import {
+  createAuditJobManagerWithPorts,
   executeBatchWithPorts,
+  type AuditJobManager,
+  type AuditJobManagerOptions,
   type ExecuteLighthouseBatchOptions,
   type LighthouseStore,
 } from "./application";
 import type { LighthouseBatchExecutionResult } from "./contracts";
+import {
+  serializeAuditError,
+  serializeLighthouseRunDetail,
+} from "./serializers";
 import {
   createSqliteLighthouseStore,
   type LighthouseStoreOptions,
@@ -30,14 +37,31 @@ export async function executeLighthouseBatch(
 }
 
 /**
- * Opens a lazy, concurrency-safe {@link LighthouseStore} owning SQLite persistence
- * (`openDb`) and cold report artifact resolution for Lighthouse Audit Runs.
+ * Creates a domain-level {@link LighthouseStore} backed by a caller-borrowed
+ * {@link DbSession} and cold report artifact resolution without claiming SQLite ownership.
  *
- * @param options - Optional path, memory isolation, artifacts directory, env, and shutdown registry seams.
- * @returns Managed {@link LighthouseStore} handle.
+ * @param options - Required borrowed `DbSession` and optional artifacts directory / environment seams.
+ * @returns Stateful {@link LighthouseStore} bound to the borrowed session.
  */
-export function openLighthouseStore(
-  options: LighthouseStoreOptions = {},
+export function createLighthouseStore(
+  options: LighthouseStoreOptions,
 ): LighthouseStore {
   return createSqliteLighthouseStore(options, executeLighthouseBatch);
+}
+
+/**
+ * Creates a request-ready {@link AuditJobManager} wired to the default batch runner
+ * and domain serializers without opening SQLite eagerly.
+ *
+ * @param options - Unified Lighthouse store, runner seam, retention, and optional `AbortSignal`.
+ * @returns Stateful single-flight {@link AuditJobManager}.
+ */
+export function createAuditJobManager(
+  options: AuditJobManagerOptions,
+): AuditJobManager {
+  return createAuditJobManagerWithPorts(options, {
+    defaultAuditRunner: executeLighthouseBatch,
+    serializeRunDetail: serializeLighthouseRunDetail,
+    serializeError: serializeAuditError,
+  });
 }

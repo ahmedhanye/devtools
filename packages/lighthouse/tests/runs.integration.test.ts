@@ -1,12 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { openDb, sql } from "@devtools/db";
+import { openDb, sql, type DbHandle } from "@devtools/db";
 import {
   AmbiguousRunIdError,
   LighthouseRunNotFoundError,
-  openLighthouseStore,
+  createLighthouseStore,
   type LighthouseStore,
   type NewLighthouseRunRecord,
 } from "../src";
@@ -50,31 +56,42 @@ function makeSampleRow(
   return { ...DEFAULT_SAMPLE_ROW, ...overrides };
 }
 
-describe("LighthouseStore Persistence (openLighthouseStore)", () => {
+describe("LighthouseStore Persistence (createLighthouseStore)", () => {
+  let db: DbHandle;
   let store: LighthouseStore;
   let artifactsDir: string;
 
   beforeEach(() => {
     artifactsDir = mkdtempSync(join(tmpdir(), "devtools-lh-runs-"));
-    store = openLighthouseStore({ memory: true, artifactsDir });
+    db = openDb({ memory: true });
+    store = createLighthouseStore({ db, artifactsDir });
   });
 
   afterEach(() => {
-    store.close();
+    db.close();
     rmSync(artifactsDir, { recursive: true, force: true });
   });
 
-  it("exposes dbPath, resolveArtifactsDir, ensureReady, and delegates close ownership cleanly", () => {
+  it("exposes dbPath, resolveArtifactsDir without creating dirs, ensureReady, and never owns db lifecycle", () => {
     expect(store.dbPath).toBe(":memory:");
     expect(store.resolveArtifactsDir()).toBe(artifactsDir);
     store.ensureReady();
 
-    // Caller-owned db handle is NOT closed when store.close() runs
+    const missingArtifacts = join(artifactsDir, "lazy-non-existent-artifacts");
     using callerDb = openDb({ memory: true });
-    {
-      using wrappedStore = openLighthouseStore({ db: callerDb, artifactsDir });
-      wrappedStore.insertRun(makeSampleRow({ id: "caller-owned-1" }));
-    }
+    const wrappedStore = createLighthouseStore({
+      db: callerDb,
+      artifactsDir: missingArtifacts,
+    });
+    expect(wrappedStore.listRuns()).toEqual([]);
+    wrappedStore.insertRun(makeSampleRow({ id: "caller-owned-1" }));
+    expect(
+      wrappedStore.resolveReportHtmlPath("caller-owned-1").safePath,
+    ).toBeNull();
+    // Read-only paths and target resolution never create missing directories on disk
+    expect(wrappedStore.resolveArtifactsDir()).toBe(missingArtifacts);
+    expect(existsSync(missingArtifacts)).toBe(false);
+    expect("close" in wrappedStore).toBe(false);
     expect(callerDb.read(() => true)).toBe(true);
   });
 
@@ -470,7 +487,10 @@ describe("LighthouseStore Persistence (openLighthouseStore)", () => {
 
     it("tolerates raw syntactically corrupt summary_json in SQLite across listRuns, getRun, and diffRuns", () => {
       using callerDb = openDb({ memory: true });
-      using wrappedStore = openLighthouseStore({ db: callerDb, artifactsDir });
+      const wrappedStore = createLighthouseStore({
+        db: callerDb,
+        artifactsDir,
+      });
 
       wrappedStore.insertRun(
         makeSampleRow({
@@ -542,7 +562,7 @@ describe("LighthouseStore Persistence (openLighthouseStore)", () => {
         (run) => run.id === "raw-corrupt-json-run",
       );
       expect(corruptFromList).toBeDefined();
-      expect(corruptFromList?.summaryJson).toBeNull();
+      expect("summaryJson" in (corruptFromList ?? {})).toBe(false);
 
       const fetched = wrappedStore.getRun("raw-corrupt-json-run");
       expect(fetched.summaryJson).toBeNull();
@@ -570,6 +590,69 @@ describe("LighthouseStore Persistence (openLighthouseStore)", () => {
         regressed: [],
         clsCulpritDelta: null,
       });
+    });
+
+    it("resolves IDs via indexed range scan including uppercase UUID prefixes, \\uffff upper bounds, and EXPLAIN QUERY PLAN check", () => {
+      store.insertRun(
+        makeSampleRow({ id: "abcdef11-0000-4000-8000-000000000001" }),
+      );
+      store.insertRun(makeSampleRow({ id: "01234\uffff999" }));
+      store.insertRun(
+        makeSampleRow({ id: "\uffff\uffff\uffff\uffff\uffff\uffff-tail" }),
+      );
+
+      expect(store.getRun("ABCDEF").id).toBe(
+        "abcdef11-0000-4000-8000-000000000001",
+      );
+      expect(store.getRun("01234\uffff").id).toBe("01234\uffff999");
+      expect(store.getRun("\uffff\uffff\uffff\uffff\uffff\uffff").id).toBe(
+        "\uffff\uffff\uffff\uffff\uffff\uffff-tail",
+      );
+
+      const planRows = db.read((rawDb) =>
+        rawDb.all<{ detail: string }>(
+          sql`EXPLAIN QUERY PLAN SELECT id FROM lighthouse_runs WHERE id >= 'abcdef' AND id < 'abcdeg' ORDER BY id ASC LIMIT 6`,
+        ),
+      );
+      const details = planRows.map((row) => row.detail).join(" | ");
+      expect(details).toContain("SEARCH lighthouse_runs");
+      expect(details).not.toContain("SCAN lighthouse_runs");
+    });
+
+    it("resolves supplementary Unicode IDs in SQLite UTF-8 byte order without surrogate corruption or \\uffff false matches", () => {
+      store.insertRun(makeSampleRow({ id: "0123\uD800\uDFFF-run" }));
+      store.insertRun(makeSampleRow({ id: "01234\uffff999" }));
+      store.insertRun(makeSampleRow({ id: "01234🚀-tail" }));
+      store.insertRun(
+        makeSampleRow({ id: "\uffff\uffff\uffff\uffff\uffff\uffff-tail" }),
+      );
+      store.insertRun(makeSampleRow({ id: "🚀-rocket" }));
+      store.insertRun(makeSampleRow({ id: "01234\ud7ff-gap" }));
+      store.insertRun(makeSampleRow({ id: "01234\ue000-next" }));
+      store.insertRun(makeSampleRow({ id: "abcde\u{10FFFF}-carry" }));
+      store.insertRun(makeSampleRow({ id: "abcdf0-next" }));
+      store.insertRun(
+        makeSampleRow({
+          id: "\u{10FFFF}\u{10FFFF}\u{10FFFF}\u{10FFFF}\u{10FFFF}\u{10FFFF}-max",
+        }),
+      );
+
+      expect(store.getRun("0123\uD800\uDFFF").id).toBe("0123\uD800\uDFFF-run");
+      expect(store.getRun("01234\uffff").id).toBe("01234\uffff999");
+      expect(store.getRun("01234🚀").id).toBe("01234🚀-tail");
+      expect(store.getRun("\uffff\uffff\uffff\uffff\uffff\uffff").id).toBe(
+        "\uffff\uffff\uffff\uffff\uffff\uffff-tail",
+      );
+      expect(store.getRun("🚀-roc").id).toBe("🚀-rocket");
+      expect(store.getRun("01234\ud7ff").id).toBe("01234\ud7ff-gap");
+      expect(store.getRun("abcde\u{10FFFF}").id).toBe("abcde\u{10FFFF}-carry");
+      expect(
+        store.getRun(
+          "\u{10FFFF}\u{10FFFF}\u{10FFFF}\u{10FFFF}\u{10FFFF}\u{10FFFF}",
+        ).id,
+      ).toBe(
+        "\u{10FFFF}\u{10FFFF}\u{10FFFF}\u{10FFFF}\u{10FFFF}\u{10FFFF}-max",
+      );
     });
   });
 });

@@ -138,8 +138,6 @@ export function computeRunDeltas(
   baseline: LighthouseRunRecord,
   comparison: LighthouseRunRecord,
 ): LighthouseDiffDeltas {
-  const baselineSummary = parseRunSummary(baseline.summaryJson);
-  const comparisonSummary = parseRunSummary(comparison.summaryJson);
   const delta = (key: NumericRunKey) =>
     computeNumericDelta(baseline[key], comparison[key]);
 
@@ -158,6 +156,6 @@ export function computeRunDeltas(
       siMs: delta("siMs"),
       ttfbMs: delta("ttfbMs"),
     },
-    insights: computeInsightDiff(baselineSummary, comparisonSummary),
+    insights: computeInsightDiff(baseline.summaryJson, comparison.summaryJson),
   };
 }
