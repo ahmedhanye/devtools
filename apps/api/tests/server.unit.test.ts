@@ -3,8 +3,10 @@ import { RuntimeConfigError } from "@devtools/core";
 import {
   createBufferOutput,
   createMemorySignalSource,
+  createTeardown,
 } from "@devtools/core/node";
 import {
+  bindManagedServer,
   resolveServerConfig,
   runServerCli,
   type ServerInstance,
@@ -423,5 +425,122 @@ describe("runServerCli", () => {
     expect(output.stdout[0]).toContain("http://127.0.0.1:4123");
     void res?.stop();
     expect(exitCodes).toEqual([]);
+  });
+
+  test("isolates independent runServerCli scopes, forwards teardown signal to start(), and prints banner only on OS signals", async () => {
+    const output1 = createBufferOutput();
+    const output2 = createBufferOutput();
+    const signals1 = createMemorySignalSource();
+    const signals2 = createMemorySignalSource();
+    const exitCodes1: number[] = [];
+    const exitCodes2: number[] = [];
+    let stopCount1 = 0;
+    let stopCount2 = 0;
+    let capturedSignal1: AbortSignal | undefined;
+    let capturedSignal2: AbortSignal | undefined;
+
+    const cli1 = runServerCli({
+      resolveConfig: () => ({ host: "127.0.0.1", port: 4201 }),
+      start: (opts) => {
+        capturedSignal1 = opts?.signal;
+        return {
+          server: {
+            hostname: "127.0.0.1",
+          } as unknown as ServerInstance["server"],
+          port: 4201,
+          stop: async () => {
+            stopCount1 += 1;
+          },
+        };
+      },
+      output: output1,
+      signals: signals1,
+      exit: (code) => exitCodes1.push(code),
+    });
+
+    const cli2 = runServerCli({
+      resolveConfig: () => ({ host: "127.0.0.1", port: 4202 }),
+      start: (opts) => {
+        capturedSignal2 = opts?.signal;
+        return {
+          server: {
+            hostname: "127.0.0.1",
+          } as unknown as ServerInstance["server"],
+          port: 4202,
+          stop: async () => {
+            stopCount2 += 1;
+          },
+        };
+      },
+      output: output2,
+      signals: signals2,
+      exit: (code) => exitCodes2.push(code),
+    });
+
+    expect(cli1).toBeDefined();
+    expect(cli2).toBeDefined();
+    expect(capturedSignal1?.aborted).toBe(false);
+    expect(capturedSignal2?.aborted).toBe(false);
+
+    // Manual stop detaches listeners cleanly and skips signal banner
+    await cli2!.stop();
+    expect(capturedSignal2?.aborted).toBe(true);
+    expect(capturedSignal1?.aborted).toBe(false);
+    expect(stopCount1).toBe(0);
+    expect(stopCount2).toBe(1);
+    expect(output2.stdout).not.toContain("Shutting down server...");
+    expect(signals2.listenerCount("SIGTERM")).toBe(0);
+
+    // OS signal stops only instance 1, emits shutdown banner once, and exits 0
+    signals1.emit("SIGTERM");
+    await new Promise((r) => setTimeout(r, 15));
+
+    expect(capturedSignal1?.aborted).toBe(true);
+    expect(stopCount1).toBe(1);
+    expect(stopCount2).toBe(1);
+    expect(output1.stdout).toContain("Shutting down server...");
+    expect(exitCodes1).toEqual([0]);
+    expect(exitCodes2).toEqual([]);
+  });
+});
+
+describe("bindManagedServer", () => {
+  test("swallows secondary teardown rejections when Bun.serve bind fails", async () => {
+    const blocker = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch() {
+        return new Response("busy");
+      },
+    });
+    const occupiedPort = blocker.port ?? 0;
+    const teardown = createTeardown();
+    teardown.defer(async () => {
+      throw new Error("secondary cleanup failure");
+    });
+
+    const unhandledRejections: unknown[] = [];
+    const onUnhandled = (reason: unknown) => {
+      unhandledRejections.push(reason);
+    };
+    process.on("unhandledRejection", onUnhandled);
+
+    try {
+      expect(() =>
+        bindManagedServer({
+          port: occupiedPort,
+          hostname: "127.0.0.1",
+          teardown,
+          fetch: () => new Response("ok"),
+        }),
+      ).toThrow();
+
+      await Bun.sleep(10);
+      expect(teardown.isShuttingDown).toBe(true);
+      expect(unhandledRejections).toHaveLength(0);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+      await blocker.stop(true);
+    }
   });
 });

@@ -1,13 +1,14 @@
 import { API_ERROR_CODES, type EnvMap } from "@devtools/core";
-import type { ShutdownRegistry } from "@devtools/core/node";
-import type { LighthouseStore } from "@devtools/lighthouse";
+import { openDb, type DbHandle, type DbSession } from "@devtools/db";
+import {
+  createLighthouseStore,
+  type LighthouseAuditRunner,
+  type LighthouseStore,
+} from "@devtools/lighthouse";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { createHealthRoutes } from "../modules/health";
-import {
-  createLighthouseRoutes,
-  type LighthouseAuditRunner,
-} from "../modules/lighthouse";
+import { createLighthouseRoutes } from "../modules/lighthouse";
 import { jsonApiError } from "../shared/http";
 import {
   type ApiBindings,
@@ -25,10 +26,12 @@ export interface CreateAppOptions {
    * @defaultValue "/api"
    */
   basePath?: string;
-  /** Optional injected {@link LighthouseStore} instance (defaults lazily to `openLighthouseStore(...)`). */
+  /** Optional borrowed SQLite session used when `store` is omitted. */
+  db?: DbSession;
+  /** Optional injected {@link LighthouseStore} instance (defaults to creating one from `db` or lazy `openDb`). */
   store?: LighthouseStore;
-  /** Optional shutdown registry for Phase 3 (`"persistence"`) cleanup hook registration. */
-  shutdown?: ShutdownRegistry;
+  /** Optional cancellation signal linking teardown into audit jobs and 503 shutdown guards. */
+  signal?: AbortSignal;
   /** Optional environment variable map overriding `process.env`. */
   env?: EnvMap;
   /** Optional explicit Lighthouse artifacts root directory override. */
@@ -57,7 +60,7 @@ export type DefaultMountedApp = ReturnType<typeof mountDefaultApiRoutes>;
  * Creates a configured Hono application instance with loopback CORS, CSRF protection,
  * structured JSON error boundaries, API route modules, and a cooperative `shutdown()` hook.
  *
- * @param options - Optional route mounting prefix and test injection seams.
+ * @param options - Optional route mounting prefix and dependency injection seams.
  * @returns Chained Hono application instance with `shutdown()` while preserving {@link AppType} RPC inference.
  */
 export function createApp(options: CreateAppOptions = {}) {
@@ -109,11 +112,23 @@ export function createApp(options: CreateAppOptions = {}) {
     return jsonApiError(c, 500, API_ERROR_CODES.INTERNAL_ERROR, message);
   });
 
+  let ownedDb: DbHandle | undefined;
+  let store: LighthouseStore;
+  if (options.store) {
+    store = options.store;
+  } else {
+    const session = options.db ?? (ownedDb = openDb({ env: options.env }));
+    store = createLighthouseStore({
+      db: session,
+      artifactsDir: options.artifactsDir,
+      env: options.env,
+    });
+  }
+
   const lighthouseRoutes = createLighthouseRoutes({
-    store: options.store,
-    shutdown: options.shutdown,
+    store,
+    signal: options.signal,
     env: options.env,
-    artifactsDir: options.artifactsDir,
     auditRunner: options.auditRunner,
     jobRetentionMs: options.jobRetentionMs,
     keepaliveIntervalMs: options.keepaliveIntervalMs,
@@ -128,7 +143,13 @@ export function createApp(options: CreateAppOptions = {}) {
           .route("/lighthouse", lighthouseRoutes) as DefaultMountedApp);
 
   return Object.assign(mounted, {
-    shutdown: () => lighthouseRoutes.shutdown(),
+    shutdown: async () => {
+      try {
+        await lighthouseRoutes.shutdown();
+      } finally {
+        ownedDb?.close();
+      }
+    },
   });
 }
 

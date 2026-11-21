@@ -5,6 +5,7 @@ export {
   type DefaultMountedApp,
 } from "./create-app";
 export {
+  bindManagedServer,
   startServer,
   type ServerInstance,
   type StartServerOptions,

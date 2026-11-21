@@ -1,7 +1,9 @@
 import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { createShutdownCoordinator } from "@devtools/core/node";
+import { createTeardown } from "@devtools/core/node";
+import { openDb, type DbHandle } from "@devtools/db";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   rmSync,
@@ -13,7 +15,7 @@ import { join } from "node:path";
 import { API_ERROR_CODES, ApiErrorResponseSchema } from "@devtools/core";
 import {
   EMPTY_LIGHTHOUSE_RUN_SUMMARY,
-  openLighthouseStore,
+  createLighthouseStore,
   type LighthouseBatchExecutionResult,
   type LighthouseStore,
   type NewLighthouseRunRecord,
@@ -155,16 +157,18 @@ function makeSampleRow(
 }
 
 describe("Lighthouse HTTP API Routes (/api/lighthouse)", () => {
+  let db: DbHandle;
   let store: LighthouseStore;
   let artifactsDir: string;
 
   beforeEach(() => {
     artifactsDir = mkdtempSync(join(tmpdir(), "devtools-api-lh-"));
-    store = openLighthouseStore({ memory: true, artifactsDir });
+    db = openDb({ memory: true });
+    store = createLighthouseStore({ db, artifactsDir });
   });
 
   afterEach(() => {
-    store.close();
+    db.close();
     rmSync(artifactsDir, { recursive: true, force: true });
   });
 
@@ -416,9 +420,12 @@ describe("Lighthouse HTTP API Routes (/api/lighthouse)", () => {
         ApiErrorResponseSchema.parse(await ambiguous.json()).error.code,
       ).toBe(API_ERROR_CODES.CONFLICT);
 
-      using uninitializedStore = openLighthouseStore({
+      using uninitializedDb = openDb({
         memory: true,
         autoInit: false,
+      });
+      const uninitializedStore = createLighthouseStore({
+        db: uninitializedDb,
         artifactsDir,
       });
       const brokenApp = createApp({ store: uninitializedStore, artifactsDir });
@@ -587,7 +594,11 @@ describe("Lighthouse HTTP API Routes (/api/lighthouse)", () => {
 
     it("handles malformed and raw-corrupt summary_json across /runs, /runs/:id, and /diff in both directions", async () => {
       const dbPath = join(artifactsDir, "corrupt-summary.db");
-      using corruptStore = openLighthouseStore({ dbPath, artifactsDir });
+      using corruptDb = openDb({ path: dbPath });
+      const corruptStore = createLighthouseStore({
+        db: corruptDb,
+        artifactsDir,
+      });
 
       const validId = "33333333-cccc-4333-8333-333333333333";
       const malformedId = "44444444-dddd-4444-8444-444444444444";
@@ -814,19 +825,30 @@ describe("Lighthouse HTTP API Routes (/api/lighthouse)", () => {
       ).toBe(API_ERROR_CODES.SERVICE_UNAVAILABLE);
     });
 
-    it("rejects POST /api/lighthouse/audits with 503 during Phase 1 ingress and mid-body shutdown race", async () => {
-      const coordinator = createShutdownCoordinator();
-      let releaseIngress!: () => void;
-      const ingressGate = new Promise<void>((res) => {
-        releaseIngress = res;
+    it("rejects POST /api/lighthouse/audits with 503 via teardown AbortSignal and mid-body shutdown race, and keeps GETs free of artifacts mkdirSync", async () => {
+      const teardown = createTeardown();
+      const missingArtifacts = join(artifactsDir, "never-created-dir");
+      using readDb = openDb({ memory: true });
+      const readApp = createApp({
+        db: readDb,
+        artifactsDir: missingArtifacts,
       });
-      coordinator.register("ingress", async () => {
-        await ingressGate;
-      });
-      const appWithCoord = createApp({ store, shutdown: coordinator });
+      const readRunsRes = await readApp.request("/api/lighthouse/runs");
+      expect(readRunsRes.status).toBe(200);
+      expect(existsSync(missingArtifacts)).toBe(false);
+      await readApp.shutdown();
 
-      const shutdownPromise = coordinator.shutdown("SIGTERM");
-      const duringIngressRes = await appWithCoord.request(
+      let releaseStep!: () => void;
+      const stepGate = new Promise<void>((res) => {
+        releaseStep = res;
+      });
+      teardown.defer(async () => {
+        await stepGate;
+      });
+      const appWithSignal = createApp({ store, signal: teardown.signal });
+
+      const shutdownPromise = teardown.run("SIGTERM");
+      const duringSignalRes = await appWithSignal.request(
         "/api/lighthouse/audits",
         {
           method: "POST",
@@ -834,8 +856,8 @@ describe("Lighthouse HTTP API Routes (/api/lighthouse)", () => {
           body: JSON.stringify({ url: "https://example.com/" }),
         },
       );
-      expect(duringIngressRes.status).toBe(503);
-      releaseIngress();
+      expect(duringSignalRes.status).toBe(503);
+      releaseStep();
       await shutdownPromise;
 
       const bodyApp = createApp({ store });
@@ -875,8 +897,10 @@ describe("Lighthouse HTTP API Routes (/api/lighthouse)", () => {
     it("isolates active jobs, stores, and independent shutdown lifecycles across dual createApp instances", async () => {
       const dirA = mkdtempSync(join(tmpdir(), "devtools-api-dual-a-"));
       const dirB = mkdtempSync(join(tmpdir(), "devtools-api-dual-b-"));
-      const storeA = openLighthouseStore({ memory: true, artifactsDir: dirA });
-      const storeB = openLighthouseStore({ memory: true, artifactsDir: dirB });
+      const dbA = openDb({ memory: true });
+      const dbB = openDb({ memory: true });
+      const storeA = createLighthouseStore({ db: dbA, artifactsDir: dirA });
+      const storeB = createLighthouseStore({ db: dbB, artifactsDir: dirB });
 
       try {
         storeA.insertRun(
@@ -962,8 +986,8 @@ describe("Lighthouse HTTP API Routes (/api/lighthouse)", () => {
 
         await appA.shutdown();
       } finally {
-        storeA.close();
-        storeB.close();
+        dbA.close();
+        dbB.close();
         rmSync(dirA, { recursive: true, force: true });
         rmSync(dirB, { recursive: true, force: true });
       }

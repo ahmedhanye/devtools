@@ -1,4 +1,5 @@
 export {
+  bindManagedServer,
   createApp,
   startServer,
   type AppType,

@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@devtools/core": "workspace:*",
+    "@devtools/db": "workspace:*",
     "@devtools/lighthouse": "workspace:*",
     "hono": "^4.13.17"
   }

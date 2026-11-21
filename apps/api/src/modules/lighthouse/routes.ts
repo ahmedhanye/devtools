@@ -1,9 +1,13 @@
 import { API_ERROR_CODES, type EnvMap } from "@devtools/core";
-import type { ShutdownRegistry } from "@devtools/core/node";
 import {
   AmbiguousRunIdError,
+  createAuditJobManager,
   LighthouseRunNotFoundError,
-  openLighthouseStore,
+  resolveCanonicalArtifactsDir,
+  serializeLighthouseRunDetail,
+  serializeLighthouseRunListItem,
+  type AuditJobStreamEvent,
+  type LighthouseAuditRunner,
   type LighthouseRunRecord,
   type LighthouseStore,
 } from "@devtools/lighthouse";
@@ -22,16 +26,7 @@ import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { jsonApiError } from "../../shared/http";
 import type { ApiBindings } from "../../shared/security";
-import {
-  AuditJobManager,
-  type AuditJobStreamEvent,
-  type LighthouseAuditRunner,
-} from "./job-manager";
 import { createHtmlReportResponse } from "./report-reader";
-import {
-  serializeLighthouseRunDetail,
-  serializeLighthouseRunListItem,
-} from "./serializers";
 
 const DEFAULT_KEEPALIVE_INTERVAL_MS = 5000;
 
@@ -39,14 +34,12 @@ const DEFAULT_KEEPALIVE_INTERVAL_MS = 5000;
  * Configuration seams for instantiating the `/lighthouse` API route module.
  */
 export interface LighthouseRoutesOptions {
-  /** Optional injected {@link LighthouseStore} instance (defaults lazily to `openLighthouseStore(...)`). */
-  store?: LighthouseStore;
-  /** Optional shutdown registry for Phase 3 (`"persistence"`) cleanup hook registration. */
-  shutdown?: ShutdownRegistry;
-  /** Optional environment map seam passed to DB and artifacts resolution. */
+  /** Borrowed domain {@link LighthouseStore} owned by the composition root. */
+  store: LighthouseStore;
+  /** Optional host cancellation signal linking teardown into audit jobs and 503 guards. */
+  signal?: AbortSignal;
+  /** Optional environment map seam forwarded to audit execution. */
   env?: EnvMap;
-  /** Optional explicit artifacts root directory override. */
-  artifactsDir?: string;
   /** Optional batch execution runner overriding `executeLighthouseBatch`. */
   auditRunner?: LighthouseAuditRunner;
   /** Retention duration (ms) for the latest completed/failed Audit Job SSE snapshot. */
@@ -82,32 +75,26 @@ function resolveStoreRead<T>(
  * Creates the `/lighthouse` Hono route module exposing Audit Job triggering, SSE streaming,
  * historical run inspection, isolated HTML report serving, and pairwise diffs.
  *
- * @param options - Optional dependency injection seams for hermetic testing.
+ * @param options - Required borrowed {@link LighthouseStore} and optional test/signal seams.
  * @returns Chained Hono router preserving full RPC type inference.
  */
-export function createLighthouseRoutes(options: LighthouseRoutesOptions = {}) {
-  const ownsStore = options.store === undefined;
-  const store =
-    options.store ??
-    openLighthouseStore({
-      artifactsDir: options.artifactsDir,
-      env: options.env,
-      shutdown: options.shutdown,
-    });
+export function createLighthouseRoutes(options: LighthouseRoutesOptions) {
+  const { store } = options;
   const keepaliveIntervalMs =
     options.keepaliveIntervalMs ?? DEFAULT_KEEPALIVE_INTERVAL_MS;
 
-  const jobManager = new AuditJobManager({
+  const jobManager = createAuditJobManager({
     store,
     env: options.env,
     auditRunner: options.auditRunner,
     jobRetentionMs: options.jobRetentionMs,
+    signal: options.signal,
   });
 
   const rejectIfShuttingDown = (
     c: Context<{ Bindings: ApiBindings }>,
   ): Response | null =>
-    options.shutdown?.isShuttingDown || jobManager.isShuttingDown
+    options.signal?.aborted || jobManager.isShuttingDown
       ? jsonApiError(
           c,
           503,
@@ -261,7 +248,9 @@ export function createLighthouseRoutes(options: LighthouseRoutesOptions = {}) {
           },
         );
 
-        if (subscription && !subscription.initialTerminal) {
+        if (!subscription) {
+          cleanup();
+        } else if (!subscription.initialTerminal) {
           unsubscribe = subscription.unsubscribe;
           keepaliveTimer = setInterval(() => {
             void enqueueWrite(() => stream.write(": keepalive\n\n"));
@@ -292,6 +281,7 @@ export function createLighthouseRoutes(options: LighthouseRoutesOptions = {}) {
       const limit = parsed.data.limit ?? 50;
       const offset = parsed.data.offset ?? 0;
       const artifactsDir = store.resolveArtifactsDir();
+      const canonicalArtifactsDir = resolveCanonicalArtifactsDir(artifactsDir);
       const { runs, total } = store.listRunsWithTotal({
         url: parsed.data.url,
         search: parsed.data.search,
@@ -303,7 +293,11 @@ export function createLighthouseRoutes(options: LighthouseRoutesOptions = {}) {
       return c.json(
         ListLighthouseRunsResponseSchema.parse({
           runs: runs.map((row) =>
-            serializeLighthouseRunListItem(row, artifactsDir),
+            serializeLighthouseRunListItem(
+              row,
+              artifactsDir,
+              canonicalArtifactsDir,
+            ),
           ),
           total,
           limit,
@@ -363,15 +357,18 @@ export function createLighthouseRoutes(options: LighthouseRoutesOptions = {}) {
       }
 
       const artifactsDir = store.resolveArtifactsDir();
+      const canonicalArtifactsDir = resolveCanonicalArtifactsDir(artifactsDir);
       return c.json(
         LighthouseDiffResponseSchema.parse({
           baseline: serializeLighthouseRunDetail(
             diffResult.value.baseline,
             artifactsDir,
+            canonicalArtifactsDir,
           ),
           comparison: serializeLighthouseRunDetail(
             diffResult.value.comparison,
             artifactsDir,
+            canonicalArtifactsDir,
           ),
           deltas: diffResult.value.deltas,
         }),
@@ -380,14 +377,6 @@ export function createLighthouseRoutes(options: LighthouseRoutesOptions = {}) {
     });
 
   return Object.assign(router, {
-    shutdown: async () => {
-      try {
-        await jobManager.shutdown();
-      } finally {
-        if (ownsStore) {
-          store.close();
-        }
-      }
-    },
+    shutdown: () => jobManager.shutdown(),
   });
 }

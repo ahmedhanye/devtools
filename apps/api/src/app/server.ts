@@ -8,16 +8,19 @@ import {
 import {
   attachHostSignals,
   createConsoleOutput,
-  createShutdownCoordinator,
+  createTeardown,
   type ExitPort,
   type OutputPort,
-  type ShutdownCoordinator,
   type SignalSourcePort,
+  type Teardown,
 } from "@devtools/core/node";
-import type { LighthouseStore } from "@devtools/lighthouse";
+import type { DbSession } from "@devtools/db";
+import type {
+  LighthouseAuditRunner,
+  LighthouseStore,
+} from "@devtools/lighthouse";
 import type { Server } from "bun";
 import type { Hono } from "hono";
-import type { LighthouseAuditRunner } from "../modules/lighthouse";
 import type { ApiBindings } from "../shared/security";
 import { createApp } from "./create-app";
 
@@ -38,10 +41,12 @@ export interface StartServerOptions {
    * Defaults to creating an isolated instance via {@link createApp}.
    */
   app?: Hono | Hono<{ Bindings: ApiBindings }> | ReturnType<typeof createApp>;
+  /** Optional borrowed SQLite session forwarded to {@link createApp} when `store` and `app` are omitted. */
+  db?: DbSession;
   /** Optional injected {@link LighthouseStore} forwarded to {@link createApp}. */
   store?: LighthouseStore;
-  /** Optional shared 3-phase {@link ShutdownCoordinator} orchestrating server shutdown. */
-  shutdown?: ShutdownCoordinator;
+  /** Optional cancellation signal linking outer teardown into active audit jobs and 503 guards. */
+  signal?: AbortSignal;
   /** Optional explicit Lighthouse artifacts root directory override. */
   artifactsDir?: string;
   /** Optional audit runner seam passed through to {@link createApp}. */
@@ -56,7 +61,7 @@ export interface ServerInstance {
   server: Server<unknown>;
   /** Bound TCP port number. */
   port: number;
-  /** Stops the HTTP listener and cancels any active audit jobs before resolving. */
+  /** Stops the HTTP listener, aborts/drains active jobs, and closes owned DB handles in LIFO order. */
   stop: () => Promise<void> | void;
 }
 
@@ -98,69 +103,82 @@ export function resolveServerConfig(options: StartServerOptions = {}): {
 }
 
 /**
+ * Binds a `Bun.serve` listener attached to a scoped LIFO {@link Teardown}, running teardown
+ * immediately if port binding fails and deferring `server.stop(true)` on success.
+ *
+ * @param options - Port, hostname, active teardown scope, and HTTP fetch handler.
+ * @returns Bound `Bun.serve` server instance.
+ */
+export function bindManagedServer(options: {
+  port: number;
+  hostname: string;
+  teardown: Teardown;
+  fetch: (
+    req: Request,
+    server: Server<unknown>,
+  ) => Response | Promise<Response>;
+}): Server<unknown> {
+  let server: Server<unknown>;
+  try {
+    server = Bun.serve({
+      port: options.port,
+      hostname: options.hostname,
+      fetch: options.fetch,
+    });
+  } catch (error) {
+    void options.teardown.run(error).catch(() => {});
+    throw error;
+  }
+
+  options.teardown.defer(() => server.stop(true));
+  return server;
+}
+
+/**
  * Boots the standalone Bun HTTP server hosting the `@devtools/api` Hono application
  * and forwards `{ server }` bindings for socket peer verification and SSE timeout control.
  *
- * @param options - Optional port, host, database, and test seams.
+ * Registers scoped LIFO teardown (`server.stop(true)` -> `app.shutdown()` -> `db.close()`).
+ *
+ * @param options - Optional port, host, database, signal, and test seams.
  * @returns Active {@link ServerInstance} handle.
  * @throws {@link Error} When configuration validation or port binding fails.
  */
 export function startServer(options: StartServerOptions = {}): ServerInstance {
   const config = resolveServerConfig(options);
-  const coordinator = options.shutdown ?? createShutdownCoordinator();
+  const teardown = createTeardown();
+  const routeSignal = options.signal
+    ? AbortSignal.any([options.signal, teardown.signal])
+    : teardown.signal;
 
   const activeApp =
     options.app ??
     createApp({
       basePath: "/api",
+      db: options.db,
       store: options.store,
-      shutdown: coordinator,
+      signal: routeSignal,
       env: options.env,
       artifactsDir: options.artifactsDir,
       auditRunner: options.auditRunner,
     });
 
-  const server = Bun.serve({
+  if ("shutdown" in activeApp && typeof activeApp.shutdown === "function") {
+    const shutdownApp = activeApp.shutdown;
+    teardown.defer(() => shutdownApp());
+  }
+
+  const server = bindManagedServer({
     port: config.port,
     hostname: config.host,
-    fetch(req, bunServer) {
-      return activeApp.fetch(req, { server: bunServer });
-    },
+    teardown,
+    fetch: (req, bunServer) => activeApp.fetch(req, { server: bunServer }),
   });
-
-  const disposeIngress = coordinator.register(
-    "ingress",
-    () => server.stop(true),
-    { id: "api-http-ingress" },
-  );
-  const rawShutdown =
-    "shutdown" in activeApp && typeof activeApp.shutdown === "function"
-      ? activeApp.shutdown
-      : undefined;
-  const shutdownApp = rawShutdown
-    ? async () => {
-        await rawShutdown();
-      }
-    : undefined;
-  const disposeWork = shutdownApp
-    ? coordinator.register("work", shutdownApp, {
-        id: "api-app-work",
-      })
-    : undefined;
-
-  const stop = async () => {
-    try {
-      await coordinator.shutdown("stop");
-    } finally {
-      disposeIngress();
-      disposeWork?.();
-    }
-  };
 
   return {
     server,
     port: server.port ?? config.port,
-    stop,
+    stop: () => teardown.run(),
   };
 }
 
@@ -178,8 +196,6 @@ export interface ServerCliDeps {
   output?: OutputPort;
   /** Override process exit handler. */
   exit?: ExitPort;
-  /** Override outer CLI shutdown coordinator. */
-  shutdown?: ShutdownCoordinator;
 }
 
 interface StartupErrorShape {
@@ -234,29 +250,22 @@ export function runServerCli(deps?: ServerCliDeps): ServerInstance | undefined {
   const start = deps?.start ?? startServer;
   const output = deps?.output ?? createConsoleOutput();
   const exit: ExitPort = deps?.exit ?? ((code) => process.exit(code));
+  const teardown = createTeardown();
 
   let config: { host: string; port: number } | undefined;
   try {
     config = resolveConfig();
-    const instance = start(config);
+    const instance = start({ ...config, signal: teardown.signal });
+    teardown.defer(() => instance.stop());
     output.writeStdout(
       `Server listening on http://${instance.server.hostname}:${instance.port}`,
     );
 
-    const cliCoordinator = deps?.shutdown ?? createShutdownCoordinator();
-    cliCoordinator.register(
-      "ingress",
-      () => {
-        output.writeStdout("Shutting down server...");
-      },
-      { id: "api-cli-banner" },
-    );
-    cliCoordinator.register("work", () => instance.stop(), {
-      id: "api-cli-stop",
-    });
-
     const signalHandle = attachHostSignals({
-      coordinator: cliCoordinator,
+      onShutdown: async () => {
+        output.writeStdout("Shutting down server...");
+        await teardown.run();
+      },
       signals: deps?.signals,
       output,
       exit,
@@ -272,7 +281,7 @@ export function runServerCli(deps?: ServerCliDeps): ServerInstance | undefined {
       port: instance.port,
       stop: async () => {
         signalHandle.detach();
-        await instance.stop();
+        await teardown.run();
       },
     };
   } catch (err: unknown) {
