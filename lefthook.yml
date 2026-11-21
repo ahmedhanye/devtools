@@ -42,3 +42,17 @@ commit-msg:
   commands:
     conventional-commits:
       run: bunx --bun commitlint --edit {1}
+
+pre-push:
+  parallel: true
+  commands:
+    typecheck:
+      run: bun run typecheck
+    fallow-dead-code:
+      run: bun run fallow:dead-code
+    fallow-arch:
+      run: bun run fallow:arch
+    fallow-health:
+      run: bun run fallow:health
+    fallow-dupes:
+      run: bun run fallow:dupes
