@@ -1,8 +1,8 @@
-# ADR Format
+# ADR format
 
 ADRs live in `docs/adr/` using sequential numbering (`0001-slug.md`, `0002-slug.md`, etc.) and are indexed in `ARCHITECTURE.md`.
 
-The ADR owns *what* and *why*; the code and `docs/architecture/` own *how*. State decisions and reasons as principles rather than copying schemas, tables, file layouts, or timeouts that go stale when code moves. Record **one decision per ADR** so future reversals supersede cleanly without partial edits.
+The ADR owns *what* and *why*; the code and `docs/architecture/` own *how*. Focus on why the decision was made and what alternatives were rejected rather than duplicating schemas, tables, file layouts, symbol inventories, or timeouts from `docs/architecture/`. Record **one decision per ADR** so future reversals supersede cleanly without partial edits.
 
 ## Template
 
@@ -10,8 +10,6 @@ The ADR owns *what* and *why*; the code and `docs/architecture/` own *how*. Stat
 ---
 status: proposed
 date: YYYY-MM-DD
-contexts:
-  - <Context Name>
 ---
 
 # {Short title of the decision}
@@ -19,7 +17,9 @@ contexts:
 {1-3 sentences: what is the context, what did we decide, and why.}
 ```
 
-The sequential number belongs exclusively in the filename slug (`docs/adr/0001-slug.md`); never prefix the markdown H1 title with `{NNNN}:`. Valid `status` values are `proposed`, `accepted`, `deprecated`, `superseded by ADR-NNNN`, or `partially superseded by ADR-NNNN`. Treat accepted ADRs as immutable: when an accepted decision reverses, add a new ADR with `supersedes: ADR-NNNN` and update the old ADR's `status` rather than rewriting its original decision text.
+An ADR can be a single paragraph. Most ADRs do not need optional sections.
+
+The sequential number belongs exclusively in the filename slug (`docs/adr/0001-slug.md`); never prefix the markdown H1 title with `{NNNN}:`. Valid `status` values are `proposed`, `accepted`, `deprecated`, `superseded by ADR-NNNN`, or `partially superseded by ADR-NNNN`. Treat accepted ADRs as immutable: when an accepted decision reverses, add a new ADR with `supersedes: ADR-NNNN` and update the old ADR's `status` rather than rewriting its original decision text or appending post-hoc specs from later ADRs.
 
 ## Optional sections
 
@@ -49,12 +49,10 @@ If any criterion is missing, skip the ADR.
 - **Runtime execution and network boundaries:** Cross-process contracts, service communication protocols, in-process execution vs background workers.
 - **Technology choices that carry lock-in:** Foundational runtime engines, database drivers, or auth boundaries requiring substantial rewrites or data migrations to swap out.
 - **Boundary and scope decisions:** Package ownership and encapsulation boundaries where reasonable readers would assume the opposite.
+- **Deliberate deviations from the obvious path:** Choosing an unexpected design for concrete constraints rather than the idiomatic default.
+- **Constraints not visible in the code:** External runtime limits, platform quirks, or operational invariants that explain why simpler code does not work.
 - **Load-bearing rejected architectural alternatives:** Cross-package boundaries, persistence models, or runtime process models investigated and rejected for non-obvious reasons.
 
 ### What does NOT qualify
 
-- **CI/CD workflows and pipeline scripts:** Path filtering, status check naming, job dependencies, and skip gates.
-- **Developer tooling and formatting:** Linters, formatters, compiler options, and test runner configurations.
-- **Git workflows and tracking procedures:** Branching models, ticket hierarchies, commit message rules, and PR checklists.
-- **Local code refactoring and module depth:** Function extractions, internal class design, and localized seams.
-- **Routine code cleanups and localized refactorings:** Ordinary review suggestions or style disagreements.
+Skip an ADR whenever any of the four admission criteria fails. Linter-enforced coding rules belong in `CODING_STANDARDS.md`, verification gates belong in `TESTING.md`, CI and git workflows belong in `CONTRIBUTING.md`, and local refactorings belong in code review.

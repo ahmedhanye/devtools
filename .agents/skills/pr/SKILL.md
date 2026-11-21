@@ -9,7 +9,7 @@ Create, update, or stack pull requests following repository rules without editin
 
 ## 1. Inspect repository rules and branch state
 
-Read `CONTRIBUTING.md` (and its linked pull request, push, and stacked PR guides), `.github/PULL_REQUEST_TEMPLATE.md`, and `REVIEW.md` in full. In parallel, inspect working tree status, commits and diff stats against `origin/main`, any open PR for the branch, and the linked tracking issue and parent Spec if present. Verify affected canonical terms in `GLOSSARY.md` (and linked context glossaries) and architectural constraints in `ARCHITECTURE.md` (and linked ADRs, especially for `Door: one-way` changes).
+Read `CONTRIBUTING.md` (and its linked pull request, push, and stacked PR guides), `.github/PULL_REQUEST_TEMPLATE.md`, and `REVIEW.md` in full. In parallel, inspect working tree status, commits and diff stats against `origin/main`, any open PR for the branch, and the linked tracking issue and parent Spec if present. Verify affected canonical terms in `GLOSSARY.md` and architectural constraints in `ARCHITECTURE.md` (and linked ADRs, especially for `Door: one-way` changes).
 
 Completion criterion: All applicable PR rules, branch diffs, existing PR state, and linked issue criteria are loaded.
 
