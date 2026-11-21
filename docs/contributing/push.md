@@ -6,6 +6,8 @@ Guidelines for verifying branch readiness, pushing commits, inspecting active pu
 
 Before pushing to `origin`, run the completion check matching your changed paths in [Review and verification guide](../../REVIEW.md#scope-and-verification-matrix) (or `bun run verify` for root or multi-workspace changes; pass `BASE_REF="<parent-layer-branch>"` on stacked PR branches).
 
+`lefthook.yml` also runs a parallel `pre-push` hook executing whole-repo `typecheck`, `fallow:dead-code`, `fallow:arch`, `fallow:health`, and `fallow:dupes` automatically on every `git push`.
+
 ## Remote push execution
 
 - **Standard branch push:**
