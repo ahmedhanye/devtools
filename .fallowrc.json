@@ -108,6 +108,7 @@
         "name": "lighthouse-wiring",
         "patterns": [
           "packages/lighthouse/src/wiring.ts",
+          "packages/lighthouse/src/serializers.ts",
           "packages/lighthouse/src/index.ts"
         ]
       },
@@ -210,7 +211,6 @@
         "allow": [
           "core",
           "core-node",
-          "db",
           "browser",
           "lighthouse-schemas",
           "lighthouse-contracts",
@@ -218,7 +218,8 @@
           "lighthouse-application",
           "lighthouse-config",
           "lighthouse-internals"
-        ]
+        ],
+        "allowTypeOnly": ["db"]
       },
       {
         "from": "api-shared",
@@ -250,9 +251,11 @@
           "api-modules/health",
           "api-modules/lighthouse",
           "core",
-          "core-node"
+          "core-node",
+          "db",
+          "lighthouse-wiring"
         ],
-        "allowTypeOnly": ["lighthouse-application", "lighthouse-wiring"]
+        "allowTypeOnly": ["lighthouse-application", "lighthouse-contracts"]
       },
       {
         "from": "cli-shared",
@@ -264,7 +267,7 @@
       },
       {
         "from": "cli-commands/web",
-        "allow": ["cli-shared", "core", "core-node", "api-app"],
+        "allow": ["cli-shared", "core", "core-node", "db", "api-app"],
         "allowTypeOnly": ["lighthouse-application", "lighthouse-wiring"]
       },
       {
@@ -294,8 +297,11 @@
           "cli-commands/browser",
           "cli-commands/lighthouse",
           "core",
-          "core-node"
-        ]
+          "core-node",
+          "db",
+          "lighthouse-wiring"
+        ],
+        "allowTypeOnly": ["lighthouse-application"]
       },
       {
         "from": "frontend-app",
