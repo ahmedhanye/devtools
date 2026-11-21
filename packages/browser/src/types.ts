@@ -95,6 +95,8 @@ export interface InstallBrowserOptions {
    * @param totalBytes - Total expected archive size in bytes.
    */
   onProgress?: (downloadedBytes: number, totalBytes: number) => void;
+  /** Optional cancellation signal aborting browser download and installation. */
+  signal?: AbortSignal;
 }
 
 /**

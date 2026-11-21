@@ -136,4 +136,83 @@ describe("Browser Installer", () => {
     expect(existsSync(envCacheDir)).toBe(true);
     expect(capturedOptions!.cacheDir).toBe(envCacheDir);
   });
+
+  test("installBrowser aborts immediately when signal is pre-aborted or aborts mid-download, and cleans up abort listener", async () => {
+    const preAborted = new AbortController();
+    preAborted.abort("ctrl-c");
+    let resolveBuildCalled = false;
+    await expect(
+      installBrowser(
+        { cacheDir: join(testDir, "never-created"), signal: preAborted.signal },
+        {
+          resolveBuildId: async () => {
+            resolveBuildCalled = true;
+            return "130.0.0";
+          },
+          install: async () => ({
+            executablePath: "/mock/chrome",
+            buildId: "130.0.0",
+            browser: "chrome-headless-shell",
+          }),
+        },
+      ),
+    ).rejects.toThrow("Browser installation was aborted");
+    expect(resolveBuildCalled).toBe(false);
+    expect(existsSync(join(testDir, "never-created"))).toBe(false);
+
+    const midController = new AbortController();
+    let rejectDownload!: (err: Error) => void;
+    const midPromise = installBrowser(
+      { cacheDir: testDir, signal: midController.signal },
+      {
+        resolveBuildId: async () => "130.0.0",
+        install: () =>
+          new Promise((_resolve, reject) => {
+            rejectDownload = reject;
+            queueMicrotask(() => midController.abort("SIGTERM"));
+          }),
+      },
+    );
+    await expect(midPromise).rejects.toThrow(
+      "Browser installation was aborted",
+    );
+    rejectDownload(new Error("late network error"));
+
+    const resolveSyncAbortController = new AbortController();
+    let runInstallCalled = false;
+    await expect(
+      installBrowser(
+        { cacheDir: testDir, signal: resolveSyncAbortController.signal },
+        {
+          resolveBuildId: async () => {
+            resolveSyncAbortController.abort("sync-after-resolve");
+            return "130.0.0";
+          },
+          install: async () => {
+            runInstallCalled = true;
+            return {
+              executablePath: join(testDir, "chrome"),
+              buildId: "130.0.0",
+              browser: "chrome-headless-shell",
+            };
+          },
+        },
+      ),
+    ).rejects.toThrow("Browser installation was aborted");
+    expect(runInstallCalled).toBe(false);
+
+    const okController = new AbortController();
+    const ok = await installBrowser(
+      { cacheDir: testDir, signal: okController.signal },
+      {
+        resolveBuildId: async () => "130.0.0",
+        install: async () => ({
+          executablePath: join(testDir, "chrome"),
+          buildId: "130.0.0",
+          browser: "chrome-headless-shell",
+        }),
+      },
+    );
+    expect(ok.buildId).toBe("130.0.0");
+  });
 });
