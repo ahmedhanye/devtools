@@ -28,11 +28,12 @@ Exit `0` on success or clean signal shutdown, and non-zero (`1`, or `130` / `143
 
 ## Performance and Programmatic CLI Seams
 
-- **Fast `--help` cold start (`<20ms`).** Register command metadata synchronously in `apps/cli/src/app/program.ts` and dynamically import heavy modules inside command action handlers.
+- **Fast `--help` cold start (`<20ms`).** Register command metadata synchronously in `apps/cli/src/app/program.ts` and dynamically import `@devtools/db`, `@devtools/lighthouse`, `@devtools/browser`, and daemon modules only inside action handlers or lazy store loaders so `--help`, `--version`, and `browser status` load zero SQLite modules.
 - **Minimal binary wrapper.** Keep `apps/cli/bin/devtools.js` as a 4-line shebang delegating to `executeCliMain(import.meta.main)` in `apps/cli/src/app/main.ts`.
 - **Testable seams.** Re-export `createProgram`, `runCli`, and `startDaemon` from `apps/cli/src/index.ts`, use Commander `.exitOverride()` in programmatic runners, and accept optional `options.env?: EnvMap` Configuration Seams and `deps` parameters on command runners (`runWebCommand`, `runBrowserStatusCommand`, `runLighthouseAuditCommand`) instead of reading ambient `process.env`.
 
 ## Daemon and signal ergonomics
 
 - Support `--port 0` on local service commands for OS-assigned ephemeral ports.
-- Handle `SIGINT` and `SIGTERM` exclusively through `createShutdownCoordinator()` and `attachHostSignals` from `@devtools/core/node` per [3-phase Shutdown Coordinator](../architecture/cli-and-daemon.md#3-phase-shutdown-coordinator).
+- Handle `SIGINT` and `SIGTERM` exclusively through per-instance `createTeardown()` scopes and `attachHostSignals` from `@devtools/core/node` per [Scoped LIFO teardown](../architecture/cli-and-daemon.md#scoped-lifo-teardown).
+- Always run `ctx.closeStore()` inside `finally` before calling `ctx.exit()` in Lighthouse commands so database handles close cleanly before process exit, and suppress `exit(1)` on aborted cancel signals (`ExitPromptError` or `signal.aborted`) so `main.ts` exits `130`.

@@ -4,7 +4,7 @@ Authoring rules for Hono routes, factories, Zod validation, and error envelopes 
 
 ## Application factory and slice structure
 
-- **Factory instantiation.** Export `createApp(options?: CreateAppOptions)` from `apps/api/src/app/create-app.ts` rather than an ambient singleton so the Daemon and socketless tests instantiate isolated apps with custom stores, `ShutdownRegistry`, and `env` seams:
+- **Factory instantiation.** Export `createApp(options?: CreateAppOptions)` from `apps/api/src/app/create-app.ts` rather than an ambient singleton so the Daemon and socketless tests instantiate isolated apps with custom stores, `db` (`DbSession`), `signal`, and `env` seams:
   ```ts
   export function createApp(options: CreateAppOptions = {}) {
     const app = new Hono<{ Bindings: ApiBindings }>();
@@ -14,7 +14,7 @@ Authoring rules for Hono routes, factories, Zod validation, and error envelopes 
   }
   ```
 - **Vertical module slices.** Group endpoints by domain resource under `apps/api/src/modules/<module>/routes.ts` (for example, `health/routes.ts`, `lighthouse/routes.ts`), expose each slice through `index.ts`, and mount routers in `apps/api/src/app/create-app.ts`.
-- **No direct `@devtools/db` imports.** Access persistence exclusively through domain stores such as `openLighthouseStore` from `@devtools/lighthouse`.
+- **Composition-root `@devtools/db` boundary.** Only `apps/api/src/app/**` may open or close `@devtools/db` `DbHandle` instances. Keep `apps/api/src/modules/*` DB-free and access persistence strictly through `LighthouseStore` (`createLighthouseStore` over a borrowed `DbSession`) and `AuditJobManager` from `@devtools/lighthouse`.
 
 ## Security boundary discipline
 
