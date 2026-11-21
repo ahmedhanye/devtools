@@ -10,12 +10,12 @@ For workspace dependency topology and enforced `.fallowrc.json` zones, see [Mono
 - **No internal process orchestration.** Packages are programmatic libraries, not process supervisors. Do not spawn worker scripts (`Bun.spawn`) to manage internal control flow; leave job concurrency and supervision to `apps/api` and `apps/cli` per [ADR 0005](../adr/0005-in-process-lighthouse-execution.md).
 - **Direct source exports.** Declare direct TypeScript entrypoints in `package.json` `exports` (`"."`, `"./node"`, `"./schema"`, `"./schemas"`) pointing to `./src/*.ts` rather than `dist/`. Consuming workspaces import only public subpath exports, never internal paths such as `@devtools/db/src/client`.
 
-## Configuration Seams (ADR 0002)
+## Configuration seams
 
 > [!IMPORTANT]
 > Oxlint denies `node/no-process-env` across `packages/**/src/**`, allowing `process.env` reads exclusively inside designated `config.ts` and `config/artifacts-config.ts` modules.
 
-Per [ADR 0002](../adr/0002-package-configuration-and-environment-seams.md), centralize environment resolution into one configuration module per package and accept an injectable `options.env` Configuration Seam:
+Centralize environment resolution into one configuration module per package and accept an injectable `options.env` Configuration Seam:
 
 ```ts
 export interface ResolveConfigOptions {

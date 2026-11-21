@@ -6,7 +6,7 @@ Chromium Browser Resolution Waterfall, executable verification, Managed Browser 
 
 | Path                                | Responsibility                                                                        | Entrypoint                      |
 | :---------------------------------- | :------------------------------------------------------------------------------------ | :------------------------------ |
-| `packages/browser/src/config.ts`    | Managed Browser Cache path, Chromium sandbox policy, and Configuration Seams.         | `packages/browser/src/index.ts` |
+| `packages/browser/src/config.ts`    | Managed Browser Cache path, Chromium sandbox policy, and configuration seams.         | `packages/browser/src/index.ts` |
 | `packages/browser/src/waterfall.ts` | 3-tier Browser Resolution Waterfall with injectable `WaterfallDependencies`.          | `packages/browser/src/index.ts` |
 | `packages/browser/src/detector.ts`  | Executable `X_OK` check, `--version` probe, and OS/tool path discovery.               | `packages/browser/src/index.ts` |
 | `packages/browser/src/installer.ts` | Chrome for Testing (`chrome-headless-shell`) download and unpack into cache.          | `packages/browser/src/index.ts` |
@@ -17,7 +17,7 @@ Chromium Browser Resolution Waterfall, executable verification, Managed Browser 
 
 ```mermaid
 flowchart TD
-  Start(["Resolve Chromium Executable"]) --> CheckOverride{"Explicit Browser Override?<br/>--chrome-path or DEVTOOLS_CHROME_PATH"}
+  Start(["Resolve Chromium Executable"]) --> CheckOverride{"Explicit browser override?<br/>--chrome-path or DEVTOOLS_CHROME_PATH"}
   CheckOverride -- Yes --> VerifyOverride["Verify Executable Path and Version"]
   VerifyOverride -- Valid --> Found(["Return BrowserResolution"])
   VerifyOverride -- Invalid --> ErrorOverride["Throw InvalidBrowserPathError"]
@@ -30,7 +30,7 @@ flowchart TD
 
 | Tier | Sources evaluated                                                                                                                         | Failure behavior                                                      |
 | :--: | :---------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------- |
-|  1   | Explicit Browser Override (`--chrome-path`, `DEVTOOLS_CHROME_PATH`, then `CHROME_PATH`).                                                  | Throws `InvalidBrowserPathError` immediately if invalid.              |
+|  1   | Explicit browser override (`--chrome-path`, `DEVTOOLS_CHROME_PATH`, then `CHROME_PATH`).                                                  | Throws `InvalidBrowserPathError` immediately if invalid.              |
 |  2   | Managed Browser Cache (`~/.devtools/browsers/` or `DEVTOOLS_BROWSERS_DIR`), OS Chrome/Chromium, Edge, Brave, Playwright/Puppeteer caches. | Continues to next probe until a valid binary is verified.             |
 |  3   | Terminal remediation stop.                                                                                                                | Throws `BrowserNotFoundError` pointing to `devtools browser install`. |
 

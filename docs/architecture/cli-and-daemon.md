@@ -1,6 +1,6 @@
 # CLI and Daemon architecture
 
-Command routing, Programmatic CLI Seams, Daemon hosting, scoped LIFO teardown, and standalone binary bundling for `apps/cli`.
+Command routing, programmatic CLI seams, Daemon hosting, scoped LIFO teardown, and standalone binary bundling for `apps/cli`.
 
 ## Module responsibilities
 
@@ -10,7 +10,7 @@ Command routing, Programmatic CLI Seams, Daemon hosting, scoped LIFO teardown, a
 | `apps/cli/src/app/`        | Commander tree + `createLazyLighthouseStore()` (`program.ts`) and host runner (`main.ts`). | `apps/cli/src/app/index.ts`        |
 | `apps/cli/src/commands/`   | Isolated vertical slices for `browser`, `lighthouse`, and `web` (Daemon + port).           | `apps/cli/src/commands/*/index.ts` |
 | `apps/cli/src/shared/`     | `NO_COLOR` / `FORCE_COLOR` / TTY color guards (`colors.ts`) and embedded asset types.      | `apps/cli/src/shared/terminal/`    |
-| `apps/cli/src/index.ts`    | Curated Programmatic CLI Seam (`createProgram`, `runCli`, `startDaemon`).                  | `apps/cli/src/index.ts`            |
+| `apps/cli/src/index.ts`    | Curated programmatic CLI seam (`createProgram`, `runCli`, `startDaemon`).                  | `apps/cli/src/index.ts`            |
 
 ## Command tree
 
@@ -27,7 +27,7 @@ Commander registers command metadata synchronously so `--help` completes without
 | `devtools lighthouse diff <id1> <id2>` | Computes score, Core Web Vitals, and Insight Audit deltas via `@devtools/lighthouse`.                       |
 | `devtools lighthouse open [id]`        | Opens a persisted `report.html` Report Artifact (or prints its `file://` URI in headless environments).     |
 
-## Programmatic CLI Seams
+## Programmatic CLI seams
 
 `apps/cli/src/index.ts` exports in-process entrypoints decoupled from the executable wrapper:
 

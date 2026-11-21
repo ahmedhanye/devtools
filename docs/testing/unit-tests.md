@@ -18,7 +18,7 @@ Assert `error.name`, machine-readable `error.code`, `error.exitCode` (where appl
 
 ### 3. Seam-pair pattern for Configuration Seams
 
-For every function accepting an optional `options.env` or runtime seam per [`docs/coding-standards/packages.md`](../coding-standards/packages.md#configuration-seams-adr-0002), write **two** test cases so both injected branches and the omitted-argument production default execute under `verify:diff-coverage`:
+For every function accepting an optional `options.env` or runtime seam per [`docs/coding-standards/packages.md`](../coding-standards/packages.md#configuration-seams), write **two** test cases so both injected branches and the omitted-argument production default execute under `verify:diff-coverage`:
 
 ```ts
 it("returns :memory: when injected env sets NODE_ENV=test", () => {

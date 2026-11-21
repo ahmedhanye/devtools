@@ -8,7 +8,7 @@ DevTools partitions code into three tiers linked via Bun workspace references (`
 
 | Tier             | Directory             | Package                | Hosts                                                                                     |
 | :--------------- | :-------------------- | :--------------------- | :---------------------------------------------------------------------------------------- |
-| **Applications** | `apps/cli`            | `@devtools/cli`        | CLI commands, Programmatic CLI Seams, Daemon host, lazy DB wiring, and binary entrypoint. |
+| **Applications** | `apps/cli`            | `@devtools/cli`        | CLI commands, programmatic CLI seams, Daemon host, lazy DB wiring, and binary entrypoint. |
 | **Applications** | `apps/api`            | `@devtools/api`        | In-process Hono HTTP API (`/api/*`), loopback security middleware, and `DbHandle` wiring. |
 | **Applications** | `apps/frontend`       | `@devtools/frontend`   | Next.js App Router dashboard (FSD v2.1) exported as static assets for the Daemon.         |
 | **Packages**     | `packages/core`       | `@devtools/core`       | Browser-safe platform schemas and errors (`.`) plus Node/Bun host utilities (`./node`).   |

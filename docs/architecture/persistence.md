@@ -1,6 +1,6 @@
 # Persistence and database architecture
 
-Embedded SQLite foundation, `DbSession` vs. `DbHandle` ownership, automatic idle-close, WAL concurrency, Lazy Schema Initialization, and Multi-Environment Path Resolution for `packages/db`.
+Embedded SQLite foundation, `DbSession` vs. `DbHandle` ownership, automatic idle-close, WAL concurrency, lazy schema initialization, and multi-environment path resolution for `packages/db`.
 
 ## Module responsibilities
 
@@ -9,8 +9,8 @@ Embedded SQLite foundation, `DbSession` vs. `DbHandle` ownership, automatic idle
 | `packages/db/drizzle/`        | Versioned Drizzle SQL migration files and `meta/_journal.json`.                                     | Statically bundled by `migrator.ts` |
 | `packages/db/src/schema/`     | Drizzle tables (`system.ts` for `system_metadata`, `lighthouse.ts` for `lighthouse_runs`).          | `packages/db/src/schema/index.ts`   |
 | `packages/db/src/client.ts`   | Lazy `openDb` (`DbSession` / `DbHandle`), 30 s idle-close, `BEGIN IMMEDIATE`, savepoints.           | `packages/db/src/index.ts`          |
-| `packages/db/src/config.ts`   | Multi-Environment Path Resolution (`resolveDatabaseTargetPath`, `resolveDatabasePath`).             | `packages/db/src/index.ts`          |
-| `packages/db/src/migrator.ts` | Bundled SHA-256 SQL Lazy Schema Initialization (`initializeBaselineSchema`, `EMBEDDED_SQL_BY_TAG`). | `packages/db/src/index.ts`          |
+| `packages/db/src/config.ts`   | Multi-environment path resolution (`resolveDatabaseTargetPath`, `resolveDatabasePath`).             | `packages/db/src/index.ts`          |
+| `packages/db/src/migrator.ts` | Bundled SHA-256 SQL lazy schema initialization (`initializeBaselineSchema`, `EMBEDDED_SQL_BY_TAG`). | `packages/db/src/index.ts`          |
 
 ## Lazy handle ownership and idle-close lifecycle
 
@@ -44,9 +44,9 @@ Per [ADR 0001](../adr/0001-embedded-database-foundation.md), file-backed connect
 | `foreign_keys` | `ON`     | Enforces referential integrity at the SQLite engine level.                   |
 | `busy_timeout` | `5000`   | Waits up to 5 seconds on lock contention before raising `SQLITE_BUSY`.       |
 
-## Multi-Environment Path Resolution (ADR 0002)
+## Multi-environment path resolution
 
-`packages/db/src/config.ts` consumes `@devtools/core/node` (`findWorkspaceRoot`, `isStandaloneRuntime`) with injectable `env`, `cwd`, `memory`, `isStandalone`, and `idleTimeoutMs` Configuration Seams:
+`packages/db/src/config.ts` consumes `@devtools/core/node` (`findWorkspaceRoot`, `isStandaloneRuntime`) with injectable `env`, `cwd`, `memory`, `isStandalone`, and `idleTimeoutMs` configuration seams:
 
 | Priority | Condition                                                  | Resolved target                                 |
 | :------: | :--------------------------------------------------------- | :---------------------------------------------- |

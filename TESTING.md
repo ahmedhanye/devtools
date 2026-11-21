@@ -12,9 +12,9 @@ Compilers and static analyzers enforce structural invariants (`tsc --noEmit`, `o
 ### Hermetic isolation and authoring rules
 
 - **Hermetic resources.** Test suites run concurrently without shared mutable state: Daemons bind ephemeral port `0`, SQLite suites use `:memory:`, Hono API suites use socketless `app.request()`, and file-writing tests use isolated `fs.mkdtempSync()` directories.
-- **Seam-pair rule and call-chain forwarding.** Centralize environment reads in `config.ts` with `env?: Record<string, string | undefined>` per [ADR 0002](docs/adr/0002-package-configuration-and-environment-seams.md) instead of mutating globals (`process.getuid`, `Bun.stdin`, ambient `process.env`). Functions branching on runtime state (`isTTY`, `process.platform`, `process.getuid`, signals) or external boundaries (`spawnCommand`, browser binaries) accept an optional seam with production defaults and test both the injected seam and the default omitted-argument path in separate unit tests. Intermediate helpers must forward the full seam object downstream.
+- **Seam-pair rule and call-chain forwarding.** Centralize environment reads in `config.ts` with `env?: Record<string, string | undefined>` per [Monorepo package standards](docs/coding-standards/packages.md) instead of mutating globals (`process.getuid`, `Bun.stdin`, ambient `process.env`). Functions branching on runtime state (`isTTY`, `process.platform`, `process.getuid`, signals) or external boundaries (`spawnCommand`, browser binaries) accept an optional seam with production defaults and test both the injected seam and the default omitted-argument path in separate unit tests. Intermediate helpers must forward the full seam object downstream.
 - **Vertical TDD slices at agreed seams.** Work in vertical red-green-refactor cycles: write one failing test at a public seam, implement the minimal code to pass it, then repeat.
-- **Diff coverage exemptions.** `scripts/verify-diff-coverage/verify-diff-coverage.ts` exempts type-only files (`Bun.Transpiler`), `*.test.*`, `*.spec.*`, `**/tests/**`, `*.stories.*`, `.storybook/**`, `*.d.ts`, `*.config.*`, `scripts/**`, `.agents/**`, and thin App Router Boundary Adapters (`apps/frontend/src/app/**/*.next.{ts,tsx}`). For coverage command execution and `BASE_REF` flags, see [REVIEW.md](REVIEW.md#deduplication-and-overlap-prevention).
+- **Diff coverage exemptions.** `scripts/verify-diff-coverage/verify-diff-coverage.ts` exempts type-only files (`Bun.Transpiler`), `*.test.*`, `*.spec.*`, `**/tests/**`, `*.stories.*`, `.storybook/**`, `*.d.ts`, `*.config.*`, `scripts/**`, `.agents/**`, and thin App Router boundary adapters (`apps/frontend/src/app/**/*.next.{ts,tsx}`). For coverage command execution and `BASE_REF` flags, see [REVIEW.md](REVIEW.md#deduplication-and-overlap-prevention).
 
 ### Prohibited testing anti-patterns and false-positive guards
 
@@ -35,7 +35,7 @@ Reject these nine test anti-patterns across all workspaces:
 Apply these repository false-positive guards during review:
 
 - **CLI `--help` output vs. decorative UI prose.** Asserting command descriptions and flag names in CLI `--help` output (`apps/cli/tests/cli.e2e.test.ts`) verifies a public CLI contract and is not Anti-pattern #1.
-- **Interactive vs. stateless Portable Stories.** Stateful interactive components (`Dialog`, `Drawer`, `DropdownMenu`, `Sheet`, `Tooltip`, forms) require `play()` interaction tests using `storybook/test`; stateless presentational primitives (`Badge`, `Card`, `Separator`, `Skeleton`) require only visual render stories (`docs/testing/stories.md`).
+- **Interactive vs. stateless portable stories.** Stateful interactive components (`Dialog`, `Drawer`, `DropdownMenu`, `Sheet`, `Tooltip`, forms) require `play()` interaction tests using `storybook/test`; stateless presentational primitives (`Badge`, `Card`, `Separator`, `Skeleton`) require only visual render stories (`docs/testing/stories.md`).
 - **Barrel export smoke checks and repository self-checks.** Evaluate full test files and sibling suites before flagging `index.unit.test.ts` barrel checks alongside behavioral tests, or intentional repository self-checks in `scripts/**/*.unit.test.ts`.
 - **Duplication triage.** Filter `fallow:dupes` output to ignore idiomatic boilerplate such as TSDoc comments, distinct domain error subclasses (`@devtools/core`), and declarative Drizzle ORM column definitions (`packages/db`).
 
@@ -47,7 +47,7 @@ Automated tests are partitioned into three non-overlapping levels by visibility 
 | :---------------------------- | :------------------------------- | :----------------- | :------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **White-box (Unit)**          | `*.unit.test.ts`                 | `test:unit`        | Code internals, AST, branches    | Pure functions, Zod schemas, error classes, React hooks (`renderHook` without JSX), `scripts/`, static complexity, and diff coverage                            |
 | **Gray-box (Integration)**    | `*.integration.test.ts`          | `test:integration` | Module seams, contracts, schemas | Socketless Hono routes (`app.request()`), ephemeral Daemons (`port: 0`), `:memory:` SQLite stores (`openDb`, `createLighthouseStore`), adapters, `site` loaders |
-| **Black-box (E2E & Stories)** | `*.e2e.test.ts`, `*.stories.tsx` | `test:e2e`         | External observable behavior     | Subprocess CLI binaries (`Bun.spawn`), Portable Stories (`play()`), exploratory external probes, and binary smoke checks                                        |
+| **Black-box (E2E & Stories)** | `*.e2e.test.ts`, `*.stories.tsx` | `test:e2e`         | External observable behavior     | Subprocess CLI binaries (`Bun.spawn`), portable stories (`play()`), exploratory external probes, and binary smoke checks                                        |
 
 **Single-level file rule.** Place one test level per file using its matching suffix (`*.unit.test.ts`, `*.integration.test.ts`, `*.e2e.test.ts`, or `*.stories.tsx`). Keep unit, integration, and end-to-end `describe` blocks in separate files.
 
@@ -61,4 +61,4 @@ Automated tests are partitioned into three non-overlapping levels by visibility 
 | [Unit testing](docs/testing/unit-tests.md)               | Writing `*.unit.test.ts` suites for schemas, errors, seam-pair branches, invariants, or React hooks.           |
 | [Integration testing](docs/testing/integration-tests.md) | Writing `*.integration.test.ts` suites for Hono routes, ephemeral Daemons, `:memory:` SQLite, or adapters.     |
 | [End-to-end testing](docs/testing/e2e-tests.md)          | Writing `*.e2e.test.ts` suites for `Bun.spawn` CLI binaries, stream separation, and signal teardown.           |
-| [Storybook component testing](docs/testing/stories.md)   | Running Vitest Portable Stories or writing `play()` interaction tests in `apps/frontend`.                      |
+| [Storybook component testing](docs/testing/stories.md)   | Running Vitest portable stories or writing `play()` interaction tests in `apps/frontend`.                      |
