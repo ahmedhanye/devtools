@@ -15,12 +15,12 @@ flowchart LR
 
 Configured in [`release-please-config.json`](../../release-please-config.json):
 
-| Commit prefix on `main`                                            | Release impact        | Notes                                                                                               |
-| :----------------------------------------------------------------- | :-------------------- | :-------------------------------------------------------------------------------------------------- |
-| `fix:`, `perf:`, `revert:`                                         | Patch (`v0.0.X`)      | Included in changelog.                                                                              |
-| `feat:`                                                            | Minor (`v0.X.0`)      | Included in changelog.                                                                              |
-| `feat!:` (or `<type>!:` / `BREAKING CHANGE:`)                      | Major (`vX.0.0`)      | Triggers major bump regardless of type. Prefer `!:` in the PR title since squash bodies stay empty. |
-| `chore:`, `ci:`, `docs:`, `style:`, `refactor:`, `test:`, `build:` | None (`hidden: true`) | Hidden from changelog unless accompanied by a breaking change.                                      |
+| Commit prefix on `main`                                            | Release impact        | Notes                                                                                                                                                    |
+| :----------------------------------------------------------------- | :-------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fix:`, `perf:`, `revert:`                                         | Patch (`v0.0.X`)      | Included in changelog.                                                                                                                                   |
+| `feat:`                                                            | Minor (`v0.X.0`)      | Included in changelog.                                                                                                                                   |
+| `feat!:` (or `<type>!:` / `BREAKING CHANGE:`)                      | Major (`vX.0.0`)      | Triggers major bump on subsequent releases (`0.1.0` initial release uses `initial-version`). Prefer `!:` in the PR title since squash bodies stay empty. |
+| `chore:`, `ci:`, `docs:`, `style:`, `refactor:`, `test:`, `build:` | None (`hidden: true`) | Hidden from changelog unless accompanied by a breaking change.                                                                                           |
 
 Commits modifying only excluded paths (`.agents`, `.github`, `docs`, `scripts`, `site`) are ignored by Release Please (`exclude-paths`).
 

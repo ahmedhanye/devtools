@@ -4,16 +4,20 @@ Patterns for authoring black-box end-to-end tests (`*.e2e.test.ts` via `test:e2e
 
 ## Subprocess execution pattern (`Bun.spawn`)
 
-Always bind an ephemeral port (`getFreePort` / `waitForServer` in `apps/cli/tests/support/network.ts`), sanitize environment variables (`DEVTOOLS_DB_PATH: ":memory:"` or a temp directory), and kill the child process in `finally`:
+Bind an ephemeral port inside the child process with `--port 0` and `--host 127.0.0.1` so parallel runs never race on pre-probed ports, read the assigned port from child `stdout` (`readDaemonPort` in `apps/cli/tests/cli.e2e.test.ts`), sanitize environment variables (strip ambient `HOST` and `PORT` and set `DEVTOOLS_DB_PATH: ":memory:"` or a temp directory), and kill the child process in `finally`:
 
 ```ts
-const proc = Bun.spawn(["bun", binPath, "web", "--port", String(port)], {
-  stdout: "pipe",
-  stderr: "pipe",
-  env: { ...process.env, DEVTOOLS_DB_PATH: ":memory:" },
-});
+const env = { ...process.env, DEVTOOLS_DB_PATH: ":memory:" };
+delete env.HOST;
+delete env.PORT;
+
+const proc = Bun.spawn(
+  ["bun", binPath, "web", "--port", "0", "--host", "127.0.0.1"],
+  { stdout: "pipe", stderr: "pipe", env },
+);
 try {
-  expect(await waitForServer(port, "127.0.0.1")).toBe(true);
+  const port = await readDaemonPort(proc.stdout);
+  expect((await fetch(`http://127.0.0.1:${port}/api/health`)).status).toBe(200);
   // Assert static UI delivery, /api/* Zod contracts, and clean SIGTERM teardown
   proc.kill("SIGTERM");
   expect(await proc.exited).toBe(0);

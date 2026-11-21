@@ -76,11 +76,13 @@ sequenceDiagram
 
 `apps/cli/src/app/main.ts`, `apps/cli/src/commands/web/command.ts`, and `apps/cli/src/commands/web/daemon.ts` pair `attachHostSignals` with per-instance `createTeardown()` scopes from `@devtools/core/node`:
 
-1. **Host Process Boundary.** Intercepts `SIGINT` and `SIGTERM` and triggers `teardown.run()` (a second signal force-exits with `130` or `143`).
-2. **Ingress stop.** Runs the last-deferred step `server.stop(true)` (`bindManagedServer`) immediately while `POST /api/lighthouse/audits` returns `503 SERVICE_UNAVAILABLE`.
-3. **Active work abort.** Aborts `teardown.signal` and awaits `api.shutdown()` (`AuditJobManager.shutdown()`) to cancel running Chromium audits and close SSE streams.
-4. **Database close.** Closes any composition-root `DbHandle` (`ownedDb.close()`, or `lazyStore.closeStore()` in short-lived CLI commands after `ctx.closeStore()` runs outside `try`), then exits (`0` for long-running servers, `130` or `143` for short-lived CLI commands).
+1. **Host Process Boundary and signal abort.** Intercepts `SIGINT` and `SIGTERM` and triggers `teardown.run()`, which aborts `teardown.signal` immediately before running deferred steps so `POST /api/lighthouse/audits` rejects new jobs with `503 SERVICE_UNAVAILABLE` (a second signal force-exits with `130` or `143`).
+2. **Ingress stop.** Runs the last-deferred step `server.stop(true)` (`bindManagedServer`) to stop accepting connections and close open sockets.
+3. **Active work drain.** Awaits `api.shutdown()` (`AuditJobManager.shutdown()`) to cancel running Chromium audits and close SSE streams.
+4. **Database close.** Closes any composition-root `DbHandle` (`ownedDb.close()`, or `lazyStore.closeStore()` in short-lived CLI commands after `ctx.closeStore()` runs outside `try`).
+
+`startDaemon().stop()` completes without exiting the process, whereas signal-driven shutdown via `attachHostSignals` exits with `0` for long-running servers (`130` or `143` for short-lived CLI commands) on success, or `1` if any teardown step throws.
 
 ## Standalone binary compilation
 
-Running `bun run build:bin` compiles `apps/cli/bin/devtools.js` with `bun build --compile --minify --bytecode` into a self-contained single-file executable (`dist/devtools`) embedding the Bun runtime, bytecode, bundled baseline SQL schema, and Lighthouse assets with no external Bun dependency. For release targets and Checksum Manifests, see [Releases and distribution](../contributing/releases.md).
+Running `bun run build:bin` compiles `apps/cli/bin/devtools.js` with `bun build --compile --minify --bytecode` into a self-contained single-file executable (`dist/devtools`) embedding the Bun runtime, bytecode, bundled baseline SQL schema, and Lighthouse assets with no external Bun dependency. The executable does not bundle a Chromium binary, so running Lighthouse audits still requires Chromium from the Managed Browser Cache (`~/.devtools/browsers/`), system `PATH`, or `DEVTOOLS_CHROME_PATH`. For release targets and Checksum Manifests, see [Releases and distribution](../contributing/releases.md).

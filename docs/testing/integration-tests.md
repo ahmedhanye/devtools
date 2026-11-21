@@ -42,6 +42,11 @@ expect(() =>
     throw new Error("Abort");
   }),
 ).toThrow("Abort");
+
+const row = handle.read((db) =>
+  db.select().from(systemMetadata).where(eq(systemMetadata.key, "k")).get(),
+);
+expect(row).toBeUndefined();
 ```
 
 - **Reference suite:** `packages/db/tests/db.integration.test.ts`.

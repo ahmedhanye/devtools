@@ -37,7 +37,7 @@ it("resolves a non-empty default path when called without arguments", () => {
 Supplement point assertions on normalizers, diff engines, and coverage calculators with structural invariants:
 
 - **Idempotence.** Normalizing a path twice yields the exact output of normalizing once (`f(f(x)) === f(x)`).
-- **Metamorphic relations.** Adding an uncovered executable line to a git diff hunk lowers or preserves `diffCoveragePercent`, while adding a type-only interface leaves `totalModifiedExecutableLines` unchanged (`scripts/verify-diff-coverage/verify-diff-coverage.ts`).
+- **Metamorphic relations.** Adding an uncovered executable line to a git diff hunk lowers or preserves `diffCoveragePercent`, while adding a type-only interface to a wholly type-only file or a file with LCOV coverage data leaves `totalModifiedExecutableLines` unchanged (`scripts/verify-diff-coverage/verify-diff-coverage.ts`).
 - **Reference suites:** `packages/lighthouse/tests/median.unit.test.ts`, `packages/lighthouse/tests/normalizer.unit.test.ts`, `packages/lighthouse/tests/diff.unit.test.ts`.
 
 ## React hook unit tests (Vitest)

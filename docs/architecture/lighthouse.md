@@ -81,5 +81,5 @@ The `listLighthouseRuns` query omits `summary_json` to keep paginated responses 
 | :------: | :--------------------------------------------------------- | :------------------------------------------- |
 |    1     | `options.customDir` or `DEVTOOLS_LIGHTHOUSE_ARTIFACTS_DIR` | Explicit override path                       |
 |    2     | `NODE_ENV === "test"` or `BUN_ENV === "test"`              | `<tmpdir>/devtools-tests/lighthouse`         |
-|    3     | Local workspace development (`!isStandaloneRuntime()`)     | `<repo_root>/.devtools/artifacts/lighthouse` |
-|    4     | Compiled standalone binary or production default           | `~/.devtools/artifacts/lighthouse`           |
+|    3     | Compiled standalone binary or `NODE_ENV === "production"`  | `~/.devtools/artifacts/lighthouse`           |
+|    4     | Local workspace development (`!isStandaloneRuntime()`)     | `<repo_root>/.devtools/artifacts/lighthouse` |

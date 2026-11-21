@@ -71,7 +71,7 @@ Build forward from trunk (run `gh stack add` only from trunk or the topmost stac
 
 ```bash
 gh stack init 102-audit/01-schemas-and-core
-# Commit atomic changes per ../commits.md
+# Commit logical changes per ../commits.md
 gh stack add 102-audit/02-lighthouse-runner
 ```
 
@@ -122,7 +122,7 @@ Submit stacked PRs in two phases because `gh stack submit --auto` falls back to 
 
 ### Modifying a lower layer
 
-1. Switch via `gh stack checkout <branch>`, commit atomic fixes, and verify the layer.
+1. Switch via `gh stack checkout <branch>`, commit fixes, and verify the layer.
 2. Cascade-rebase upper branches (omit `--no-trunk` to include trunk):
    ```bash
    gh stack rebase --upstack --no-trunk
@@ -155,10 +155,11 @@ Run `gh stack sync --prune` after lower layers squash-merge to advance `main`, `
 > Stacked pull requests cannot use `gh pr merge`, do not support `--auto` merge-when-ready, and cannot bypass `Protect Main Branch` rulesets. Confirm every layer up to the target has `CODEOWNERS` approval (`0` changes requested), all review threads resolved, and all required status checks passing (`gh pr checks <pr_number>`) before merging.
 
 ```bash
+gh stack view --json
 gh stack merge [<stack-number> | <pr-number>] --yes --squash
 ```
 
-- A bare number matches a **stack number** first, then a **PR number**. Passing `<pr-number>` squash-merges that PR and every unmerged layer below it.
+- Because a bare number matches a **stack number** first and then a **PR number**, passing a PR number that matches an active stack number selects that other stack without confirmation under `--yes`. Verify the target stack and merge set with `gh stack view --json` first, and omit the number when checked out on the target stack (or confirm no stack number matches `<pr-number>`) before passing `--yes`. Passing `<pr-number>` squash-merges that PR and every unmerged layer below it.
 - Release Please evaluates each squashed PR title landed on `main`.
 - Clean up local and any pre-split tracking branches afterward:
   ```bash

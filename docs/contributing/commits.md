@@ -1,6 +1,6 @@
-# Commits and atomic changes
+# Commits
 
-Guidelines for writing Conventional Commits, choosing scopes, keeping history release-safe, and staging logical atomic changes.
+Guidelines for writing Conventional Commits, choosing scopes, keeping history release-safe, and staging coherent logical changes.
 
 ## Conventional commits
 
@@ -64,7 +64,7 @@ Prevent silent fallback to default settings when the user passes an
 explicit --config path that does not exist on disk.
 ```
 
-## Logical atomic commits
+## Coherent logical commits
 
 Each commit represents **one coherent, buildable, revertible logical change**, regardless of how many folders it needs to touch:
 

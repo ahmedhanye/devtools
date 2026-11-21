@@ -29,6 +29,10 @@ In Storybook 10, import `expect`, `fn`, `userEvent`, `waitFor`, and `within` fro
 
 ```tsx
 export const ClickedWithPointer: Story = {
+  args: {
+    children: "Run Audit",
+    onClick: fn(),
+  },
   play: async ({ args, canvasElement }) => {
     const canvas = within(canvasElement);
     const button = canvas.getByRole("button", { name: "Run Audit" });

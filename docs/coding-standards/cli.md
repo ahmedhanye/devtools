@@ -6,7 +6,7 @@ Authoring conventions for command-line tools in `apps/cli`, following the [Comma
 
 - **Separate `stdout` and `stderr`.** Write requested data, tables, and JSON payloads to `stdout`. Write logs, progress messages, spinners, and error diagnostics to `stderr` so output pipes cleanly (`devtools browser status --json | jq .`).
 - **Machine-readable `--json`.** Every query or status command supports `--json`, emitting valid JSON to `stdout` with banners, prompts, and ANSI styling suppressed.
-- **Color and TTY discipline.** Disable ANSI escape codes when `NO_COLOR` is set or `!process.stdout.isTTY`, using helpers in `apps/cli/src/shared/terminal/colors.ts`.
+- **Color and TTY discipline.** Use helpers in `apps/cli/src/shared/terminal/colors.ts`: disable ANSI escape codes when `NO_COLOR` is set and non-empty, honor `FORCE_COLOR` (unless `"0"` or `"false"`) even on non-TTY streams, and otherwise enable color only on interactive TTYs when `TERM !== "dumb"` (pass `colors: false` explicitly when unconditional suppression is required).
 
 ## Flag conventions
 

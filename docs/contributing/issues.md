@@ -11,7 +11,7 @@ Work splits into two issue kinds in [`.github/ISSUE_TEMPLATE/`](../../.github/IS
 | **Spec**   | [`spec.yml`](../../.github/ISSUE_TEMPLATE/spec.yml)     | `Feature`                                  | `type:spec`                  | Active milestone when applicable | Tracks a capability or multi-slice effort and owns child sub-issues                        |
 | **Ticket** | [`ticket.yml`](../../.github/ISSUE_TEMPLATE/ticket.yml) | `Task` (`Bug` / `Feature` when overridden) | Matching `type:*` & `area:*` | None                             | Delivers one actionable slice (`feat`, `bug`, `docs`, `infra`, `research`, or `Task` work) |
 
-Repository areas group under five labels: `area:backend` (`api`, `core`, `db`, `browser`, `lighthouse`), `area:cli` (`cli`), `area:frontend` (`frontend`), `area:docs` (`docs` and `site`), and `area:tooling` (`.github`, `scripts`, `.agents`). Check live labels (`gh label list`) and milestones (`gh api --paginate repos/{owner}/{repo}/milestones --jq '.[].title'`) rather than guessing names. For interactive drafting workflows, use `/to-spec` for multi-slice Specs and `/to-tickets` for splitting a Spec into dependent child Tickets.
+Repository areas group under five labels: `area:backend` (`api`, `core`, `db`, `browser`, `lighthouse`), `area:cli` (`cli`), `area:frontend` (`frontend`), `area:docs` (`docs` and `site`), and `area:tooling` (`.github`, `scripts`, `.agents`). Check live labels (`gh label list`) and milestones (`gh api --paginate repos/{owner}/{repo}/milestones --jq '.[].title'`) rather than guessing names. Draft multi-slice Specs using [`.github/ISSUE_TEMPLATE/spec.yml`](../../.github/ISSUE_TEMPLATE/spec.yml), and split child Tickets using [`.github/ISSUE_TEMPLATE/ticket.yml`](../../.github/ISSUE_TEMPLATE/ticket.yml) linked via the sub-issue and dependency commands below.
 
 ## Issue bodies and titles
 
@@ -27,7 +27,7 @@ Because issues and pull requests share one number space on GitHub, resolve an un
 | Action                              | Command                                                                                                                                             |
 | :---------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Create a Spec                       | `gh issue create --title "<title>" --label "type:spec" [--milestone "<milestone>"] --body "..."`                                                    |
-| Create a Ticket                     | `gh issue create --title "<title>" --label "<type-label>" --body "..."`                                                                             |
+| Create a Ticket                     | `gh issue create --title "<title>" --label "<type-label>" --label "<area-label>" --body "..."`                                                      |
 | Set native Issue Type (`gh 2.46.0`) | `gh api --method PATCH repos/{owner}/{repo}/issues/<number> -f type="<Feature\|Task\|Bug>"`                                                         |
 | List open unassigned tickets        | `gh issue list --state open --assignee "" --json number,title,labels`                                                                               |
 | Resolve database ID                 | `gh api repos/{owner}/{repo}/issues/<number> --jq .id`                                                                                              |
@@ -36,6 +36,8 @@ Because issues and pull requests share one number space on GitHub, resolve an un
 | Query blocking dependencies         | `gh api --paginate repos/{owner}/{repo}/issues/<ticket_number>/dependencies/blocked_by --jq '[.[] \| select(.state == "open") \| {number, title}]'` |
 | Query child sub-issues              | `gh api --paginate repos/{owner}/{repo}/issues/<spec_number>/sub_issues --jq '.[] \| {number, title, state}'`                                       |
 | Query parent Spec                   | `gh api repos/{owner}/{repo}/issues/<ticket_number>/parent 2>/dev/null \| jq -r '.number // empty'`                                                 |
+
+Because `gh issue create` bypasses issue templates and leaves the native Issue Type unset, run the `PATCH` command immediately after creation to set `Feature`, `Task`, or `Bug`.
 
 ## Branching, updates, and closing
 

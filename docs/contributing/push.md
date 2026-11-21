@@ -4,7 +4,7 @@ Guidelines for verifying branch readiness, pushing commits, inspecting active pu
 
 ## Pre-push quality gate
 
-Before pushing to `origin`, run the completion check matching your changed paths in [Review and verification guide](../../REVIEW.md#scope-and-verification-matrix) (or `bun run verify` for root or multi-workspace changes; pass `BASE_REF="<parent-layer-branch>"` on stacked PR branches).
+Before pushing to `origin`, run the completion check matching your changed paths in [Review and verification guide](../../REVIEW.md#scope-and-verification-matrix) (or `bun run verify` for root configs or executable multi-workspace changes; doc-only changes stop after their matching completion check, and stacked PR branches pass `BASE_REF="<parent-layer-branch>"`).
 
 `lefthook.yml` also runs a parallel `pre-push` hook executing whole-repo `typecheck`, `fallow:dead-code`, `fallow:arch`, `fallow:health`, and `fallow:dupes` automatically on every `git push`.
 
@@ -15,10 +15,14 @@ Before pushing to `origin`, run the completion check matching your changed paths
   git push origin <branch>
   ```
 - **Stacked PR branches (`gh-stack`):**
-  Fetch and push stack updates (`git fetch origin && gh stack push`), or pull trunk, rebase, push, and prune merged branches per [Stacked pull requests](pull-request/stacked-prs.md):
+  When committing fixes on a lower stack branch, cascade-rebase upper branches first (`gh stack rebase --upstack --no-trunk`) before running `git fetch origin && gh stack push`, or pull trunk, rebase, push, and prune merged branches per [Stacked pull requests](pull-request/stacked-prs.md):
   ```bash
+  gh stack rebase --upstack --no-trunk
+  git fetch origin && gh stack push
+  # Or, after lower layers merge:
   gh stack sync --prune
   ```
+  In non-interactive shells, a diverged stack causes `gh stack sync` to print `Sync aborted` and exit `0` without pushing, so confirm the command output reports pushed branches before replying to review comments.
 
 ## Active pull request inspection
 
