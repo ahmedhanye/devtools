@@ -59,11 +59,11 @@ The persistence layer (`@devtools/db`) resolves SQLite database paths through th
 2. **Automated test environment**:
    If `NODE_ENV === "test"` or `BUN_ENV === "test"`, the path resolves to `":memory:"` for hermetic testing.
 3. **Local development**:
-   If `NODE_ENV !== "production"`, the path resolves to `<repo_root>/.devtools/devtools.db` using workspace root discovery.
-4. **Production default**:
-   In packaged production binaries, the path defaults to `~/.devtools/devtools.db` in the current user home directory.
+   If `NODE_ENV !== "production"` and the process is not a compiled standalone executable, the path resolves to `<repo_root>/.devtools/devtools.db` using workspace root discovery (falling back to `<cwd>/.devtools/devtools.db` outside a workspace).
+4. **Production / standalone binary default**:
+   In packaged standalone binaries and production builds, the path defaults to `~/.devtools/devtools.db` in the current user home directory.
 
-Parent directories are created automatically with recursive creation (`mkdirSync`) prior to opening SQLite connections.
+Parent directories are created lazily prior to opening SQLite connections when persistence operations execute.
 
 ### SQLite concurrency pragmas
 

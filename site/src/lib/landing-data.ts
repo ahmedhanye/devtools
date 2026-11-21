@@ -1,22 +1,21 @@
 export const GITHUB_REPO_URL = "https://github.com/AhmedHanye/devtools";
 
-export interface NavLink {
+interface NavLink {
   label: string;
   href: string;
   isExternal?: boolean;
 }
 
-export const NAV_LINKS: NavLink[] = [
+export const NAV_LINKS = [
   { label: "Docs", href: "/docs" },
   { label: "GitHub", href: GITHUB_REPO_URL, isExternal: true },
-];
+] satisfies NavLink[];
 
-export type QuadrantId = "tutorials" | "how-to" | "reference" | "explanation";
 export type QuadrantIconName =
   "GraduationCap" | "Compass" | "BookOpen" | "Layers";
 
 export interface DiataxisQuadrant {
-  id: QuadrantId;
+  id: "tutorials" | "how-to" | "reference" | "explanation";
   title: string;
   description: string;
   href: string;
@@ -96,7 +95,7 @@ export const PLATFORM_FEATURES: PlatformFeature[] = [
   },
 ];
 
-export interface HeroConfig {
+interface HeroConfig {
   badge: string;
   headline: string;
   description: string;
@@ -104,7 +103,7 @@ export interface HeroConfig {
   secondaryCta: { label: string; href: string };
 }
 
-export const HERO_CONFIG: HeroConfig = {
+export const HERO_CONFIG = {
   badge: "Developer Tooling Monorepo",
   headline: "Fast, Unified Developer Workflows",
   description:
@@ -117,4 +116,4 @@ export const HERO_CONFIG: HeroConfig = {
     label: "View on GitHub",
     href: GITHUB_REPO_URL,
   },
-};
+} satisfies HeroConfig;

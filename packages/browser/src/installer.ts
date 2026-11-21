@@ -6,7 +6,7 @@ import {
   resolveBuildId as defaultResolveBuildId,
   type InstallOptions,
 } from "@puppeteer/browsers";
-import { getManagedCacheDir } from "./detector";
+import { resolveManagedCacheDir } from "./config";
 import type { InstallBrowserOptions, InstalledBrowser } from "./types";
 
 /**
@@ -31,19 +31,60 @@ export interface BrowserInstallerDependencies {
   ) => Promise<InstallResult>;
 }
 
+function createInstallAbortError(signal: AbortSignal): Error {
+  return new Error("Browser installation was aborted", {
+    cause: signal.reason,
+  });
+}
+
+async function raceWithAbort<T>(
+  promise: Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  if (!signal) {
+    return promise;
+  }
+  if (signal.aborted) {
+    throw createInstallAbortError(signal);
+  }
+  let onAbort: (() => void) | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        onAbort = () => {
+          void promise.catch(() => {});
+          reject(createInstallAbortError(signal));
+        };
+        signal.addEventListener("abort", onAbort, { once: true });
+      }),
+    ]);
+  } finally {
+    if (onAbort) {
+      signal.removeEventListener("abort", onAbort);
+    }
+  }
+}
+
 /**
  * Downloads and unpacks the `stable` build of `chrome-headless-shell` into the managed DevTools browser cache.
  *
- * @param options - Optional cache directory override and download progress callback.
+ * @param options - Optional cache directory override, cancellation signal, and download progress callback.
  * @param deps - Optional dependency injection seam for testing without network I/O.
  * @returns Metadata describing the installed browser executable, build ID, and browser type.
- * @throws {@link Error} If the current OS/architecture platform is unsupported or archive download fails.
+ * @throws {@link Error} If the current OS/architecture platform is unsupported, aborted via `signal`, or archive download fails.
  */
 export async function installBrowser(
   options?: InstallBrowserOptions,
   deps?: BrowserInstallerDependencies,
 ): Promise<InstalledBrowser> {
-  const cacheDir = options?.cacheDir ?? getManagedCacheDir(options?.env);
+  if (options?.signal?.aborted) {
+    throw createInstallAbortError(options.signal);
+  }
+
+  const cacheDir =
+    options?.cacheDir ??
+    resolveManagedCacheDir(undefined, { env: options?.env });
   mkdirSync(cacheDir, { recursive: true });
 
   const resolveBuild = deps?.resolveBuildId ?? defaultResolveBuildId;
@@ -54,23 +95,25 @@ export async function installBrowser(
     throw new Error("Unsupported platform for browser installation");
   }
 
-  const buildId = await resolveBuild(
-    Browser.CHROMEHEADLESSSHELL,
-    platform,
-    "stable",
+  const buildId = await raceWithAbort(
+    resolveBuild(Browser.CHROMEHEADLESSSHELL, platform, "stable"),
+    options?.signal,
   );
 
-  const installed = await runInstall({
-    browser: Browser.CHROMEHEADLESSSHELL,
-    buildId,
-    cacheDir,
-    unpack: true,
-    downloadProgressCallback: options?.onProgress
-      ? (downloadedBytes: number, totalBytes: number) => {
-          options.onProgress?.(downloadedBytes, totalBytes);
-        }
-      : undefined,
-  });
+  const installed = await raceWithAbort(
+    runInstall({
+      browser: Browser.CHROMEHEADLESSSHELL,
+      buildId,
+      cacheDir,
+      unpack: true,
+      downloadProgressCallback: options?.onProgress
+        ? (downloadedBytes: number, totalBytes: number) => {
+            options.onProgress?.(downloadedBytes, totalBytes);
+          }
+        : undefined,
+    }),
+    options?.signal,
+  );
 
   return {
     executablePath: installed.executablePath,

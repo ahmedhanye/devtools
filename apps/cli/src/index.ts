@@ -1,10 +1,9 @@
 /**
- * DevTools CLI command tree, loopback daemon runner, and browser management commands.
+ * DevTools CLI command tree and loopback daemon runner.
  *
  * @packageDocumentation
  */
-export * from "./port";
-export * from "./daemon";
-export * from "./cli";
-export * from "./browser";
-export * from "./lighthouse";
+export { createProgram, runCli } from "./app";
+export type { DaemonInstance, StartDaemonOptions } from "./commands/web";
+// oxlint-disable-next-line no-restricted-imports -- Keep commands/web barrel DB-free for Q13 lazy startup while exposing startDaemon from package root.
+export { startDaemon } from "./commands/web/daemon";

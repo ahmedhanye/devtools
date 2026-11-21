@@ -5,7 +5,10 @@ import { describe, expect, it } from "bun:test";
 import {
   collectCoverage,
   mergeLcovContents,
+  normalizeCoverageTarget,
   normalizeLcovPaths,
+  parseCollectCoverageCliArgs,
+  resolveTargetsForFiles,
 } from "./collect-coverage";
 
 describe("collect-coverage", () => {
@@ -327,6 +330,267 @@ end_of_record
         ).rejects.toThrow("was not written or is empty");
       } finally {
         fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it("runs only requested workspaces when scoped and preserves sibling LCOV reports on merge", async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "cov-scoped-"));
+      try {
+        fs.mkdirSync(path.join(tmpDir, "packages/core"), { recursive: true });
+        fs.mkdirSync(path.join(tmpDir, "packages/db/coverage"), {
+          recursive: true,
+        });
+        fs.writeFileSync(
+          path.join(tmpDir, "packages/db/coverage/lcov.info"),
+          `SF:src/db.ts\nDA:1,1\nend_of_record\n`,
+        );
+
+        const ranCwds: string[] = [];
+        const defaultSpawner = createMockCoverageSpawner();
+        const result = await collectCoverage({
+          repoRoot: tmpDir,
+          outputDir: path.join(tmpDir, "coverage"),
+          cleanPriorReports: true,
+          workspaces: ["packages/core"],
+          spawnCommand: (cmd, args, opts) => {
+            ranCwds.push(opts.cwd);
+            return defaultSpawner(cmd, args, opts);
+          },
+        });
+
+        expect(ranCwds).toEqual([path.join(tmpDir, "packages/core")]);
+        expect(result.mergedCount).toBe(2);
+        const merged = fs.readFileSync(result.outputPath, "utf8");
+        expect(merged).toContain("SF:packages/core/sample.ts");
+        expect(merged).toContain("SF:packages/db/src/db.ts");
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe("workspace targeting helpers", () => {
+    it("normalizes paths, trailing slashes, and workspace package aliases", () => {
+      expect(normalizeCoverageTarget("./packages/lighthouse/")).toBe(
+        "packages/lighthouse",
+      );
+      expect(normalizeCoverageTarget("@devtools/cli")).toBe("apps/cli");
+      expect(normalizeCoverageTarget("scripts/")).toBe("scripts");
+      expect(() => normalizeCoverageTarget("packages/unknown")).toThrow(
+        'Unknown coverage target "packages/unknown"',
+      );
+    });
+
+    it("maps modified file paths to unique coverage targets and skips docs", () => {
+      expect(
+        resolveTargetsForFiles([
+          "REVIEW.md",
+          "docs/testing/box-testing.md",
+          "packages/lighthouse/src/index.ts",
+          "packages/lighthouse/tests/audit.unit.test.ts",
+          "scripts/verify-staged-secrets/verify-staged-secrets.ts",
+          "apps/frontend/src/App.tsx",
+        ]),
+      ).toEqual(["packages/lighthouse", "scripts", "apps/frontend"]);
+    });
+
+    it("parses positional targets, --scope, --changed, --base, and --help", () => {
+      expect(parseCollectCoverageCliArgs(["--help"])).toEqual({
+        help: true,
+        emptyChangedSelection: false,
+      });
+
+      expect(
+        parseCollectCoverageCliArgs([
+          "packages/core",
+          "--scope",
+          "@devtools/db",
+        ]),
+      ).toEqual({
+        help: false,
+        workspaces: ["packages/core", "packages/db"],
+        emptyChangedSelection: false,
+      });
+
+      const gitCalls: string[][] = [];
+      const changed = parseCollectCoverageCliArgs(["--changed"], {
+        repoRoot: "/tmp/repo",
+        env: { BASE_REF: "origin/stack-parent" },
+        gitRunner: (args) => {
+          gitCalls.push(args);
+          if (args.includes("origin/stack-parent...HEAD")) {
+            return { status: 0, stdout: "apps/api/src/routes.ts\n" };
+          }
+          return { status: 0, stdout: "" };
+        },
+      });
+      expect(changed).toEqual({
+        help: false,
+        workspaces: ["apps/api"],
+        emptyChangedSelection: false,
+      });
+      expect(gitCalls[0]).toEqual([
+        "diff",
+        "--name-only",
+        "origin/stack-parent...HEAD",
+      ]);
+
+      const workingTreeSelection = parseCollectCoverageCliArgs(
+        ["--changed", "--base", "origin/main"],
+        {
+          repoRoot: "/tmp/repo",
+          gitRunner: (args) => {
+            if (args[0] === "diff" && args.length === 2) {
+              return { status: 0, stdout: "packages/db/src/client.ts\n" };
+            }
+            if (args[0] === "ls-files") {
+              return { status: 0, stdout: "apps/cli/src/new-file.ts\n" };
+            }
+            return { status: 0, stdout: "" };
+          },
+        },
+      );
+      expect(workingTreeSelection).toEqual({
+        help: false,
+        workspaces: ["packages/db", "apps/cli"],
+        emptyChangedSelection: false,
+      });
+
+      const docsOnly = parseCollectCoverageCliArgs(
+        ["--changed", "--base", "origin/main"],
+        {
+          repoRoot: "/tmp/repo",
+          gitRunner: () => ({ status: 0, stdout: "REVIEW.md\nTESTING.md\n" }),
+        },
+      );
+      expect(docsOnly).toEqual({
+        help: false,
+        workspaces: [],
+        emptyChangedSelection: true,
+      });
+
+      expect(() => parseCollectCoverageCliArgs(["--bogus"])).toThrow(
+        'Unknown option "--bogus"',
+      );
+      expect(() => parseCollectCoverageCliArgs(["--scope"])).toThrow(
+        'Option "--scope" requires a workspace target argument.',
+      );
+      expect(() => parseCollectCoverageCliArgs(["--base"])).toThrow(
+        'Option "--base" requires a git ref argument.',
+      );
+    });
+
+    it("fails closed with actionable error when --changed base diff or working-tree git inspection fails", () => {
+      expect(() =>
+        parseCollectCoverageCliArgs(["--changed", "--base", "origin/missing"], {
+          repoRoot: "/tmp/repo",
+          gitRunner: (args) => {
+            if (args.includes("origin/missing...HEAD")) {
+              return {
+                status: 128,
+                stdout: "",
+                stderr:
+                  "fatal: ambiguous argument 'origin/missing...HEAD': unknown revision",
+              };
+            }
+            return { status: 0, stdout: "" };
+          },
+        }),
+      ).toThrow(
+        /Could not diff against "origin\/missing\.\.\.HEAD"[\s\S]*git fetch origin missing[\s\S]*--base <ref>[\s\S]*unknown revision/,
+      );
+
+      expect(() =>
+        parseCollectCoverageCliArgs(["--changed", "--base", "origin/main"], {
+          repoRoot: "/tmp/repo",
+          gitRunner: () => ({ status: 128, stdout: "" }),
+        }),
+      ).toThrow(/Could not diff against "origin\/main\.\.\.HEAD"[\s\S]*128/);
+
+      expect(() =>
+        parseCollectCoverageCliArgs(["--changed", "--base", "origin/main"], {
+          repoRoot: "/tmp/repo",
+          gitRunner: (args) => {
+            if (args[0] === "diff" && args[1] === "--cached") {
+              return {
+                status: 128,
+                stdout: "",
+                stderr: "fatal: not a git repository",
+              };
+            }
+            return { status: 0, stdout: "" };
+          },
+        }),
+      ).toThrow(/git diff --cached --name-only[\s\S]*not a git repository/);
+
+      expect(() =>
+        parseCollectCoverageCliArgs(["--changed", "--base", "origin/main"], {
+          repoRoot: "/tmp/repo",
+          gitRunner: () => ({
+            status: 1,
+            stdout: "fatal: stdout-only diagnostic",
+            stderr: "   ",
+          }),
+        }),
+      ).toThrow(
+        /Could not diff against "origin\/main\.\.\.HEAD"[\s\S]*fatal: stdout-only diagnostic/,
+      );
+
+      expect(() =>
+        parseCollectCoverageCliArgs(["--changed", "--base", "origin/main"], {
+          repoRoot: "/tmp/repo",
+          gitRunner: () => ({ status: null, stdout: "", stderr: "" }),
+        }),
+      ).toThrow(
+        /Could not diff against "origin\/main\.\.\.HEAD"[\s\S]*exit code unknown/,
+      );
+
+      expect(() =>
+        parseCollectCoverageCliArgs(["--changed", "--base", "origin/main"], {
+          repoRoot: "/tmp/repo",
+          gitRunner: (args) => {
+            if (args[0] === "diff" && args.length === 2) {
+              return {
+                status: 128,
+                stdout: "",
+                stderr: "fatal: corrupt unstaged index",
+              };
+            }
+            return { status: 0, stdout: "" };
+          },
+        }),
+      ).toThrow(/git diff --name-only[\s\S]*corrupt unstaged index/);
+
+      expect(() =>
+        parseCollectCoverageCliArgs(["--changed", "--base", "origin/main"], {
+          repoRoot: "/tmp/repo",
+          gitRunner: (args) => {
+            if (args[0] === "ls-files") {
+              return {
+                status: 128,
+                stdout: "",
+                stderr: "fatal: untracked listing failed",
+              };
+            }
+            return { status: 0, stdout: "" };
+          },
+        }),
+      ).toThrow(
+        /git ls-files --others --exclude-standard[\s\S]*untracked listing failed/,
+      );
+
+      const nonGitTmpDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "collect-cov-nongit-"),
+      );
+      try {
+        expect(() =>
+          parseCollectCoverageCliArgs(["--changed"], {
+            repoRoot: nonGitTmpDir,
+            env: { BASE_REF: "origin/main" },
+          }),
+        ).toThrow(/Could not diff against "origin\/main\.\.\.HEAD"/);
+      } finally {
+        fs.rmSync(nonGitTmpDir, { recursive: true, force: true });
       }
     });
   });

@@ -1,5 +1,6 @@
 import { describe, expect, it, spyOn } from "bun:test";
 import {
+  computeShannonEntropy,
   scanContentForSecrets,
   maskSecret,
   isIgnoredLine,
@@ -114,6 +115,103 @@ const zeros = "00000000000000000000000000000000";
 `;
     const findings = scanContentForSecrets(content, "mock.ts");
     expect(findings).toHaveLength(0);
+  });
+
+  it("detects Anthropic, Google Cloud, npm, SendGrid, PyPI, database URI, and JWT credentials", () => {
+    const anthropicKey =
+      "sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789ABCD"; // trufflehog:ignore
+    const gcpKey = `AIza${"a".repeat(35)}`; // trufflehog:ignore
+    const npmToken = "npm_1234567890abcdefghijklmnopqrstuvwxyz"; // trufflehog:ignore
+    const sendgridKey =
+      "SG.abcdefghijklmnopqrstuv.abcdefghijklmnopqrstuvwxyz01234567890123456"; // trufflehog:ignore
+    const pypiToken = `pypi-AgEIcHlwaS5vcmc${"a".repeat(52)}`; // trufflehog:ignore
+    const dbUri =
+      "postgresql://appuser:s3cr3tP4ssw0rd@db.example.com:5432/prod"; // trufflehog:ignore
+    const jwt =
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"; // trufflehog:ignore
+
+    const content = [
+      `ANTHROPIC_API_KEY=${anthropicKey}`,
+      `GCP_KEY=${gcpKey}`,
+      `NPM_TOKEN=${npmToken}`,
+      `SENDGRID_API_KEY=${sendgridKey}`,
+      `PYPI_TOKEN=${pypiToken}`,
+      `DATABASE_URL="${dbUri}"`,
+      `JWT="${jwt}"`,
+    ].join("\n");
+
+    const findings = scanContentForSecrets(content, "secrets.env");
+    expect(findings.map((f) => f.rule)).toEqual([
+      "Anthropic API Key",
+      "Google Cloud / Firebase API Key",
+      "npm Access Token",
+      "SendGrid API Key",
+      "PyPI API Token",
+      "Database Connection URI",
+      "JSON Web Token",
+    ]);
+  });
+
+  it("detects high-entropy generic secret assignments and skips low-entropy or suppressed values", () => {
+    const highEntropySecret = "Ab9xK2mPqR7vTzW4nY8cDfGh3jLmNpQrStUvWxYz12"; // trufflehog:ignore
+    const lowEntropyPlaceholder = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const limitedClassPlaceholder =
+      "example_placeholder_key_for_local_dev_only";
+    const anthropicKey =
+      "sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789ABCD"; // trufflehog:ignore
+
+    const content = [
+      `const api_key = "${highEntropySecret}";`,
+      `const secret_key = "${lowEntropyPlaceholder}";`,
+      `const access_token = "${limitedClassPlaceholder}";`,
+      `const client_secret = "${anthropicKey}";`,
+      `const auth_token = "${highEntropySecret}"; // trufflehog:ignore`,
+    ].join("\n");
+
+    const findings = scanContentForSecrets(content, "config.ts");
+    expect(findings).toHaveLength(2);
+    expect(findings[0]?.rule).toBe("High-Entropy Secret Assignment");
+    expect(findings[0]?.line).toBe(1);
+    expect(findings[1]?.rule).toBe("Anthropic API Key");
+    expect(findings[1]?.line).toBe(4);
+  });
+
+  it("distinguishes character class diversity and Shannon entropy threshold in high-entropy assignments", () => {
+    // 2 character classes only (lowercase + digits) -> ignored
+    const twoClasses = [
+      'const access_token = "',
+      "abcdefghijkmnpqrstuvwxyz23456789abcdefghij",
+      '";',
+    ].join("");
+    expect(scanContentForSecrets(twoClasses, "config.ts")).toHaveLength(0);
+
+    // 3 character classes (upper + lower + digits) but repeated pattern (< 4.2 entropy) -> ignored
+    const lowEntropy = [
+      'const api_key = "',
+      "Ab0Ab0Ab0Ab0Ab0Ab0Ab0Ab0Ab0Ab0Ab0Ab0",
+      '";',
+    ].join("");
+    expect(scanContentForSecrets(lowEntropy, "config.ts")).toHaveLength(0);
+
+    // 4 character classes (upper + lower + symbols '_+=-') with >= 4.2 entropy -> detected
+    const diverseHighEntropy = [
+      'const secret_key = "',
+      "AbCdEfGhIjKlMnOpQrStUvWx",
+      "Yz_+=-aBcDeFgH",
+      '";',
+    ].join("");
+    const findings = scanContentForSecrets(diverseHighEntropy, "config.ts");
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.rule).toBe("High-Entropy Secret Assignment");
+  });
+
+  it("computes Shannon entropy accurately for empty, uniform, and diverse strings", () => {
+    expect(computeShannonEntropy("")).toBe(0);
+    expect(computeShannonEntropy("aaaaaaaaaa")).toBe(0);
+    expect(computeShannonEntropy("ab")).toBe(1);
+    expect(
+      computeShannonEntropy("Ab9xK2mPqR7vTzW4nY8cDfGh3jLmNpQrStUvWxYz12"),
+    ).toBeGreaterThanOrEqual(4.2);
   });
 });
 

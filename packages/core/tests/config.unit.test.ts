@@ -1,7 +1,10 @@
 import { describe, expect, it } from "bun:test";
+import { z } from "zod";
 import {
   type RuntimeConfig,
+  RuntimeConfigError,
   RuntimeConfigSchema,
+  formatRuntimeConfigError,
   parsePortFromEnv,
 } from "../src/config";
 
@@ -43,8 +46,11 @@ describe("RuntimeConfigSchema", () => {
     expect(() => RuntimeConfigSchema.parse({ port: "4000" })).toThrow();
   });
 
-  it("rejects empty host string", () => {
+  it("rejects empty or whitespace-only host and staticDir strings", () => {
     expect(() => RuntimeConfigSchema.parse({ host: "" })).toThrow();
+    expect(() => RuntimeConfigSchema.parse({ host: "   " })).toThrow();
+    expect(() => RuntimeConfigSchema.parse({ staticDir: "" })).toThrow();
+    expect(() => RuntimeConfigSchema.parse({ staticDir: "   " })).toThrow();
   });
 
   it("rejects unexpected extraneous keys due to strict validation", () => {
@@ -92,5 +98,78 @@ describe("parsePortFromEnv", () => {
   it("returns NaN for empty or whitespace-only strings", () => {
     expect(parsePortFromEnv("")).toBeNaN();
     expect(parsePortFromEnv("   ")).toBeNaN();
+  });
+});
+
+describe("formatRuntimeConfigError", () => {
+  it("formats port override and PORT env errors clearly", () => {
+    const portRes = RuntimeConfigSchema.safeParse({ port: -1 });
+    expect(portRes.success).toBe(false);
+    if (!portRes.success) {
+      const overrideErr = formatRuntimeConfigError(portRes.error, {
+        portOverride: -1,
+      });
+      expect(overrideErr).toBeInstanceOf(RuntimeConfigError);
+      expect(overrideErr.name).toBe("RuntimeConfigError");
+      expect(overrideErr.message).toBe(
+        'Invalid port number "-1": must be an integer between 0 and 65535',
+      );
+      expect(overrideErr.cause).toBe(portRes.error);
+
+      const envErr = formatRuntimeConfigError(portRes.error, {
+        envPort: "4000abc",
+      });
+      expect(envErr.message).toBe(
+        'Invalid environment variable PORT="4000abc": must be an integer between 0 and 65535',
+      );
+    }
+  });
+
+  it("formats host override and HOST env errors with explicit source labels", () => {
+    const hostRes = RuntimeConfigSchema.safeParse({ host: "" });
+    expect(hostRes.success).toBe(false);
+    if (!hostRes.success) {
+      const defaultHostErr = formatRuntimeConfigError(hostRes.error, {
+        hostOverride: "",
+      });
+      expect(defaultHostErr.message).toBe(
+        'Invalid host "": must be a non-empty hostname or IP address',
+      );
+
+      const cliHostErr = formatRuntimeConfigError(hostRes.error, {
+        hostOverride: "",
+        hostOptionLabel: "--host",
+      });
+      expect(cliHostErr.message).toBe(
+        'Invalid --host "": must be a non-empty hostname or IP address',
+      );
+
+      const envHostErr = formatRuntimeConfigError(hostRes.error, {
+        envHost: "",
+      });
+      expect(envHostErr.message).toBe(
+        'Invalid environment variable HOST="": must be a non-empty hostname or IP address',
+      );
+    }
+  });
+
+  it("falls back to first issue or fallback message for other schema errors", () => {
+    const strictRes = RuntimeConfigSchema.safeParse({ extra: "nope" });
+    expect(strictRes.success).toBe(false);
+    if (!strictRes.success) {
+      const strictErr = formatRuntimeConfigError(strictRes.error);
+      expect(strictErr).toBeInstanceOf(RuntimeConfigError);
+      expect(strictErr.message).toContain("extra");
+    }
+
+    const emptyError = new z.ZodError([]);
+    expect(
+      formatRuntimeConfigError(emptyError, {
+        fallbackMessage: "Custom fallback",
+      }).message,
+    ).toBe("Custom fallback");
+    expect(formatRuntimeConfigError(emptyError).message).toBe(
+      "Invalid runtime configuration",
+    );
   });
 });

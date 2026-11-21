@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { findNextAvailablePort, isPortAvailable } from "../src/port";
+import {
+  findNextAvailablePort,
+  isPortAvailable,
+} from "../src/commands/web/port";
 
 describe("Port Detection Utilities", () => {
   test("isPortAvailable returns true for ephemeral port 0", () => {
@@ -23,7 +26,7 @@ describe("Port Detection Utilities", () => {
 
     expect(isPortAvailable(occupiedPort)).toBe(false);
 
-    server.stop(true);
+    void server.stop(true);
     expect(isPortAvailable(occupiedPort)).toBe(true);
   });
 
@@ -65,8 +68,8 @@ describe("Port Detection Utilities", () => {
       }
       expect(isPortAvailable(foundPort!)).toBe(true);
     } finally {
-      s1.stop(true);
-      s2?.stop(true);
+      void s1.stop(true);
+      void s2?.stop(true);
     }
   });
 
@@ -74,6 +77,41 @@ describe("Port Detection Utilities", () => {
     expect(findNextAvailablePort(65535)).toBeNull();
     expect(findNextAvailablePort(-5)).toBeNull();
     expect(findNextAvailablePort(0)).toBeNull();
+  });
+
+  test("findNextAvailablePort returns null when every port in search range is occupied", () => {
+    const servers: ReturnType<typeof Bun.serve>[] = [];
+    try {
+      let portA = 0;
+      let portB = 0;
+      for (let attempt = 0; attempt < 20; attempt++) {
+        const s1 = Bun.serve({
+          port: 0,
+          hostname: "127.0.0.1",
+          routes: { "/": new Response("busy1") },
+        });
+        const candidateNext = (s1.port ?? 0) + 1;
+        try {
+          const s2 = Bun.serve({
+            port: candidateNext,
+            hostname: "127.0.0.1",
+            routes: { "/": new Response("busy2") },
+          });
+          servers.push(s1, s2);
+          portA = s1.port!;
+          portB = s2.port!;
+          break;
+        } catch {
+          void s1.stop(true);
+        }
+      }
+      expect(portB).toBe(portA + 1);
+      expect(findNextAvailablePort(portA, "127.0.0.1", 1)).toBeNull();
+    } finally {
+      for (const s of servers) {
+        void s.stop(true);
+      }
+    }
   });
 
   test("findNextAvailablePort supports default hostname and maxAttempts arguments", () => {

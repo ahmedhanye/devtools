@@ -13,6 +13,8 @@ import {
   ApiErrorResponseSchema,
   HealthResponseSchema,
 } from "@devtools/core";
+import { openDb } from "@devtools/db";
+import { createLighthouseStore } from "@devtools/lighthouse";
 import {
   AuditSseErrorEventSchema,
   AuditSseProgressEventSchema,
@@ -38,6 +40,38 @@ function createSanitizedEnv(
   delete env.HOST;
   delete env.PORT;
   return { ...env, ...overrides };
+}
+
+async function readDaemonPort(
+  stream: ReadableStream<Uint8Array>,
+  timeoutMs = 8000,
+): Promise<number> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let collected = "";
+  const deadline = Date.now() + timeoutMs;
+
+  try {
+    while (Date.now() < deadline) {
+      const remaining = Math.max(10, deadline - Date.now());
+      const raced = await Promise.race([
+        reader.read().then((res) => ({ kind: "read" as const, res })),
+        Bun.sleep(remaining).then(() => ({ kind: "timeout" as const })),
+      ]);
+      if (raced.kind === "timeout" || raced.res.done) {
+        break;
+      }
+      collected += decoder.decode(raced.res.value, { stream: true });
+      const match = collected.match(/http:\/\/127\.0\.0\.1:(\d+)/);
+      if (match?.[1]) {
+        return Number.parseInt(match[1], 10);
+      }
+    }
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
+
+  throw new Error(`Timed out waiting for daemon port in stdout: ${collected}`);
 }
 
 describe("CLI Subprocess Integration Tests (E2E)", () => {
@@ -146,7 +180,7 @@ describe("CLI Subprocess Integration Tests (E2E)", () => {
         proc.kill();
       }
     } finally {
-      blocker.stop(true);
+      await blocker.stop(true);
     }
   });
 
@@ -469,5 +503,374 @@ describe("End-to-End Interconnected Stack Integration (CLI -> Daemon -> UI -> AP
     } finally {
       daemonProc.kill();
     }
+  });
+
+  test("rejects empty --host, HOST, and --static-dir inputs with actionable stderr errors", async () => {
+    const cases: Array<{
+      args: string[];
+      env: Record<string, string>;
+      expected: string;
+    }> = [
+      {
+        args: ["web", "--port", "0", "--host", ""],
+        env: {},
+        expected:
+          'Invalid --host "": must be a non-empty hostname or IP address',
+      },
+      {
+        args: ["web", "--port", "0"],
+        env: { HOST: "" },
+        expected:
+          'Invalid environment variable HOST="": must be a non-empty hostname or IP address',
+      },
+      {
+        args: ["web", "--port", "0", "--static-dir", ""],
+        env: {},
+        expected: "Invalid --static-dir: path must not be empty",
+      },
+    ];
+
+    for (const testCase of cases) {
+      const proc = Bun.spawn(["bun", binPath, ...testCase.args], {
+        env: createSanitizedEnv({ NO_COLOR: "1", ...testCase.env }),
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      try {
+        expect(await proc.exited).toBe(1);
+        expect(await new Response(proc.stdout).text()).toBe("");
+        const stderr = await new Response(proc.stderr).text();
+        expect(stderr).toContain(testCase.expected);
+        expect(stderr).not.toContain("Too small");
+      } finally {
+        proc.kill();
+      }
+    }
+  });
+
+  test("binds --port 0 dynamically and keeps DB and artifacts lazy until DB-backed routes run", async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "devtools-cli-e2e-lazy-"));
+    const dbPath = join(tmpDir, "lazy.db");
+    const artifactsDir = join(tmpDir, "artifacts");
+    const proc = Bun.spawn(
+      ["bun", binPath, "web", "--port", "0", "--host", "127.0.0.1"],
+      {
+        env: createSanitizedEnv({
+          NO_COLOR: "1",
+          DEVTOOLS_DB_PATH: dbPath,
+          DEVTOOLS_LIGHTHOUSE_ARTIFACTS_DIR: artifactsDir,
+        }),
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+
+    try {
+      const port = await readDaemonPort(proc.stdout);
+      expect(port).toBeGreaterThan(0);
+      const baseUrl = `http://127.0.0.1:${port}`;
+
+      expect((await fetch(`${baseUrl}/`)).status).toBe(200);
+      expect((await fetch(`${baseUrl}/api/health`)).status).toBe(200);
+      expect(
+        (await fetch(`${baseUrl}/api/lighthouse/audits/active`)).status,
+      ).toBe(200);
+      expect(
+        (
+          await fetch(`${baseUrl}/api/lighthouse/audits`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: "not-a-valid-url" }),
+          })
+        ).status,
+      ).toBe(422);
+
+      expect(existsSync(dbPath)).toBe(false);
+      expect(existsSync(artifactsDir)).toBe(false);
+
+      const runsRes = await fetch(`${baseUrl}/api/lighthouse/runs`);
+      expect(runsRes.status).toBe(200);
+      expect(
+        ListLighthouseRunsResponseSchema.parse(await runsRes.json()).total,
+      ).toBe(0);
+      expect(existsSync(dbPath)).toBe(true);
+
+      proc.kill("SIGTERM");
+      expect(await proc.exited).toBe(0);
+    } finally {
+      try {
+        proc.kill();
+        await proc.exited;
+      } finally {
+        rmSync(tmpDir, { recursive: true, force: true });
+      }
+    }
+  });
+
+  test("compiled dist/devtools outside repo resolves DB under $HOME/.devtools/devtools.db", async () => {
+    if (!existsSync(compiledBinPath)) {
+      throw new Error(
+        `Compiled binary not found at ${compiledBinPath}. Run 'bun run build:bin' first.`,
+      );
+    }
+
+    const tmpRoot = mkdtempSync(join(tmpdir(), "devtools-cli-e2e-home-"));
+    const outsideCwd = join(tmpRoot, "outside-cwd");
+    const fakeHome = join(tmpRoot, "home");
+    const staticDir = join(tmpRoot, "static");
+    mkdirSync(outsideCwd, { recursive: true });
+    mkdirSync(fakeHome, { recursive: true });
+    mkdirSync(staticDir, { recursive: true });
+    writeFileSync(
+      join(staticDir, "index.html"),
+      "<!DOCTYPE html><html></html>",
+    );
+
+    const env = createSanitizedEnv({
+      HOME: fakeHome,
+      NO_COLOR: "1",
+    });
+    delete env.DEVTOOLS_DB_PATH;
+    delete env.DATABASE_URL;
+    delete env.DEVTOOLS_LIGHTHOUSE_ARTIFACTS_DIR;
+    delete env.NODE_ENV;
+    delete env.BUN_ENV;
+
+    const proc = Bun.spawn(
+      [
+        compiledBinPath,
+        "web",
+        "--port",
+        "0",
+        "--host",
+        "127.0.0.1",
+        "--static-dir",
+        staticDir,
+      ],
+      {
+        cwd: outsideCwd,
+        env,
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+
+    try {
+      const port = await readDaemonPort(proc.stdout);
+      const baseUrl = `http://127.0.0.1:${port}`;
+      const expectedHomeDb = join(fakeHome, ".devtools", "devtools.db");
+
+      expect((await fetch(`${baseUrl}/api/health`)).status).toBe(200);
+      expect(existsSync(expectedHomeDb)).toBe(false);
+
+      const runsRes = await fetch(`${baseUrl}/api/lighthouse/runs`);
+      expect(runsRes.status).toBe(200);
+      expect(existsSync(expectedHomeDb)).toBe(true);
+      expect(existsSync(join(outsideCwd, ".devtools", "devtools.db"))).toBe(
+        false,
+      );
+
+      proc.kill("SIGTERM");
+      expect(await proc.exited).toBe(0);
+    } finally {
+      try {
+        proc.kill();
+        await proc.exited;
+      } finally {
+        rmSync(tmpRoot, { recursive: true, force: true });
+      }
+    }
+  });
+
+  test("cancels active Lighthouse audit cleanly on SIGTERM to devtools web", async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "devtools-cli-e2e-web-cancel-"));
+    const dbPath = join(tmpDir, "cancel.db");
+    const artifactsDir = join(tmpDir, "artifacts");
+
+    const slowServer = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      async fetch() {
+        await Bun.sleep(15000);
+        return new Response("<html><body>Slow</body></html>", {
+          headers: { "Content-Type": "text/html" },
+        });
+      },
+    });
+
+    const proc = Bun.spawn(
+      ["bun", binPath, "web", "--port", "0", "--host", "127.0.0.1"],
+      {
+        env: createSanitizedEnv({
+          NO_COLOR: "1",
+          DEVTOOLS_DB_PATH: dbPath,
+          DEVTOOLS_LIGHTHOUSE_ARTIFACTS_DIR: artifactsDir,
+        }),
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+
+    try {
+      const port = await readDaemonPort(proc.stdout);
+      const baseUrl = `http://127.0.0.1:${port}`;
+
+      // Open SQLite in WAL mode before starting the active SSE audit
+      expect((await fetch(`${baseUrl}/api/lighthouse/runs`)).status).toBe(200);
+      expect(existsSync(dbPath)).toBe(true);
+
+      const postRes = await fetch(`${baseUrl}/api/lighthouse/audits`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: `${slowServer.url.toString()}slow-web-cancel`,
+          runs: 1,
+        }),
+      });
+      expect(postRes.status).toBe(202);
+      const { job } = TriggerLighthouseAuditResponseSchema.parse(
+        await postRes.json(),
+      );
+
+      const sseRes = await fetch(
+        `${baseUrl}/api/lighthouse/audits/${job.id}/stream`,
+      );
+      expect(sseRes.status).toBe(200);
+      const reader = sseRes.body!.getReader();
+      const decoder = new TextDecoder();
+      let sseSoFar = "";
+      const deadline = Date.now() + 20000;
+      let pendingRead = reader.read();
+
+      try {
+        while (Date.now() < deadline) {
+          const raced = await Promise.race([
+            pendingRead.then((chunk) => ({ kind: "read" as const, chunk })),
+            Bun.sleep(100).then(() => ({ kind: "tick" as const })),
+          ]);
+          if (raced.kind === "read") {
+            if (raced.chunk.done) break;
+            sseSoFar += decoder.decode(raced.chunk.value, { stream: true });
+            if (
+              sseSoFar.includes("launching_browser") ||
+              sseSoFar.includes("navigating")
+            ) {
+              break;
+            }
+            pendingRead = reader.read();
+          }
+        }
+
+        expect(sseSoFar).toContain("event: progress");
+
+        // Keep SSE reader open (uncancelled) across SIGTERM to verify server.stop(true)
+        const streamClosed = (async () => {
+          try {
+            while (true) {
+              const { done } = await reader.read();
+              if (done) return true;
+            }
+          } catch {
+            return true;
+          }
+        })();
+
+        proc.kill("SIGTERM");
+        expect(await proc.exited).toBe(0);
+        await expect(
+          Promise.race([streamClosed, Bun.sleep(3000).then(() => false)]),
+        ).resolves.toBe(true);
+        expect(existsSync(`${dbPath}-wal`)).toBe(false);
+        expect(existsSync(`${dbPath}-shm`)).toBe(false);
+      } finally {
+        await reader.cancel().catch(() => {});
+      }
+
+      using db = openDb({ path: dbPath });
+      const store = createLighthouseStore({
+        db,
+        artifactsDir,
+      });
+      expect(
+        store.listRuns().filter((r) => r.url.includes("slow-web-cancel")),
+      ).toHaveLength(0);
+    } finally {
+      try {
+        proc.kill();
+        await proc.exited;
+      } finally {
+        await slowServer.stop(true);
+        rmSync(tmpDir, { recursive: true, force: true });
+      }
+    }
+  }, 35000);
+
+  test("DB-free CLI commands and main.ts startup load zero @devtools/db or drizzle-orm modules", async () => {
+    const cliRoot = resolve(__dirname, "..");
+    const script = `
+      import { createBufferOutput } from "@devtools/core/node";
+      import { runCli } from "./src/app/main.ts";
+
+      const findMatches = (patterns) =>
+        Object.keys(require.cache)
+          .map((key) => key.replaceAll("\\\\", "/"))
+          .filter((key) => patterns.some((pattern) => key.includes(pattern)));
+
+      const dbAndEnginePatterns = [
+        "packages/db",
+        "@devtools/db",
+        "drizzle-orm",
+        "packages/lighthouse",
+        "@devtools/lighthouse",
+        "apps/api",
+        "@devtools/api",
+      ];
+      const metaPatterns = [...dbAndEnginePatterns, "packages/browser", "@devtools/browser"];
+
+      const onImportMain = findMatches(metaPatterns);
+      const out = createBufferOutput();
+      await runCli(["bun", "devtools", "--help"], { output: out, exit: () => {} });
+      await runCli(["bun", "devtools", "--version"], { output: out, exit: () => {} });
+      const afterMetaCommands = findMatches(metaPatterns);
+
+      const origLog = console.log;
+      const origErr = console.error;
+      console.log = () => {};
+      console.error = () => {};
+      try {
+        await runCli(
+          ["bun", "devtools", "browser", "status", "--json", "--chrome-path", "/nonexistent/devtools-chrome"],
+          { output: out, exit: () => {} },
+        );
+      } finally {
+        console.log = origLog;
+        console.error = origErr;
+      }
+      const afterBrowserStatus = findMatches(dbAndEnginePatterns);
+
+      console.log(JSON.stringify({ onImportMain, afterMetaCommands, afterBrowserStatus }));
+    `;
+
+    const proc = Bun.spawn(["bun", "-e", script], {
+      cwd: cliRoot,
+      env: createSanitizedEnv({ NO_COLOR: "1" }),
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    const exitCode = await proc.exited;
+    const stdout = await new Response(proc.stdout).text();
+    const stderr = await new Response(proc.stderr).text();
+
+    expect(exitCode).toBe(0);
+    expect(stderr).toBe("");
+    const parsed = JSON.parse(stdout.trim()) as {
+      onImportMain: string[];
+      afterMetaCommands: string[];
+      afterBrowserStatus: string[];
+    };
+    expect(parsed.onImportMain).toEqual([]);
+    expect(parsed.afterMetaCommands).toEqual([]);
+    expect(parsed.afterBrowserStatus).toEqual([]);
   });
 });

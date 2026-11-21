@@ -1,0 +1,252 @@
+import type {
+  BrowserStatus,
+  getBrowserStatus as GetBrowserStatusFn,
+  installBrowser as InstallBrowserFn,
+} from "@devtools/browser";
+import type { EnvMap } from "@devtools/core";
+import type { Command } from "commander";
+import { createStreamColors } from "../../shared/terminal";
+
+function createExitHandler(
+  exitFn?: (code: number) => void,
+): (code?: number) => void {
+  return (code = 1) => {
+    if (exitFn) {
+      exitFn(code);
+      return;
+    }
+    process.exit(code);
+  };
+}
+
+/**
+ * CLI flag options for `devtools browser status`.
+ */
+export interface BrowserStatusOptions {
+  /** Emit machine-readable JSON output instead of human-formatted text. */
+  json?: boolean;
+  /** Explicit browser executable path to verify (`--chrome-path`). */
+  chromePath?: string;
+  /** Custom managed browser cache directory (`--path`). */
+  path?: string;
+  /** Optional environment variable map seam for hermetic testing. */
+  env?: EnvMap;
+  /** Optional cancellation signal forwarded to browser discovery. */
+  signal?: AbortSignal;
+}
+
+/**
+ * CLI flag options for `devtools browser install`.
+ */
+export interface BrowserInstallOptions {
+  /** Custom target directory to download and unpack the browser into (`--path`). */
+  path?: string;
+  /** Optional environment variable map seam for hermetic testing. */
+  env?: EnvMap;
+  /** Optional cancellation signal forwarded to browser installation. */
+  signal?: AbortSignal;
+}
+
+/**
+ * Executes the `devtools browser status` command, printing browser resolution details
+ * in either human-readable or `--json` format and exiting with code `1` if unresolved.
+ *
+ * @param options - Parsed CLI status options.
+ * @param deps - Optional injected `getBrowserStatus` implementation and exit seam for unit testing.
+ */
+export async function runBrowserStatusCommand(
+  options: BrowserStatusOptions = {},
+  deps?: {
+    getBrowserStatus?: typeof GetBrowserStatusFn;
+    exit?: (code: number) => void;
+    isStderrTTY?: boolean;
+    isStdoutTTY?: boolean;
+    isTTY?: boolean;
+  },
+): Promise<void> {
+  const exit = createExitHandler(deps?.exit);
+
+  const doStatus =
+    deps?.getBrowserStatus ??
+    (await import("@devtools/browser")).getBrowserStatus;
+  const status: BrowserStatus = await doStatus({
+    chromePath: options.chromePath,
+    cacheDir: options.path,
+    env: options.env,
+    ...(options.signal ? { signal: options.signal } : {}),
+  });
+
+  if (options.signal?.aborted) {
+    return;
+  }
+
+  const { pcStderr, pcStdout } = createStreamColors(options.env, deps);
+
+  if (options.json) {
+    console.log(JSON.stringify(status, null, 2));
+    if (!status.found) {
+      exit(1);
+    }
+    return;
+  }
+
+  if (status.found) {
+    console.log(pcStdout.green("Chromium-compatible browser found:"));
+    console.log(`  ${pcStdout.bold("Path:")}    ${status.path}`);
+    console.log(`  ${pcStdout.bold("Version:")} ${status.version}`);
+    console.log(`  ${pcStdout.bold("Source:")}  ${status.source}`);
+  } else {
+    console.error(pcStderr.red(status.error));
+    exit(1);
+  }
+}
+
+/**
+ * Creates a deduplicated stderr progress callback for interactive TTY sessions.
+ */
+function createDownloadProgressReporter(
+  isTTY: boolean,
+  writeStderr: (chunk: string) => void = (chunk) => process.stderr.write(chunk),
+): (downloadedBytes: number, totalBytes: number) => void {
+  let lastPercent = -1;
+  return (downloadedBytes: number, totalBytes: number) => {
+    if (!isTTY || totalBytes <= 0) {
+      return;
+    }
+    const percent = Math.floor((downloadedBytes / totalBytes) * 100);
+    if (percent !== lastPercent) {
+      lastPercent = percent;
+      writeStderr(`\rDownloading chrome-headless-shell: ${percent}%`);
+    }
+  };
+}
+
+/**
+ * Executes the `devtools browser install` command, provisioning `chrome-headless-shell@stable`
+ * into the managed browser cache and reporting progress to `stderr`.
+ *
+ * @param options - Parsed CLI install options.
+ * @param deps - Optional injected dependencies and streams for testing.
+ */
+export async function runBrowserInstallCommand(
+  options: BrowserInstallOptions = {},
+  deps?: {
+    installBrowser?: typeof InstallBrowserFn;
+    isTTY?: boolean;
+    isStderrTTY?: boolean;
+    isStdoutTTY?: boolean;
+    writeStderr?: (chunk: string) => void;
+    exit?: (code: number) => void;
+  },
+): Promise<void> {
+  const exit = createExitHandler(deps?.exit);
+  const { pcStderr, pcStdout, isStderrTTY } = createStreamColors(
+    options.env,
+    deps,
+  );
+  const writeStderr =
+    deps?.writeStderr ?? ((chunk: string) => process.stderr.write(chunk));
+  const doInstall =
+    deps?.installBrowser ?? (await import("@devtools/browser")).installBrowser;
+
+  console.error(
+    pcStderr.cyan(
+      "Installing Chrome for Testing (chrome-headless-shell@stable)...",
+    ),
+  );
+
+  try {
+    const installed = await doInstall({
+      cacheDir: options.path,
+      env: options.env,
+      ...(options.signal ? { signal: options.signal } : {}),
+      onProgress: createDownloadProgressReporter(isStderrTTY, writeStderr),
+    });
+
+    if (isStderrTTY) {
+      writeStderr("\n");
+    }
+
+    console.log(
+      pcStdout.green(
+        `Successfully installed ${installed.browser}@${installed.buildId} at:\n  ${installed.executablePath}`,
+      ),
+    );
+  } catch (err: unknown) {
+    if (isStderrTTY) {
+      writeStderr("\n");
+    }
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(pcStderr.red(`Failed to install browser: ${message}`));
+    if (!options.signal?.aborted) {
+      exit(1);
+    }
+  }
+}
+
+/**
+ * Registers the `devtools browser` subcommand hierarchy (`status` and `install`) on a Commander program.
+ *
+ * @param program - Root Commander `Command` instance.
+ * @param deps - Optional dependency injection seam for testing command actions.
+ * @returns Configured `browser` subcommand instance.
+ */
+export function registerBrowserCommands(
+  program: Command,
+  deps?: {
+    runBrowserStatusCommand?: typeof runBrowserStatusCommand;
+    runBrowserInstallCommand?: typeof runBrowserInstallCommand;
+    signal?: AbortSignal;
+    exit?: (code: number) => void;
+  },
+): Command {
+  const browser = program
+    .command("browser")
+    .description(
+      "Manage and inspect local browser provisioning for audit tools",
+    );
+
+  const doStatus = deps?.runBrowserStatusCommand ?? runBrowserStatusCommand;
+  const doInstall = deps?.runBrowserInstallCommand ?? runBrowserInstallCommand;
+  const hostDeps = deps?.exit ? { exit: deps.exit } : undefined;
+  const dispatchAction = async <TOpts extends { signal?: AbortSignal }>(
+    options: TOpts,
+    run: (
+      opts: TOpts,
+      actionDeps?: { exit?: (code: number) => void },
+    ) => Promise<void>,
+  ) => {
+    const mergedOptions = deps?.signal
+      ? { ...options, signal: deps.signal }
+      : options;
+    await (hostDeps ? run(mergedOptions, hostDeps) : run(mergedOptions));
+  };
+
+  browser
+    .command("status")
+    .description("Check resolution status of Chromium-compatible browsers")
+    .option("--json", "Output browser status as JSON")
+    .option(
+      "--chrome-path <path>",
+      "Specify an explicit browser binary path to test",
+    )
+    .option("--path <dir>", "Custom directory to probe managed cache in")
+    .action(async (options: BrowserStatusOptions) => {
+      await dispatchAction(options, doStatus);
+    });
+
+  browser
+    .command("install")
+    .description(
+      "Install Chrome for Testing (chrome-headless-shell@stable) into managed cache",
+    )
+    .option(
+      "--path <dir>",
+      "Custom directory to download and unpack browser into",
+    )
+    .action(async (options: BrowserInstallOptions) => {
+      await dispatchAction(options, doInstall);
+    });
+
+  return browser;
+}

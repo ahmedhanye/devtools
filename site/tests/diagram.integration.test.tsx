@@ -38,7 +38,7 @@ describe("diagram rendering component client lifecycle (integration)", () => {
     const holder: { config: CapturedMermaidConfig | null } = { config: null };
     const origInitialize = mermaid.initialize;
     mermaid.initialize = (cfg: Parameters<typeof mermaid.initialize>[0]) => {
-      holder.config = (cfg ?? {}) as CapturedMermaidConfig;
+      holder.config = cfg ?? {};
       return origInitialize(cfg);
     };
     mermaid.render = (async (id: string) => ({
@@ -66,6 +66,24 @@ describe("diagram rendering component client lifecycle (integration)", () => {
       expect(holder.config?.securityLevel).toBe("strict");
       expect(holder.config?.startOnLoad).toBe(false);
       expect(container.innerHTML).toContain('data-testid="live-svg"');
+
+      mermaid.render = async () => {
+        throw new Error("Syntax error in diagram");
+      };
+
+      await act(async () => {
+        root.render(
+          React.createElement(Mermaid, {
+            chart: "invalid mermaid syntax %%%",
+          }),
+        );
+      });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+
+      expect(container.innerHTML).toContain("Unable to render diagram");
+      expect(container.innerHTML).toContain("invalid mermaid syntax %%%");
     } finally {
       mermaid.initialize = origInitialize;
       mermaid.render = origRender;

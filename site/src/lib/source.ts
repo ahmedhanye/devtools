@@ -2,7 +2,9 @@ import { docs } from "@/.source/server";
 import { loader } from "fumadocs-core/source";
 import { statusBadgesPlugin } from "fumadocs-core/source/plugins/status-badges";
 import { createElement } from "react";
-import * as icons from "lucide-react";
+import { icons } from "lucide-react";
+
+const iconRegistry = new Map(Object.entries(icons));
 
 const QUADRANT_OVERVIEWS = [
   { names: ["How-To Guides", "how-to"], url: "/docs/how-to" },
@@ -40,13 +42,10 @@ const baseSource = loader({
     }),
   ],
   icon(icon) {
-    if (!icon) return;
-    if (icon in icons) {
-      const Comp = icons[icon as keyof typeof icons] as React.ComponentType<{
-        className?: string;
-      }>;
-      return createElement(Comp, { className: "size-4 text-fd-primary" });
-    }
+    if (!icon) return undefined;
+    const Comp = iconRegistry.get(icon);
+    if (!Comp) return undefined;
+    return createElement(Comp, { className: "size-4 text-fd-primary" });
   },
 });
 

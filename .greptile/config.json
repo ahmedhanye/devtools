@@ -1,0 +1,27 @@
+{
+  "strictness": 2,
+  "commentTypes": ["logic"],
+  "autoReview": ["open"],
+  "statusCheck": true,
+  "fixWithAI": true,
+  "excludeAuthors": ["dependabot[bot]", "renovate[bot]"],
+  "ignorePatterns": "bun.lock\n**/bun.lock\npackage-lock.json\npnpm-lock.yaml\nyarn.lock\ndist/**\napps/**/dist/**\napps/**/.next/**\nsite/dist/**\nsite/.next/**\nsite/.source/**\nbuild/**\nout/**\nstorybook-static/**\n**/next-env.d.ts\ncoverage/**\n**/coverage/**\ntmp/**\n.scratch/**\n.fallow/**\n**/.fallow/**\n.turbo/**\n**/.turbo/**\nskills-lock.json\n.agents/skills/**\n**/*.snap\n**/*.map\n**/*.min.*",
+  "summarySection": {
+    "included": true,
+    "collapsible": true,
+    "defaultOpen": false
+  },
+  "issuesTableSection": {
+    "included": true,
+    "collapsible": true,
+    "defaultOpen": false
+  },
+  "confidenceScoreSection": {
+    "included": true,
+    "collapsible": true,
+    "defaultOpen": false
+  },
+  "sequenceDiagramSection": {
+    "included": false
+  }
+}

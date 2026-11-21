@@ -1,73 +1,62 @@
 import "./declarations.d.ts";
 import { createHash } from "node:crypto";
-import { sql } from "drizzle-orm";
-import { migrate } from "drizzle-orm/bun-sqlite/migrator";
+import type { Database } from "bun:sqlite";
 import migration0000 from "../drizzle/0000_init.sql" with { type: "text" };
 import migration0001 from "../drizzle/0001_brave_lilandra.sql" with { type: "text" };
 import journal from "../drizzle/meta/_journal.json" with { type: "json" };
-import type { DevtoolsDb } from "./client";
 
 /**
- * Customization options for programmatic Drizzle schema migrations.
+ * Minimal Drizzle migration journal entry metadata.
  */
-export interface MigrationOptions {
-  /**
-   * Custom directory path containing Drizzle SQL migration files and `meta/_journal.json`.
-   * When omitted, uses the embedded SQL migrations bundled into `@devtools/db`.
-   */
-  migrationsFolder?: string;
-  /**
-   * Custom SQLite table name used to track applied migrations.
-   * @defaultValue `"__devtools_migrations"`
-   */
-  migrationsTable?: string;
-}
-
-/**
- * Minimal Drizzle journal entry metadata required to resolve an embedded SQL migration.
- */
-export interface EmbeddedJournalEntry {
-  /** Migration file tag matching the key in the bundled SQL lookup map. */
+export interface JournalEntry {
+  /** Migration tag matching the SQL filename stem (for example, `"0000_init"`). */
   readonly tag: string;
-  /** Epoch millisecond timestamp recorded in Drizzle's `_journal.json`. */
+  /** Epoch millisecond timestamp recorded by `drizzle-kit generate`. */
   readonly when: number;
 }
 
 /**
- * Parsed embedded migration ready for transactional execution by {@link runMigrations}.
+ * Parsed embedded SQL migration ready for execution inside a SQLite transaction.
  */
 export interface EmbeddedMigration {
-  /** Individual SQL statements split on Drizzle's statement breakpoint marker. */
+  /** Ordered SQL DDL statements split on Drizzle statement breakpoints. */
   readonly statements: readonly string[];
-  /** Epoch millisecond timestamp matching Drizzle's `created_at` migration watermark. */
+  /** Creation timestamp from the migration journal. */
   readonly folderMillis: number;
-  /** SHA-256 hex digest of the raw SQL file matching Drizzle's folder migrator. */
+  /** Lowercase SHA-256 hex digest of the raw SQL migration file. */
   readonly hash: string;
 }
 
-const EMBEDDED_SQL_BY_TAG: Record<string, string> = {
+const DEFAULT_MIGRATIONS_TABLE = "__devtools_migrations";
+
+/**
+ * Static map of embedded SQL migration payloads keyed by Drizzle journal tag.
+ */
+export const EMBEDDED_SQL_BY_TAG: Readonly<Record<string, string>> = {
   "0000_init": migration0000,
   "0001_brave_lilandra": migration0001,
 };
 
 /**
- * Builds ordered embedded migration descriptors from Drizzle journal entries and bundled SQL strings.
+ * Resolves and validates embedded SQL migrations against Drizzle journal entries.
  *
- * @param entries - Journal entries defining migration tags and timestamps.
- * @param sqlByTag - Map from migration tag to raw SQL file contents.
- * @returns Ordered array of {@link EmbeddedMigration} descriptors.
- * @throws {@link Error} When any journal entry tag is absent from `sqlByTag`.
+ * @param entries - Journal entries from `drizzle/meta/_journal.json`.
+ * @param sqlByTag - Map of migration tag names to embedded SQL strings.
+ * @returns Parsed migration definitions with statements, timestamps, and SHA-256 hashes.
+ * @throws {Error} When any journal entry tag is missing or maps to empty SQL.
  */
-export function buildEmbeddedMigrations(
-  entries: readonly EmbeddedJournalEntry[],
-  sqlByTag: Readonly<Record<string, string>>,
+export function resolveEmbeddedMigrations(
+  entries: readonly JournalEntry[],
+  sqlByTag: Readonly<Record<string, string>> = EMBEDDED_SQL_BY_TAG,
 ): readonly EmbeddedMigration[] {
   return entries.map((entry) => {
     const rawSql = Object.hasOwn(sqlByTag, entry.tag)
       ? sqlByTag[entry.tag]
       : undefined;
-    if (rawSql === undefined) {
-      throw new Error(`Missing embedded migration SQL for ${entry.tag}`);
+    if (typeof rawSql !== "string" || rawSql.trim().length === 0) {
+      throw new Error(
+        `Missing embedded SQL migration for journal tag "${entry.tag}". Register the SQL import in packages/db/src/migrator.ts (EMBEDDED_SQL_BY_TAG).`,
+      );
     }
     return {
       statements: rawSql
@@ -80,62 +69,95 @@ export function buildEmbeddedMigrations(
 }
 
 const EMBEDDED_MIGRATIONS: readonly EmbeddedMigration[] =
-  buildEmbeddedMigrations(journal.entries, EMBEDDED_SQL_BY_TAG);
+  resolveEmbeddedMigrations(journal.entries);
 
-function runEmbeddedMigrations(db: DevtoolsDb, migrationsTable: string): void {
-  db.run(sql`
-    CREATE TABLE IF NOT EXISTS ${sql.identifier(migrationsTable)} (
-      id SERIAL PRIMARY KEY,
-      hash text NOT NULL,
-      created_at numeric
+function hasUserTables(sqlite: Database): boolean {
+  const row = sqlite
+    .query(
+      "SELECT count(*) as count FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
     )
-  `);
-
-  const appliedRows = db.values<[unknown, unknown, number | string]>(
-    sql`SELECT id, hash, created_at FROM ${sql.identifier(migrationsTable)} ORDER BY created_at DESC LIMIT 1`,
+    .get();
+  return (
+    typeof row === "object" &&
+    row !== null &&
+    "count" in row &&
+    Number(row.count) > 0
   );
-  const lastAppliedMillis = appliedRows[0] ? Number(appliedRows[0][2]) : null;
+}
 
-  db.transaction((tx) => {
-    for (const migration of EMBEDDED_MIGRATIONS) {
-      if (
-        lastAppliedMillis === null ||
-        lastAppliedMillis < migration.folderMillis
-      ) {
-        for (const statement of migration.statements) {
-          tx.run(sql.raw(statement));
-        }
-        tx.run(
-          sql`INSERT INTO ${sql.identifier(migrationsTable)} ("hash", "created_at") VALUES(${migration.hash}, ${migration.folderMillis})`,
-        );
-      }
-    }
-  });
+function hasMigrationsTable(sqlite: Database): boolean {
+  const row = sqlite
+    .query<{ found: number }, [string]>(
+      "SELECT 1 AS found FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1",
+    )
+    .get(DEFAULT_MIGRATIONS_TABLE);
+  return row !== null;
+}
+
+function getAppliedMigrationHashes(sqlite: Database): ReadonlySet<string> {
+  const rows = sqlite
+    .query<{ hash: string }, []>(
+      `SELECT hash FROM "${DEFAULT_MIGRATIONS_TABLE}"`,
+    )
+    .all();
+  return new Set(rows.map((row) => row.hash));
+}
+
+function getPendingMigrations(
+  sqlite: Database,
+  migrations: readonly EmbeddedMigration[],
+): readonly EmbeddedMigration[] {
+  if (!hasUserTables(sqlite)) {
+    return migrations;
+  }
+  if (!hasMigrationsTable(sqlite)) {
+    return [];
+  }
+  const appliedHashes = getAppliedMigrationHashes(sqlite);
+  return migrations.filter((migration) => !appliedHashes.has(migration.hash));
 }
 
 /**
- * Executes pending Drizzle SQL migrations synchronously against the provided database client.
+ * Applies pending embedded schema migrations inside an immediate transaction (`BEGIN IMMEDIATE`).
  *
- * @param db - Target {@link DevtoolsDb} instance to migrate.
- * @param options - Optional migration folder and tracking table overrides.
- * @throws {@link Error} When `options.migrationsFolder` is empty or whitespace-only, or when migration execution fails.
+ * @remarks
+ * - Empty databases (zero user tables) receive all embedded migrations and create `__devtools_migrations`.
+ * - Tracked databases with `__devtools_migrations` check applied migration SHA-256 hashes via a fast
+ *   read-only query before opening a write lock, then re-check inside `BEGIN IMMEDIATE` and apply only
+ *   migrations whose hash is not yet recorded.
+ * - Foreign databases containing unrelated user tables without `__devtools_migrations` are left untouched.
+ *
+ * @param sqlite - Open `bun:sqlite` database connection.
  */
-export function runMigrations(
-  db: DevtoolsDb,
-  options?: MigrationOptions,
+export function initializeBaselineSchema(
+  sqlite: Database,
+  migrations: readonly EmbeddedMigration[] = EMBEDDED_MIGRATIONS,
 ): void {
-  const migrationsTable = options?.migrationsTable ?? "__devtools_migrations";
-
-  if (options?.migrationsFolder !== undefined) {
-    if (options.migrationsFolder.trim().length === 0) {
-      throw new Error("migrationsFolder must be a non-empty directory path");
-    }
-    migrate(db, {
-      migrationsFolder: options.migrationsFolder,
-      migrationsTable,
-    });
+  if (getPendingMigrations(sqlite, migrations).length === 0) {
     return;
   }
 
-  runEmbeddedMigrations(db, migrationsTable);
+  const applyImmediate = sqlite.transaction(() => {
+    const pending = getPendingMigrations(sqlite, migrations);
+    if (pending.length > 0) {
+      sqlite.run(`
+        CREATE TABLE IF NOT EXISTS "${DEFAULT_MIGRATIONS_TABLE}" (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          hash text NOT NULL,
+          created_at numeric
+        )
+      `);
+      const insertStmt = sqlite.query(
+        `INSERT INTO "${DEFAULT_MIGRATIONS_TABLE}" ("hash", "created_at") VALUES (?, ?)`,
+      );
+      for (const migration of pending) {
+        for (const statement of migration.statements) {
+          sqlite.run(statement);
+        }
+        insertStmt.run(migration.hash, migration.folderMillis);
+      }
+    }
+  });
+
+  applyImmediate.immediate();
 }

@@ -9,6 +9,8 @@ describe("@devtools/core exports", () => {
 
   it("exports all runtime configuration contracts and schemas", () => {
     expect(Core.RuntimeConfigSchema).toBeDefined();
+    expect(Core.RuntimeConfigError).toBeDefined();
+    expect(Core.formatRuntimeConfigError).toBeDefined();
     expect(Core.APP_VERSION).toMatch(/^\d+\.\d+\.\d+/);
   });
 

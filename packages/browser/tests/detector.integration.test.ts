@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { Browser } from "@puppeteer/browsers";
+import { launchBrowserSession } from "../src";
 import {
   buildVersionCommand,
   getManagedCacheDir,
@@ -371,13 +373,17 @@ describe("Browser Detector & Executable Verification", () => {
     writeFileSync(validScript, '#!/bin/sh\necho "130.0.0"\n');
     chmodSync(validScript, 0o755);
 
+    type VerifySpawnFn = NonNullable<
+      Parameters<typeof verifyBrowserExecutable>[2]
+    >;
+
     // spawn throwing
     const resSpawnFail = await verifyBrowserExecutable(
       validScript,
       1000,
-      (() => {
+      () => {
         throw new Error("spawn failed");
-      }) as any,
+      },
     );
     expect(resSpawnFail.valid).toBe(false);
 
@@ -389,7 +395,7 @@ describe("Browser Detector & Executable Verification", () => {
         stdout: null,
         exited: Promise.reject(new Error("proc exit error")),
         kill: () => {},
-      })) as any,
+      })) as unknown as VerifySpawnFn,
     );
     expect(resStreamReject.valid).toBe(false);
   });
@@ -403,25 +409,27 @@ describe("Browser Detector & Executable Verification", () => {
     writeFileSync(invalidExe, "#!/bin/sh\nexit 1\n");
     chmodSync(invalidExe, 0o755);
 
+    const mockBrowser = Browser.CHROME;
+
     const hit = await probeManagedCache(testDir, {
       getInstalledBrowsers: async () => [
         {
           executablePath: "/nonexistent/path/to/browser",
           buildId: "000.0.0",
-          browser: "chrome" as any,
+          browser: mockBrowser,
         },
         {
           executablePath: invalidExe,
           buildId: "111.0.0",
-          browser: "chrome" as any,
+          browser: mockBrowser,
         },
         {
           executablePath: validExe,
           buildId: "130.0.0",
-          browser: "chrome" as any,
+          browser: mockBrowser,
         },
       ],
-    } as any);
+    });
 
     expect(hit).toBeDefined();
     expect(hit?.path).toBe(validExe);
@@ -437,6 +445,8 @@ describe("Browser Detector & Executable Verification", () => {
     writeFileSync(mockExe, '#!/bin/sh\necho "Chrome 132.0.0"\n');
     chmodSync(mockExe, 0o755);
 
+    const mockBrowser = Browser.CHROME;
+
     process.env.DEVTOOLS_BROWSERS_DIR = customDir;
     try {
       let lookupCacheDir: string | undefined;
@@ -447,7 +457,7 @@ describe("Browser Detector & Executable Verification", () => {
             {
               executablePath: mockExe,
               buildId: "132.0.0",
-              browser: "chrome" as any,
+              browser: mockBrowser,
             },
           ];
         },
@@ -547,5 +557,99 @@ describe("Browser Detector & Executable Verification", () => {
   test("probeToolCaches falls back to ambient homedir when home and seam HOME are not set", async () => {
     const candidates = await probeToolCaches();
     expect(candidates).toBeArray();
+  });
+
+  test("verifyBrowserExecutable and probeManagedCache honor AbortSignal cancellation", async () => {
+    const mockBin = join(testDir, "abortable-chrome.sh");
+    writeFileSync(mockBin, "#!/bin/sh\nexec sleep 2\n");
+    chmodSync(mockBin, 0o755);
+
+    const preAborted = new AbortController();
+    preAborted.abort();
+    expect(
+      await verifyBrowserExecutable(
+        mockBin,
+        3000,
+        Bun.spawn,
+        preAborted.signal,
+      ),
+    ).toEqual({ valid: false });
+
+    const inFlight = new AbortController();
+    setTimeout(() => inFlight.abort(), 30);
+    expect(
+      await verifyBrowserExecutable(mockBin, 3000, Bun.spawn, inFlight.signal),
+    ).toEqual({ valid: false });
+
+    expect(
+      await probeManagedCache(testDir, {}, 3000, preAborted.signal),
+    ).toBeNull();
+
+    const midCacheController = new AbortController();
+    const fastBin = join(testDir, "fast-chrome.sh");
+    writeFileSync(fastBin, '#!/bin/sh\necho "133.0.0"\n');
+    chmodSync(fastBin, 0o755);
+    const mockBrowser = Browser.CHROME;
+
+    expect(
+      await probeManagedCache(
+        testDir,
+        {
+          getInstalledBrowsers: async () => {
+            midCacheController.abort();
+            return [
+              {
+                executablePath: fastBin,
+                buildId: "133.0.0",
+                browser: mockBrowser,
+              },
+            ];
+          },
+        },
+        3000,
+        midCacheController.signal,
+      ),
+    ).toBeNull();
+  });
+
+  test("exercises real resolveBrowserPath and resolveChromeSandboxDisabled via launchBrowserSession", async () => {
+    const mockBin = join(testDir, "mock-chrome.sh");
+    writeFileSync(mockBin, '#!/bin/sh\necho "Google Chrome 136.0.7103.48"\n');
+    chmodSync(mockBin, 0o755);
+
+    let capturedChromePath: string | undefined;
+    let capturedChromeFlags: string[] = [];
+    let killed = false;
+
+    {
+      await using session = await launchBrowserSession(
+        {
+          chromePath: mockBin,
+          cacheDir: testDir,
+          env: { CI: "true" },
+        },
+        {
+          launchChrome: async (opts) => {
+            capturedChromePath = opts.chromePath;
+            capturedChromeFlags = opts.chromeFlags;
+            return {
+              port: 43210,
+              kill: async () => {
+                killed = true;
+              },
+            };
+          },
+        },
+      );
+
+      expect(session.executablePath).toBe(mockBin);
+      expect(session.version).toBe("Google Chrome 136.0.7103.48");
+      expect(session.source).toBe("explicit");
+      expect(session.port).toBe(43210);
+      expect(capturedChromePath).toBe(mockBin);
+      expect(capturedChromeFlags).toContain("--no-sandbox");
+    }
+
+    expect(killed).toBe(true);
   });
 });

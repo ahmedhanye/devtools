@@ -1,0 +1,47 @@
+name: PR Title Check
+
+on:
+  pull_request:
+    types:
+      - opened
+      - edited
+      - reopened
+      - synchronize
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate-pr-title:
+    name: Validate PR Title
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Bun environment
+        uses: ./.github/actions/setup-bun
+
+      - name: Validate PR title with commitlint
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: printf '%s\n' "$PR_TITLE" | bunx --bun commitlint
+
+      - name: Validate PR title length
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          max_len=$(( PR_NUMBER >= 1000 ? 64 : 65 ))
+          if (( ${#PR_TITLE} > max_len )); then
+            echo "::error::PR title is ${#PR_TITLE} characters (max ${max_len} so ' (#${PR_NUMBER})' fits within 72 characters on main)."
+            exit 1
+          fi

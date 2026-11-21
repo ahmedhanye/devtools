@@ -1,6 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import type { LighthouseRunRow } from "@devtools/db";
-import { computeInsightDiff, computeRunDeltas, parseRunSummary } from "../src";
+import { type LighthouseRunRecord } from "../src";
+import {
+  computeInsightDiff,
+  computeRunDeltas,
+  parseRunSummary,
+} from "../src/domain";
 
 function makeSummary(
   overrides: Partial<NonNullable<ReturnType<typeof parseRunSummary>>> = {},
@@ -18,7 +22,7 @@ function makeSummary(
   };
 }
 
-const DEFAULT_RUN_ROW: LighthouseRunRow = {
+const DEFAULT_RUN_ROW: LighthouseRunRecord = {
   id: "run-1",
   url: "https://example.com/",
   finalUrl: "https://example.com/",
@@ -42,8 +46,8 @@ const DEFAULT_RUN_ROW: LighthouseRunRow = {
 };
 
 function makeRunRow(
-  overrides: Partial<LighthouseRunRow> = {},
-): LighthouseRunRow {
+  overrides: Partial<LighthouseRunRecord> = {},
+): LighthouseRunRecord {
   return { ...DEFAULT_RUN_ROW, ...overrides };
 }
 

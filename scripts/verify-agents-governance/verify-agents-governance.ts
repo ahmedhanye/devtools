@@ -339,7 +339,7 @@ export function checkMarkdownLinks(
 }
 
 /**
- * Checks for prohibited unslop punctuation patterns (such as em dashes `—`).
+ * Checks for prohibited unslop punctuation patterns (em dashes `—` and en dashes `–`).
  *
  * @param content - Raw Markdown file content.
  * @param filePath - File path used in reported {@link Finding} items.
@@ -350,13 +350,63 @@ export function checkUnslop(content: string, filePath: string): Finding[] {
   const lines = content.split("\n");
 
   for (let i = 0; i < lines.length; i++) {
-    if (lines[i]!.includes("—")) {
+    const line = lines[i]!;
+    if (line.includes("—")) {
       findings.push({
         file: filePath,
         line: i + 1,
         rule: "unslop/no-em-dash",
         message:
           "Found prohibited em dash ('—'). Use periods or commas per .agents/skills/unslop.",
+        severity: "error",
+      });
+    }
+    if (line.includes("–")) {
+      findings.push({
+        file: filePath,
+        line: i + 1,
+        rule: "unslop/no-en-dash",
+        message:
+          "Found prohibited en dash ('–'). Use 'to', commas, or hyphens per .agents/skills/unslop.",
+        severity: "error",
+      });
+    }
+  }
+
+  return findings;
+}
+
+const HARNESS_TOOL_REGEX =
+  /\b(?:invoke_subagent|write_file|edit_file|read_file|run_command|manage_task|manage_subagents|send_message|ArtifactMetadata|Call the Skill tool|Skill tool)\b/g;
+
+/**
+ * Checks non-vendor, non-meta skills for hardcoded harness-specific tool names.
+ *
+ * @param content - Raw Markdown file content.
+ * @param filePath - Repository-relative path to the skill file.
+ * @param skillDirName - Parent skill directory name under `.agents/skills/`.
+ * @returns Array of portability findings.
+ */
+export function checkSkillPortability(
+  content: string,
+  filePath: string,
+  skillDirName?: string,
+): Finding[] {
+  if (skillDirName === "writing-for-agents") {
+    return [];
+  }
+
+  const findings: Finding[] = [];
+  const lines = content.split("\n");
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    for (const match of line.matchAll(HARNESS_TOOL_REGEX)) {
+      findings.push({
+        file: filePath,
+        line: i + 1,
+        rule: "skill/no-harness-tool-name",
+        message: `Found harness-specific tool reference "${match[0]}". Keep skill instructions agent-agnostic.`,
         severity: "error",
       });
     }
@@ -611,6 +661,7 @@ export function validateSkillFile(
     findings.push(
       ...checkMarkdownLinks(fm.body || content, filePath, repoRoot),
       ...checkUnslop(content, filePath),
+      ...checkSkillPortability(content, filePath, options.skillDirName),
     );
   }
 

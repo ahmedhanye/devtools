@@ -1,43 +1,73 @@
 {
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
-  "entry": ["apps/frontend/steiger.config.js"],
+  "entry": ["apps/frontend/steiger.config.js", "apps/cli/src/index.ts"],
   "ignoreDependencies": ["prettier-plugin-tailwindcss"],
+  "ignoreDependencyOverrides": [
+    {
+      "package": "eslint-plugin-react-hooks/zod-validation-error",
+      "source": "package.json"
+    }
+  ],
   "ignoreUnresolvedImports": [
     "./.next/**",
     "**/.next/**",
     "**/.source/**",
     "@/.source/**"
   ],
+  "usedClassMembers": [
+    {
+      "extends": "Error",
+      "members": ["exitCode", "code"]
+    }
+  ],
   "rules": {
-    "policy-violation": "off"
+    "policy-violation": "off",
+    "prop-drilling": "warn",
+    "thin-wrapper": "warn",
+    "duplicate-prop-shape": "warn"
   },
   "duplicates": {
     "mode": "semantic",
+    "threshold": 7.5,
     "ignore": [
       "**/*.css",
       "**/*.stories.tsx",
-      "apps/frontend/src/shared/ui/shadcn/**"
+      "apps/frontend/src/shared/ui/shadcn/**",
+      "packages/lighthouse/src/infra/runtime/bundled-modules.ts"
+    ]
+  },
+  "health": {
+    "ignore": [
+      "packages/lighthouse/src/infra/runtime/bundled-modules.ts",
+      "scripts/**",
+      "**/*.test.*",
+      "**/*.spec.*",
+      "**/tests/**",
+      "**/*.stories.tsx",
+      "apps/frontend/.storybook/**"
     ]
   },
   "overrides": [
     {
-      "files": ["packages/**/errors.ts", "packages/**/src/**/errors.ts"],
-      "rules": {
-        "unused-class-member": "off"
-      }
-    },
-    {
       "files": ["apps/frontend/src/shared/ui/shadcn/**"],
       "rules": {
-        "unused-export": "off"
+        "unused-file": "off",
+        "unused-export": "off",
+        "prop-drilling": "off",
+        "thin-wrapper": "off",
+        "duplicate-prop-shape": "off"
       }
     }
   ],
   "boundaries": {
     "zones": [
       {
+        "name": "core-node",
+        "patterns": ["packages/core/src/node/**"]
+      },
+      {
         "name": "core",
-        "patterns": ["packages/core/src/**"]
+        "patterns": ["packages/core/src/**", "!packages/core/src/node/**"]
       },
       {
         "name": "db",
@@ -49,22 +79,62 @@
       },
       {
         "name": "lighthouse-schemas",
-        "patterns": ["packages/lighthouse/src/schemas.ts"]
+        "patterns": ["packages/lighthouse/src/contracts/schemas.ts"]
       },
       {
-        "name": "lighthouse",
+        "name": "lighthouse-contracts",
         "patterns": [
-          "packages/lighthouse/src/**",
-          "!packages/lighthouse/src/schemas.ts"
+          "packages/lighthouse/src/contracts/**",
+          "!packages/lighthouse/src/contracts/schemas.ts"
         ]
       },
       {
-        "name": "api",
-        "patterns": ["apps/api/src/**"]
+        "name": "lighthouse-domain",
+        "patterns": ["packages/lighthouse/src/domain/**"]
       },
       {
-        "name": "cli",
-        "patterns": ["apps/cli/src/**"]
+        "name": "lighthouse-application",
+        "patterns": ["packages/lighthouse/src/application/**"]
+      },
+      {
+        "name": "lighthouse-config",
+        "patterns": ["packages/lighthouse/src/config/**"]
+      },
+      {
+        "name": "lighthouse-internals",
+        "patterns": ["packages/lighthouse/src/infra/**"]
+      },
+      {
+        "name": "lighthouse-wiring",
+        "patterns": [
+          "packages/lighthouse/src/wiring.ts",
+          "packages/lighthouse/src/serializers.ts",
+          "packages/lighthouse/src/index.ts"
+        ]
+      },
+      {
+        "name": "api-shared",
+        "patterns": ["apps/api/src/shared/**"]
+      },
+      {
+        "name": "api-modules",
+        "autoDiscover": ["apps/api/src/modules"]
+      },
+      {
+        "name": "api-app",
+        "patterns": ["apps/api/src/app/**", "apps/api/src/index.ts"]
+      },
+      {
+        "name": "cli-shared",
+        "patterns": ["apps/cli/src/shared/**"]
+      },
+      {
+        "name": "cli-commands",
+        "autoDiscover": ["apps/cli/src/commands"]
+      },
+      {
+        "name": "cli-app",
+        "patterns": ["apps/cli/src/app/**", "apps/cli/src/index.ts"]
       },
       {
         "name": "frontend-app",
@@ -85,35 +155,153 @@
         "allow": []
       },
       {
-        "from": "db",
+        "from": "core-node",
         "allow": ["core"]
       },
       {
+        "from": "db",
+        "allow": ["core", "core-node"]
+      },
+      {
         "from": "browser",
-        "allow": ["core"]
+        "allow": ["core", "core-node"]
       },
       {
         "from": "lighthouse-schemas",
         "allow": []
       },
       {
-        "from": "lighthouse",
-        "allow": ["core", "db", "browser", "lighthouse-schemas"]
+        "from": "lighthouse-contracts",
+        "allow": ["lighthouse-schemas"],
+        "allowTypeOnly": ["core", "core-node", "browser"]
       },
       {
-        "from": "api",
-        "allow": ["core", "db", "browser", "lighthouse", "lighthouse-schemas"]
+        "from": "lighthouse-domain",
+        "allow": ["lighthouse-schemas", "lighthouse-contracts"]
       },
       {
-        "from": "cli",
+        "from": "lighthouse-application",
+        "allow": [
+          "lighthouse-schemas",
+          "lighthouse-contracts",
+          "lighthouse-domain"
+        ],
+        "allowTypeOnly": ["core", "core-node", "browser"]
+      },
+      {
+        "from": "lighthouse-config",
+        "allow": ["core", "core-node"]
+      },
+      {
+        "from": "lighthouse-internals",
         "allow": [
           "core",
+          "core-node",
           "db",
           "browser",
-          "lighthouse",
           "lighthouse-schemas",
-          "api"
+          "lighthouse-contracts",
+          "lighthouse-domain",
+          "lighthouse-config"
+        ],
+        "allowTypeOnly": ["lighthouse-application"]
+      },
+      {
+        "from": "lighthouse-wiring",
+        "allow": [
+          "core",
+          "core-node",
+          "browser",
+          "lighthouse-schemas",
+          "lighthouse-contracts",
+          "lighthouse-domain",
+          "lighthouse-application",
+          "lighthouse-config",
+          "lighthouse-internals"
+        ],
+        "allowTypeOnly": ["db"]
+      },
+      {
+        "from": "api-shared",
+        "allow": ["core"]
+      },
+      {
+        "from": "api-modules",
+        "allow": ["api-shared", "core"]
+      },
+      {
+        "from": "api-modules/lighthouse",
+        "allow": [
+          "api-shared",
+          "core",
+          "core-node",
+          "lighthouse-schemas",
+          "lighthouse-contracts",
+          "lighthouse-domain",
+          "lighthouse-application",
+          "lighthouse-config",
+          "lighthouse-wiring"
         ]
+      },
+      {
+        "from": "api-app",
+        "allow": [
+          "api-shared",
+          "api-modules",
+          "api-modules/health",
+          "api-modules/lighthouse",
+          "core",
+          "core-node",
+          "db",
+          "lighthouse-wiring"
+        ],
+        "allowTypeOnly": ["lighthouse-application", "lighthouse-contracts"]
+      },
+      {
+        "from": "cli-shared",
+        "allow": ["core", "core-node"]
+      },
+      {
+        "from": "cli-commands",
+        "allow": ["cli-shared", "core", "core-node"]
+      },
+      {
+        "from": "cli-commands/web",
+        "allow": ["cli-shared", "core", "core-node", "db", "api-app"],
+        "allowTypeOnly": ["lighthouse-application", "lighthouse-wiring"]
+      },
+      {
+        "from": "cli-commands/browser",
+        "allow": ["cli-shared", "core", "core-node", "browser"]
+      },
+      {
+        "from": "cli-commands/lighthouse",
+        "allow": [
+          "cli-shared",
+          "core",
+          "core-node",
+          "lighthouse-schemas",
+          "lighthouse-contracts",
+          "lighthouse-domain",
+          "lighthouse-application",
+          "lighthouse-config",
+          "lighthouse-wiring"
+        ]
+      },
+      {
+        "from": "cli-app",
+        "allow": [
+          "cli-shared",
+          "cli-commands",
+          "cli-commands/web",
+          "cli-commands/browser",
+          "cli-commands/lighthouse",
+          "core",
+          "core-node",
+          "db",
+          "lighthouse-wiring"
+        ],
+        "allowTypeOnly": ["lighthouse-application"]
       },
       {
         "from": "frontend-app",
@@ -132,7 +320,54 @@
         "from": "frontend-shared",
         "allow": ["core", "lighthouse-schemas"]
       }
-    ]
+    ],
+    "coverage": {
+      "requireAllFiles": true,
+      "allowUnmatched": [
+        "site/**",
+        "scripts/**",
+        "commitlint.config.mjs",
+        "apps/cli/bin/**",
+        "apps/frontend/.storybook/**",
+        "apps/frontend/*.config.{ts,js,mjs}",
+        "apps/frontend/next-env.d.ts",
+        "packages/db/drizzle.config.ts",
+        "packages/*/src/**/declarations.d.ts",
+        "apps/*/src/**/declarations.d.ts",
+        "**/*.test.{ts,tsx,js}",
+        "**/*.spec.{ts,tsx,js}",
+        "**/*.stories.{ts,tsx}",
+        "**/tests/**"
+      ]
+    },
+    "calls": {
+      "forbidden": [
+        {
+          "from": "core",
+          "callee": ["fs.*", "child_process.*", "process.exit"]
+        },
+        {
+          "from": "lighthouse-schemas",
+          "callee": ["fs.*", "child_process.*", "process.exit", "Bun.*"]
+        },
+        {
+          "from": "lighthouse-contracts",
+          "callee": ["fs.*", "child_process.*", "process.exit", "Bun.*"]
+        },
+        {
+          "from": "lighthouse-domain",
+          "callee": ["fs.*", "child_process.*", "process.exit", "Bun.*"]
+        },
+        {
+          "from": "lighthouse-application",
+          "callee": ["fs.*", "child_process.*", "process.exit", "Bun.*"]
+        },
+        {
+          "from": "api-shared",
+          "callee": ["fs.*", "child_process.*", "process.exit"]
+        }
+      ]
+    }
   },
   "regression": {
     "baseline": {

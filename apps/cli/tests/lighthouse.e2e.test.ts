@@ -2,7 +2,8 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { closeDb, createDb, lighthouseRuns, runMigrations } from "@devtools/db";
+import { openDb } from "@devtools/db";
+import { createLighthouseStore } from "@devtools/lighthouse";
 import type { Server } from "bun";
 
 const binPath = resolve(__dirname, "../bin/devtools.js");
@@ -32,8 +33,11 @@ describe("Lighthouse CLI Subprocess Tests (E2E)", () => {
       NO_COLOR: "1",
     };
 
-    const initialDb = createDb({ path: tempDbPath });
-    runMigrations(initialDb);
+    using db = openDb({ path: tempDbPath });
+    const store = createLighthouseStore({
+      db,
+      artifactsDir: tempArtifactsDir,
+    });
 
     // Seed synthetic audit record and mock report artifact to decouple downstream list/diff/open tests
     const syntheticHtmlPath = join(tempArtifactsDir, "synthetic-report.html");
@@ -44,41 +48,36 @@ describe("Lighthouse CLI Subprocess Tests (E2E)", () => {
     );
     writeFileSync(syntheticJsonPath, "{}");
 
-    initialDb
-      .insert(lighthouseRuns)
-      .values({
-        id: "run-synthetic-seed-001",
-        url: "http://127.0.0.1:4000/seeded",
-        finalUrl: "http://127.0.0.1:4000/seeded",
-        formFactor: "mobile",
-        throttlingMethod: "simulate",
-        performanceScore: 95,
-        accessibilityScore: 100,
-        bestPracticesScore: 92,
-        seoScore: 98,
-        lcpMs: 1200.5,
-        cls: 0.01,
-        tbtMs: 45,
-        fcpMs: 800,
-        siMs: 1100,
-        ttfbMs: 120,
-        summaryJson: {
-          lcpElement: null,
-          lcpPhases: null,
-          clsCulprits: [],
-          insights: [],
-          failedAudits: [],
-          runWarnings: [],
-          runtimeError: null,
-          medianMetadata: null,
-        },
-        jsonReportPath: syntheticJsonPath,
-        htmlReportPath: syntheticHtmlPath,
-        durationMs: 3200,
-      })
-      .run();
-
-    closeDb();
+    store.insertRun({
+      id: "run-synthetic-seed-001",
+      url: "http://127.0.0.1:4000/seeded",
+      finalUrl: "http://127.0.0.1:4000/seeded",
+      formFactor: "mobile",
+      throttlingMethod: "simulate",
+      performanceScore: 95,
+      accessibilityScore: 100,
+      bestPracticesScore: 92,
+      seoScore: 98,
+      lcpMs: 1200.5,
+      cls: 0.01,
+      tbtMs: 45,
+      fcpMs: 800,
+      siMs: 1100,
+      ttfbMs: 120,
+      summaryJson: {
+        lcpElement: null,
+        lcpPhases: null,
+        clsCulprits: [],
+        insights: [],
+        failedAudits: [],
+        runWarnings: [],
+        runtimeError: null,
+        medianMetadata: null,
+      },
+      jsonReportPath: syntheticJsonPath,
+      htmlReportPath: syntheticHtmlPath,
+      durationMs: 3200,
+    });
 
     server = Bun.serve({
       port: 0,
@@ -104,7 +103,7 @@ describe("Lighthouse CLI Subprocess Tests (E2E)", () => {
   });
 
   afterAll(() => {
-    server.stop(true);
+    void server.stop(true);
     if (existsSync(tempDir)) {
       rmSync(tempDir, { recursive: true, force: true });
     }
@@ -206,6 +205,30 @@ describe("Lighthouse CLI Subprocess Tests (E2E)", () => {
     // Ensure no ANSI escape sequences leaked to stdout
     // oxlint-disable-next-line no-control-regex -- matching ANSI escape sequences
     expect(stdout).not.toMatch(/\x1b\[[0-9;]*m/);
+  }, 35000);
+
+  test("live --json --fail-under exits 1 with clean budget failure JSON on stdout", async () => {
+    const targetUrl = server.url.toString();
+    const { exitCode, stdout } = await runSubprocess([
+      "bun",
+      binPath,
+      "lighthouse",
+      targetUrl,
+      "--json",
+      "--fail-under",
+      "performance:101",
+      "--no-sandbox",
+      "--runs",
+      "1",
+    ]);
+
+    expect(exitCode).toBe(1);
+    // oxlint-disable-next-line no-control-regex -- matching ANSI escape sequences
+    expect(stdout).not.toMatch(/\x1b\[[0-9;]*m/);
+    const parsed = JSON.parse(stdout) as {
+      budget?: { passed: boolean };
+    };
+    expect(parsed.budget?.passed).toBe(false);
   }, 35000);
 
   test("list subcommand outputs historical runs in table and JSON formats", async () => {
@@ -343,4 +366,99 @@ describe("Lighthouse CLI Subprocess Tests (E2E)", () => {
       'Specified browser path is invalid or non-executable: "/nonexistent/chrome"',
     );
   }, 20000);
+
+  async function assertMidAuditSignalCancellation(
+    signal: "SIGTERM" | "SIGINT",
+    expectedExitCode: number,
+  ): Promise<void> {
+    const slowPath = `/slow-cancel-${signal.toLowerCase()}`;
+    const slowServer = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      async fetch() {
+        await Bun.sleep(15000);
+        return new Response("<html><body>Slow</body></html>", {
+          headers: { "Content-Type": "text/html" },
+        });
+      },
+    });
+
+    const proc = Bun.spawn(
+      [
+        "bun",
+        binPath,
+        "lighthouse",
+        `http://127.0.0.1:${slowServer.port}${slowPath}`,
+        "--no-sandbox",
+        "--runs",
+        "1",
+      ],
+      {
+        env: testEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+
+    try {
+      const reader = (proc.stderr as ReadableStream<Uint8Array>).getReader();
+      const decoder = new TextDecoder();
+      let stderrSoFar = "";
+      let signaled = false;
+      const deadline = Date.now() + 20000;
+      let pendingRead = reader.read();
+
+      try {
+        while (Date.now() < deadline) {
+          const raced = await Promise.race([
+            pendingRead.then((chunk) => ({ kind: "read" as const, chunk })),
+            Bun.sleep(100).then(() => ({ kind: "tick" as const })),
+          ]);
+          if (raced.kind === "read") {
+            if (raced.chunk.done) {
+              stderrSoFar += decoder.decode();
+              break;
+            }
+            stderrSoFar += decoder.decode(raced.chunk.value, { stream: true });
+            if (!signaled && stderrSoFar.includes("[navigating]")) {
+              signaled = true;
+              expect(stderrSoFar).toContain("[launching_browser]");
+              proc.kill(signal);
+            }
+            pendingRead = reader.read();
+          }
+        }
+      } finally {
+        await reader.cancel().catch(() => {});
+      }
+
+      expect(signaled).toBe(true);
+      const exitCode = await proc.exited;
+      expect(exitCode).toBe(expectedExitCode);
+      expect(stderrSoFar).toContain(`Received ${signal}. Shutting down...`);
+
+      using db = openDb({ path: tempDbPath });
+      const store = createLighthouseStore({
+        db,
+        artifactsDir: tempArtifactsDir,
+      });
+      const matchingRuns = store
+        .listRuns()
+        .filter((r) => r.url.includes(slowPath));
+      expect(matchingRuns).toHaveLength(0);
+    } finally {
+      if (proc.exitCode === null) {
+        proc.kill("SIGKILL");
+      }
+      await slowServer.stop(true);
+    }
+  }
+
+  test("cancels mid-audit SIGTERM cleanly, exits 143, and persists zero run rows", async () => {
+    await assertMidAuditSignalCancellation("SIGTERM", 143);
+  }, 35000);
+
+  test("cancels mid-audit SIGINT cleanly, exits 130, and persists zero run rows", async () => {
+    await assertMidAuditSignalCancellation("SIGINT", 130);
+  }, 35000);
 });

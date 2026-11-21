@@ -15,7 +15,7 @@ import {
   TriggerLighthouseAuditRequestSchema,
   TriggerLighthouseAuditResponseSchema,
   normalizeLighthouseAuditRequest,
-} from "../src/schemas";
+} from "../src/contracts/schemas";
 
 const sampleSummary = {
   lcpElement: null,

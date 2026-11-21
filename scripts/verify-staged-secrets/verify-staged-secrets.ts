@@ -3,6 +3,38 @@ import { extname, isAbsolute, relative, resolve } from "node:path";
 interface SecretRule {
   name: string;
   regex: RegExp;
+  validate?: (token: string) => boolean;
+}
+
+/**
+ * Computes the Shannon entropy (in bits per character) of an input string.
+ *
+ * @param value - Input string to measure.
+ * @returns Shannon entropy in bits per character (`0` for empty strings).
+ */
+export function computeShannonEntropy(value: string): number {
+  if (value.length === 0) {
+    return 0;
+  }
+  const counts = new Map<string, number>();
+  for (const ch of value) {
+    counts.set(ch, (counts.get(ch) ?? 0) + 1);
+  }
+  let entropy = 0;
+  for (const count of counts.values()) {
+    const probability = count / value.length;
+    entropy -= probability * Math.log2(probability);
+  }
+  return entropy;
+}
+
+function hasHighEntropyDiversity(token: string): boolean {
+  let classes = 0;
+  if (/[a-z]/.test(token)) classes += 1;
+  if (/[A-Z]/.test(token)) classes += 1;
+  if (/[0-9]/.test(token)) classes += 1;
+  if (/[+/=_-]/.test(token)) classes += 1;
+  return classes >= 3 && computeShannonEntropy(token) >= 4.2;
 }
 
 const SECRET_PATTERNS: SecretRule[] = [
@@ -29,9 +61,14 @@ const SECRET_PATTERNS: SecretRule[] = [
       /(?:^|[^a-zA-Z0-9_])(xox[baprs]-[0-9a-zA-Z]{10,48})(?:[^a-zA-Z0-9_]|$)/,
   },
   {
+    name: "Anthropic API Key",
+    regex:
+      /(?:^|[^a-zA-Z0-9_])(sk-ant-api03-[a-zA-Z0-9_-]{32,})(?:[^a-zA-Z0-9_]|$)/,
+  },
+  {
     name: "OpenAI API Key",
     regex:
-      /(?:^|[^a-zA-Z0-9_])(sk-(?:proj-|live-)?[a-zA-Z0-9_-]{32,})(?:[^a-zA-Z0-9_]|$)/,
+      /(?:^|[^a-zA-Z0-9_])(sk-(?!ant-)(?:proj-|live-)?[a-zA-Z0-9_-]{32,})(?:[^a-zA-Z0-9_]|$)/,
   },
   {
     name: "Stripe API Key",
@@ -39,8 +76,42 @@ const SECRET_PATTERNS: SecretRule[] = [
       /(?:^|[^a-zA-Z0-9_])((?:sk|rk)_(?:live|test)_[0-9a-zA-Z]{24,})(?:[^a-zA-Z0-9_]|$)/,
   },
   {
+    name: "Google Cloud / Firebase API Key",
+    regex: /(?:^|[^a-zA-Z0-9_])(AIza[0-9A-Za-z_-]{35})(?:[^a-zA-Z0-9_]|$)/,
+  },
+  {
+    name: "npm Access Token",
+    regex: /(?:^|[^a-zA-Z0-9_])(npm_[a-zA-Z0-9]{36})(?:[^a-zA-Z0-9_]|$)/,
+  },
+  {
+    name: "SendGrid API Key",
+    regex:
+      /(?:^|[^a-zA-Z0-9_])(SG\.[a-zA-Z0-9_-]{22}\.[a-zA-Z0-9_-]{43})(?:[^a-zA-Z0-9_]|$)/,
+  },
+  {
+    name: "PyPI API Token",
+    regex:
+      /(?:^|[^a-zA-Z0-9_])(pypi-AgEIcHlwaS5vcmc[A-Za-z0-9_-]{50,})(?:[^a-zA-Z0-9_]|$)/,
+  },
+  {
+    name: "Database Connection URI",
+    regex:
+      /((?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|rediss):\/\/[^:\s/]+:[^@\s/]{4,}@[^\s"']+)/,
+  },
+  {
+    name: "JSON Web Token",
+    regex:
+      /(?:^|[^a-zA-Z0-9_-])(eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{16,})(?:[^a-zA-Z0-9_-]|$)/,
+  },
+  {
     name: "Private Key",
     regex: /-----BEGIN (?:[A-Z0-9_-]+ )?PRIVATE KEY-----/,
+  },
+  {
+    name: "High-Entropy Secret Assignment",
+    regex:
+      /(?:api[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|password|passwd)\s*[:=]\s*["']([A-Za-z0-9+/=_-]{32,})["']/i,
+    validate: hasHighEntropyDiversity,
   },
 ];
 
@@ -129,19 +200,27 @@ export function scanContentForSecrets(
       continue;
     }
 
+    const matchedTokens = new Set<string>();
     for (const pattern of SECRET_PATTERNS) {
       const match = pattern.regex.exec(line);
       if (!match) continue;
 
       const token = match[1] ?? match[0];
-      if (!isSyntheticPlaceholder(token)) {
-        findings.push({
-          file: filePath,
-          line: i + 1,
-          rule: pattern.name,
-          token,
-        });
+      if (isSyntheticPlaceholder(token)) continue;
+      if (
+        pattern.validate &&
+        (matchedTokens.has(token) || !pattern.validate(token))
+      ) {
+        continue;
       }
+
+      matchedTokens.add(token);
+      findings.push({
+        file: filePath,
+        line: i + 1,
+        rule: pattern.name,
+        token,
+      });
     }
   }
 

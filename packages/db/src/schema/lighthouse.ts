@@ -1,4 +1,5 @@
 import {
+  customType,
   index,
   integer,
   real,
@@ -6,94 +7,30 @@ import {
   text,
 } from "drizzle-orm/sqlite-core";
 
-/**
- * Normalized DOM element attribution stored inside `lighthouse_runs.summary_json`.
- */
-export interface LighthouseSummaryElementData {
-  selector: string;
-  snippet: string | null;
-  nodeLabel: string | null;
-  path: string | null;
-  lhId: string | null;
-  boundingRect: {
-    top: number;
-    bottom: number;
-    left: number;
-    right: number;
-    width: number;
-    height: number;
-  } | null;
+function isJsonRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-/**
- * Warm structured summary JSON stored inside `lighthouse_runs.summary_json`.
- *
- * @remarks
- * Defined directly in `@devtools/db` so database schemas remain self-contained
- * without importing `@devtools/lighthouse`.
- */
-export interface LighthouseRunSummaryData {
-  /** Largest Contentful Paint (LCP) DOM element attribution, or `null` when unavailable. */
-  lcpElement: LighthouseSummaryElementData | null;
-  /** Four LCP phase durations in milliseconds from `lcp-breakdown-insight`, or `null` when unavailable. */
-  lcpPhases: {
-    timeToFirstByteMs: number | null;
-    resourceLoadDelayMs: number | null;
-    resourceLoadDurationMs: number | null;
-    elementRenderDelayMs: number | null;
-  } | null;
-  /** Cumulative Layout Shift (CLS) culprit elements and root causes from `cls-culprits-insight`. */
-  clsCulprits: Array<{
-    element: LighthouseSummaryElementData;
-    score: number;
-    causes: Array<{
-      cause: string;
-      url: string | null;
-      selector: string | null;
-    }>;
-  }>;
-  /** Prioritized Lighthouse v13 `*-insight` diagnostics. */
-  insights: Array<{
-    id: string;
-    title: string;
-    description: string;
-    score: number | null;
-    scoreDisplayMode: string;
-    displayValue: string | null;
-    metricSavings: Record<string, number>;
-    replacesAudits: string[];
-  }>;
-  /** Actionable failed or warning audits across all audited categories. */
-  failedAudits: Array<{
-    id: string;
-    title: string;
-    description: string;
-    category: string | null;
-    score: number | null;
-    scoreDisplayMode: string;
-    displayValue: string | null;
-  }>;
-  /** Warnings emitted by Lighthouse during page navigation and gathering. */
-  runWarnings: string[];
-  /** Fatal runtime error reported inside the LHR, if any. */
-  runtimeError: {
-    code: string;
-    message: string;
-  } | null;
-  /** Multi-run representative selection metadata when `--runs > 1`, or `null` for single runs. */
-  medianMetadata: {
-    totalRuns: number;
-    selectedRunIndex: number;
-    medianFcpMs: number;
-    medianInteractiveMs: number;
-    runDistances: Array<{
-      runIndex: number;
-      fcpMs: number;
-      interactiveMs: number;
-      distanceSquared: number;
-    }>;
-  } | null;
-}
+const tolerantJsonText = customType<{
+  data: Record<string, unknown> | null;
+  driverData: string;
+}>({
+  dataType() {
+    return "text";
+  },
+  toDriver(value) {
+    return JSON.stringify(value);
+  },
+  fromDriver(value) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      return null;
+    }
+    return isJsonRecord(parsed) ? parsed : null;
+  },
+});
 
 /**
  * Persistence table storing hot category scores, Core Web Vitals, warm `summary_json`,
@@ -136,10 +73,8 @@ export const lighthouseRuns = sqliteTable(
     siMs: real("si_ms"),
     /** Time to First Byte (TTFB) in milliseconds. */
     ttfbMs: real("ttfb_ms"),
-    /** Warm structured Audit Summary (`LighthouseRunSummaryData`). */
-    summaryJson: text("summary_json", { mode: "json" })
-      .$type<LighthouseRunSummaryData>()
-      .notNull(),
+    /** Warm structured Audit Summary JSON payload validated at the Lighthouse persistence boundary. */
+    summaryJson: tolerantJsonText("summary_json").notNull(),
     /** Absolute path to the cold `report.json` LHR artifact on disk. */
     jsonReportPath: text("json_report_path").notNull(),
     /** Absolute path to the cold `report.html` viewer artifact on disk. */
@@ -165,8 +100,3 @@ export const lighthouseRuns = sqliteTable(
  * Row model selected from the {@link lighthouseRuns} table.
  */
 export type LighthouseRunRow = typeof lighthouseRuns.$inferSelect;
-
-/**
- * Insert payload model for the {@link lighthouseRuns} table.
- */
-export type NewLighthouseRunRow = typeof lighthouseRuns.$inferInsert;

@@ -135,14 +135,17 @@ function safeKillProcess(proc?: ReturnType<typeof Bun.spawn>): void {
  *
  * @param executablePath - Filesystem path to the candidate browser binary.
  * @param timeoutMs - Maximum execution duration in milliseconds before killing the probe process. Defaults to `3000`.
+ * @param spawnFn - Optional `Bun.spawn` seam for unit testing.
+ * @param signal - Optional cancellation signal aborting the probe subprocess.
  * @returns {@link VerificationResult} indicating validity and the parsed version string.
  */
 export async function verifyBrowserExecutable(
   executablePath: string,
   timeoutMs = 3000,
   spawnFn: typeof Bun.spawn = Bun.spawn,
+  signal?: AbortSignal,
 ): Promise<VerificationResult> {
-  if (!isExecutable(executablePath)) {
+  if (signal?.aborted || !isExecutable(executablePath)) {
     return { valid: false };
   }
 
@@ -158,6 +161,7 @@ export async function verifyBrowserExecutable(
         proc = spawnFn(buildVersionCommand(executablePath), {
           stdout: "pipe",
           stderr: "ignore",
+          ...(signal ? { signal } : {}),
         });
 
         timer = setTimeout(() => {
@@ -187,7 +191,7 @@ export async function verifyBrowserExecutable(
     });
 
     const trimmed = stdout.trim();
-    if (code === 0 && trimmed.length > 0) {
+    if (!signal?.aborted && code === 0 && trimmed.length > 0) {
       return { valid: true, version: trimmed.split("\n")[0]?.trim() ?? "" };
     }
     return { valid: false };
@@ -245,13 +249,18 @@ export function getManagedCacheDir(envOrSeam?: ManagedCacheDirOptions): string {
  * @param cacheDir - Optional custom managed cache directory override.
  * @param envOrSeam - Optional environment map or {@link BrowserConfigSeam}.
  * @param timeoutMs - Optional verification timeout in milliseconds per candidate.
+ * @param signal - Optional cancellation signal aborting candidate verification.
  * @returns Object containing `path` and `version` of the first runnable cached browser, or `null` if none is found.
  */
 export async function probeManagedCache(
   cacheDir?: string,
   envOrSeam?: ManagedCacheDirOptions,
   timeoutMs?: number,
+  signal?: AbortSignal,
 ): Promise<{ path: string; version: string } | null> {
+  if (signal?.aborted) {
+    return null;
+  }
   const seam = resolveSeam(extractManagedSeam(envOrSeam));
   const targetDir = resolveManagedCacheDir(cacheDir, seam);
   if (!existsSync(targetDir)) {
@@ -263,16 +272,21 @@ export async function probeManagedCache(
     typeof envOrSeam === "object" &&
     "getInstalledBrowsers" in envOrSeam &&
     typeof envOrSeam.getInstalledBrowsers === "function"
-      ? (envOrSeam.getInstalledBrowsers as typeof getInstalledBrowsers)
+      ? envOrSeam.getInstalledBrowsers
       : getInstalledBrowsers;
 
   try {
     const installed = await getInstalled({ cacheDir: targetDir });
     for (const browser of installed) {
+      if (signal?.aborted) {
+        return null;
+      }
       if (browser.executablePath && existsSync(browser.executablePath)) {
         const check = await verifyBrowserExecutable(
           browser.executablePath,
           timeoutMs,
+          undefined,
+          signal,
         );
         if (check.valid && check.version) {
           return {
@@ -300,7 +314,8 @@ export async function probeSystemInstallations(
 ): Promise<string[]> {
   try {
     const launcherFn =
-      getInstallationsSeam ?? chromeLauncher.Launcher.getInstallations;
+      getInstallationsSeam ??
+      (() => chromeLauncher.Launcher.getInstallations());
     const installations = launcherFn();
     return Array.from(new Set(installations.filter((p) => existsSync(p))));
   } catch {
@@ -322,7 +337,7 @@ export type ProbeAlternativeBrowsersOptions = BrowserSeamOptions | EnvMap;
  */
 export async function probeAlternativeBrowsers(
   optionsOrEnv?: ProbeAlternativeBrowsersOptions,
-  platformOverride?: NodeJS.Platform | string,
+  platformOverride?: string,
 ): Promise<Array<CandidateBrowser<"edge" | "brave">>> {
   const seam = resolveSeam(optionsOrEnv, platformOverride);
   const osType = resolvePlatform(seam);
@@ -393,7 +408,7 @@ export async function probeAlternativeBrowsers(
  */
 function getPlaywrightCacheBase(
   home: string,
-  osType: NodeJS.Platform | string,
+  osType: string,
   seam?: BrowserConfigSeam,
 ): string {
   const browsersPath = resolvePlaywrightCustomPath(seam);

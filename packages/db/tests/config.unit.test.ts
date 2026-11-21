@@ -1,129 +1,185 @@
 import { describe, expect, it } from "bun:test";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
   eq,
-  findWorkspaceRoot,
   integer,
   resolveDatabasePath,
+  resolveDatabaseTargetPath,
   sql,
   sqliteTable,
   text,
 } from "../src";
+import {
+  EMBEDDED_SQL_BY_TAG,
+  resolveEmbeddedMigrations,
+} from "../src/migrator";
 
 describe("Database Configuration & Path Resolution", () => {
-  it("resolves to :memory: in test environment by default", () => {
-    expect(resolveDatabasePath({ env: { NODE_ENV: "test" } })).toBe(":memory:");
-  });
-
-  it("resolves to :memory: when BUN_ENV is test", () => {
-    expect(resolveDatabasePath({ env: { BUN_ENV: "test" } })).toBe(":memory:");
-  });
-
-  it("respects explicit custom path argument", () => {
-    const tempPath = join(tmpdir(), "devtools-test", "custom.db");
-    try {
-      const resolved = resolveDatabasePath(tempPath);
-      expect(resolved).toBe(tempPath);
-      expect(existsSync(join(tmpdir(), "devtools-test"))).toBe(true);
-    } finally {
-      rmSync(join(tmpdir(), "devtools-test"), { recursive: true, force: true });
-    }
-  });
-
-  it("respects DEVTOOLS_DB_PATH environment variable override via env seam", () => {
-    const tempPath = join(tmpdir(), "devtools-env-test", "env.db");
-    try {
-      const resolved = resolveDatabasePath({
-        env: { DEVTOOLS_DB_PATH: tempPath },
-      });
-      expect(resolved).toBe(tempPath);
-      expect(existsSync(join(tmpdir(), "devtools-env-test"))).toBe(true);
-    } finally {
-      rmSync(join(tmpdir(), "devtools-env-test"), {
-        recursive: true,
-        force: true,
-      });
-    }
-  });
-
-  it("respects DATABASE_URL environment variable override via env seam", () => {
-    const tempPath = join(tmpdir(), "devtools-dburl-test", "url.db");
-    try {
-      const resolved = resolveDatabasePath({
-        env: { DATABASE_URL: tempPath },
-      });
-      expect(resolved).toBe(tempPath);
-      expect(existsSync(join(tmpdir(), "devtools-dburl-test"))).toBe(true);
-    } finally {
-      rmSync(join(tmpdir(), "devtools-dburl-test"), {
-        recursive: true,
-        force: true,
-      });
-    }
-  });
-
-  it("returns :memory: if DEVTOOLS_DB_PATH is :memory:", () => {
+  it("resolves to :memory: when memory: true is passed regardless of env or path", () => {
     expect(
       resolveDatabasePath({
-        env: { DEVTOOLS_DB_PATH: ":memory:" },
+        memory: true,
+        customPath: "/tmp/should-be-ignored.db",
+        env: {
+          NODE_ENV: "production",
+          DEVTOOLS_DB_PATH: "/tmp/also-ignored.db",
+        },
       }),
     ).toBe(":memory:");
   });
 
-  it("resolves to in-repo .devtools/devtools.db in development environment via env seam", () => {
+  it("resolves to :memory: in test environment by default", () => {
+    expect(
+      resolveDatabasePath({ env: { NODE_ENV: "test" }, isStandalone: false }),
+    ).toBe(":memory:");
+    expect(
+      resolveDatabasePath({ env: { BUN_ENV: "test" }, isStandalone: false }),
+    ).toBe(":memory:");
+  });
+
+  it("respects explicit custom path argument", () => {
+    const tempPath = join(tmpdir(), `devtools-test-${Date.now()}`, "custom.db");
+    const tempDir = join(tempPath, "..");
+    try {
+      const resolved = resolveDatabasePath(tempPath);
+      expect(resolved).toBe(tempPath);
+      expect(existsSync(tempDir)).toBe(true);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("respects DEVTOOLS_DB_PATH and DATABASE_URL overrides via env seam", () => {
+    const tempDir = join(tmpdir(), `devtools-env-${Date.now()}`);
+    const envPath = join(tempDir, "env.db");
+    const urlPath = join(tempDir, "url.db");
+    try {
+      expect(
+        resolveDatabasePath({
+          customPath: envPath,
+          env: {
+            DEVTOOLS_DB_PATH: urlPath,
+            DATABASE_URL: join(tempDir, "fallback.db"),
+          },
+          isStandalone: false,
+        }),
+      ).toBe(envPath);
+      expect(
+        resolveDatabasePath({
+          env: {
+            DEVTOOLS_DB_PATH: envPath,
+            DATABASE_URL: urlPath,
+          },
+          isStandalone: false,
+        }),
+      ).toBe(envPath);
+      expect(
+        resolveDatabasePath({
+          env: { DATABASE_URL: urlPath },
+          isStandalone: false,
+        }),
+      ).toBe(urlPath);
+      expect(
+        resolveDatabasePath({
+          env: { DEVTOOLS_DB_PATH: "rel/local.db" },
+          cwd: () => tempDir,
+          isStandalone: false,
+        }),
+      ).toBe(join(tempDir, "rel", "local.db"));
+      expect(
+        resolveDatabasePath({
+          env: { DEVTOOLS_DB_PATH: ":memory:" },
+          isStandalone: false,
+        }),
+      ).toBe(":memory:");
+      expect(
+        resolveDatabasePath(undefined, {
+          NODE_ENV: "production",
+        }),
+      ).toBe(join(homedir(), ".devtools", "devtools.db"));
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("resolves to in-repo .devtools/devtools.db in development when not standalone", () => {
+    const repoRoot = resolve(import.meta.dir, "../../..");
+    const nestedSubdir = join(import.meta.dir, "../src");
     const resolved = resolveDatabasePath({
       env: { NODE_ENV: "development" },
+      cwd: () => nestedSubdir,
+      isStandalone: false,
     });
-    expect(resolved).toContain(".devtools");
-    expect(resolved.endsWith("devtools.db")).toBe(true);
+    expect(resolved).toBe(join(repoRoot, ".devtools", "devtools.db"));
   });
 
-  it("resolves production default path when NODE_ENV is production", () => {
-    const resolved = resolveDatabasePath({
-      env: { NODE_ENV: "production" },
-    });
-    expect(resolved).toContain(".devtools");
-    expect(resolved.endsWith("devtools.db")).toBe(true);
-  });
-
-  it("resolves default runtime path when called without arguments", () => {
-    const resolved = resolveDatabasePath();
-    expect(resolved).toBe(":memory:");
-  });
-
-  it("findWorkspaceRoot resolves workspace root from cwd when called without arguments", () => {
-    const root = findWorkspaceRoot();
-    expect(root).toBe(resolve(__dirname, "../../.."));
-  });
-
-  it("findWorkspaceRoot discovers monorepo root from nested subdirectories", () => {
-    const repoRoot = resolve(__dirname, "../../..");
-    const nestedDir = join(__dirname, "../src/schema");
-    expect(findWorkspaceRoot(nestedDir)).toBe(repoRoot);
-  });
-
-  it("findWorkspaceRoot handles malformed package.json and returns null outside a workspace", () => {
-    const isolatedDir = join(tmpdir(), `devtools-isolated-${Date.now()}`);
+  it("falls back to cwd when outside a workspace in development", () => {
+    const isolatedDir = join(tmpdir(), `devtools-db-isolated-${Date.now()}`);
     mkdirSync(isolatedDir, { recursive: true });
-    writeFileSync(join(isolatedDir, "package.json"), "{ invalid json");
+    writeFileSync(join(isolatedDir, "package.json"), "{ bad json");
     try {
-      expect(findWorkspaceRoot(isolatedDir)).toBeNull();
+      const resolved = resolveDatabasePath({
+        env: { NODE_ENV: "development" },
+        cwd: () => isolatedDir,
+        isStandalone: false,
+      });
+      expect(resolved).toBe(join(isolatedDir, ".devtools", "devtools.db"));
     } finally {
       rmSync(isolatedDir, { recursive: true, force: true });
     }
   });
 
-  it("anchors development database to workspace root even when running from nested cwd via seam", () => {
-    const repoRoot = resolve(__dirname, "../../..");
-    const nestedSubdir = join(__dirname, "../src");
+  it("defaults compiled standalone binaries and production to ~/.devtools/devtools.db", () => {
+    const expectedProdPath = join(homedir(), ".devtools", "devtools.db");
 
-    const resolved = resolveDatabasePath({
-      env: { NODE_ENV: "development" },
-      cwd: () => nestedSubdir,
-    });
-    expect(resolved).toBe(join(repoRoot, ".devtools", "devtools.db"));
+    expect(
+      resolveDatabasePath({
+        env: { NODE_ENV: "development" },
+        isStandalone: true,
+      }),
+    ).toBe(expectedProdPath);
+
+    expect(
+      resolveDatabasePath({
+        env: { NODE_ENV: "production" },
+        isStandalone: false,
+      }),
+    ).toBe(expectedProdPath);
+  });
+
+  it("resolves default runtime path when called without arguments", () => {
+    expect(resolveDatabasePath()).toBe(":memory:");
+    expect(resolveDatabaseTargetPath()).toBe(":memory:");
+  });
+});
+
+describe("resolveEmbeddedMigrations", () => {
+  it("parses valid journal entries using the embedded SQL registry", () => {
+    const migrations = resolveEmbeddedMigrations([
+      { tag: "0000_init", when: 1000 },
+      { tag: "0001_brave_lilandra", when: 2000 },
+    ]);
+    expect(migrations).toHaveLength(2);
+    expect(migrations[0]?.folderMillis).toBe(1000);
+    expect(migrations[0]?.statements.length).toBeGreaterThan(0);
+    expect(migrations[0]?.hash).toMatch(/^[a-f0-9]{64}$/);
+    expect(EMBEDDED_SQL_BY_TAG["0000_init"]).toContain("CREATE TABLE");
+  });
+
+  it("throws an actionable error when a journal tag is missing or empty", () => {
+    expect(() =>
+      resolveEmbeddedMigrations([{ tag: "0002_missing", when: 3000 }], {
+        "0000_init": "CREATE TABLE x (id text);",
+      }),
+    ).toThrow('Missing embedded SQL migration for journal tag "0002_missing"');
+
+    expect(() =>
+      resolveEmbeddedMigrations([{ tag: "0002_empty", when: 3000 }], {
+        "0002_empty": "   ",
+      }),
+    ).toThrow('Missing embedded SQL migration for journal tag "0002_empty"');
   });
 });
 

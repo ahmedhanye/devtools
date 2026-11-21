@@ -128,8 +128,8 @@ export const InteractiveOpenAndClose: Story = {
       name: "Close Interactive",
     });
     await userEvent.click(closeButton);
-    await waitFor(() => {
-      expect(
+    await waitFor(async () => {
+      await expect(
         body.queryByRole("heading", {
           name: "Interactive Sheet",
         }),
@@ -144,8 +144,8 @@ export const InteractiveOpenAndClose: Story = {
     await expect(reopenedHeading).toBeInTheDocument();
 
     await userEvent.keyboard("{Escape}");
-    await waitFor(() => {
-      expect(
+    await waitFor(async () => {
+      await expect(
         body.queryByRole("heading", {
           name: "Interactive Sheet",
         }),

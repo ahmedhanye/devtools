@@ -3,10 +3,11 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { API_ERROR_CODES, ApiErrorResponseSchema } from "@devtools/core";
-import { createDb, runMigrations, type DevtoolsDb } from "@devtools/db";
+import { openDb, type DbHandle } from "@devtools/db";
 import {
-  listLighthouseRuns,
+  createLighthouseStore,
   type LighthouseBatchExecutionResult,
+  type LighthouseStore,
 } from "@devtools/lighthouse";
 import {
   AuditSseCompleteEventSchema,
@@ -97,21 +98,23 @@ function makeBatchResult(url: string): LighthouseBatchExecutionResult {
 }
 
 describe("Lighthouse Audit Job SSE Streaming (/api/lighthouse/audits/:jobId/stream)", () => {
-  let db: DevtoolsDb;
+  let db: DbHandle;
+  let store: LighthouseStore;
   let artifactsDir: string;
 
   beforeEach(() => {
-    db = createDb({ path: ":memory:" });
-    runMigrations(db);
     artifactsDir = mkdtempSync(join(tmpdir(), "devtools-api-sse-"));
+    db = openDb({ memory: true });
+    store = createLighthouseStore({ db, artifactsDir });
   });
 
   afterEach(() => {
+    db.close();
     rmSync(artifactsDir, { recursive: true, force: true });
   });
 
   it("returns 404 for unknown or expired jobId", async () => {
-    const app = createApp({ db, artifactsDir });
+    const app = createApp({ store, artifactsDir });
     const res = await app.request("/api/lighthouse/audits/unknown-job/stream");
     expect(res.status).toBe(404);
     expect(ApiErrorResponseSchema.parse(await res.json()).error.code).toBe(
@@ -124,7 +127,7 @@ describe("Lighthouse Audit Job SSE Streaming (/api/lighthouse/audits/:jobId/stre
     const timeoutCalls: Array<number> = [];
 
     const app = createApp({
-      db,
+      store,
       artifactsDir,
       keepaliveIntervalMs: 20,
       auditRunner: async (params) => {
@@ -169,7 +172,7 @@ describe("Lighthouse Audit Job SSE Streaming (/api/lighthouse/audits/:jobId/stre
           timeoutCalls.push(seconds);
         },
       },
-    } as never);
+    });
 
     expect(streamRes.status).toBe(200);
     expect(streamRes.headers.get("content-type")).toContain(
@@ -202,7 +205,7 @@ describe("Lighthouse Audit Job SSE Streaming (/api/lighthouse/audits/:jobId/stre
     expect(completePayload.jobId).toBe(job.id);
     expect(completePayload.run.performanceScore).toBe(91);
 
-    const persistedRows = listLighthouseRuns(db);
+    const persistedRows = store.listRuns();
     expect(persistedRows).toHaveLength(1);
     expect(existsSync(persistedRows[0]!.htmlReportPath)).toBe(true);
   });
@@ -210,7 +213,7 @@ describe("Lighthouse Audit Job SSE Streaming (/api/lighthouse/audits/:jobId/stre
   it("keeps running audit alive on client SSE abort and replays terminal snapshot within retention window", async () => {
     const deferred = createDeferred<LighthouseBatchExecutionResult>();
     const app = createApp({
-      db,
+      store,
       artifactsDir,
       jobRetentionMs: 60,
       keepaliveIntervalMs: 1000,
@@ -269,7 +272,7 @@ describe("Lighthouse Audit Job SSE Streaming (/api/lighthouse/audits/:jobId/stre
       }),
     ).text();
     expect(secondTail).toContain("complete");
-    expect(listLighthouseRuns(db)).toHaveLength(1);
+    expect(store.listRuns()).toHaveLength(1);
 
     // Late/reconnected subscriber immediately receives terminal complete event
     const replayRes = await app.request(
@@ -291,7 +294,7 @@ describe("Lighthouse Audit Job SSE Streaming (/api/lighthouse/audits/:jobId/stre
 
   it("emits a single structured error SSE event without Hono duplicate error frames on failure", async () => {
     const app = createApp({
-      db,
+      store,
       artifactsDir,
       jobRetentionMs: 5000,
       auditRunner: async () => {
@@ -340,9 +343,14 @@ describe("Lighthouse Audit Job SSE Streaming (/api/lighthouse/audits/:jobId/stre
   it("emits SSE error and clears active job when parent-thread persistence fails", async () => {
     const fileInsteadOfDir = join(artifactsDir, "not-a-directory");
     writeFileSync(fileInsteadOfDir, "occupied");
+    using brokenDb = openDb({ memory: true });
+    const brokenStore = createLighthouseStore({
+      db: brokenDb,
+      artifactsDir: fileInsteadOfDir,
+    });
 
     const app = createApp({
-      db,
+      store: brokenStore,
       artifactsDir: fileInsteadOfDir,
       auditRunner: async () =>
         makeBatchResult("https://example.com/persist-fail"),
@@ -380,7 +388,7 @@ describe("Lighthouse Audit Job SSE Streaming (/api/lighthouse/audits/:jobId/stre
     let signalAborted = false;
 
     const app = createApp({
-      db,
+      store,
       artifactsDir,
       auditRunner: async (params) => {
         params.signal?.addEventListener("abort", () => {
@@ -414,6 +422,57 @@ describe("Lighthouse Audit Job SSE Streaming (/api/lighthouse/audits/:jobId/stre
     expect(streamRes.status).toBe(200);
     const frames = parseSseFrames(await streamRes.text());
     expect(frames.some((f) => f.event === "error")).toBe(true);
-    expect(listLighthouseRuns(db)).toHaveLength(0);
+    expect(store.listRuns()).toHaveLength(0);
+  });
+
+  it("closes SSE stream promptly if retained job disappears before subscribe()", async () => {
+    const app = createApp({
+      store,
+      artifactsDir,
+      jobRetentionMs: 5000,
+      auditRunner: async (params) => makeBatchResult(params.url),
+    });
+
+    const triggerRes = await app.request("/api/lighthouse/audits", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: "https://example.com/mid-connect-expiry" }),
+    });
+    expect(triggerRes.status).toBe(202);
+    const { job } = TriggerLighthouseAuditResponseSchema.parse(
+      await triggerRes.json(),
+    );
+
+    // Wait until the job reaches retained terminal state
+    const completedRes = await app.request(
+      `/api/lighthouse/audits/${job.id}/stream`,
+    );
+    expect(completedRes.status).toBe(200);
+    expect(await completedRes.text()).toContain("complete");
+
+    const streamReq = new Request(
+      `http://127.0.0.1:4000/api/lighthouse/audits/${job.id}/stream`,
+    );
+    const streamRes = await app.fetch(streamReq, {
+      server: {
+        requestIP: () => ({
+          address: "127.0.0.1",
+          family: "IPv4",
+          port: 55000,
+        }),
+        timeout: () => {
+          void app.shutdown();
+        },
+      },
+    });
+
+    expect(streamRes.status).toBe(200);
+    const body = await Promise.race([
+      streamRes.text(),
+      new Promise<string>((_, reject) =>
+        setTimeout(() => reject(new Error("SSE stream hung")), 500),
+      ),
+    ]);
+    expect(body).toBe("");
   });
 });

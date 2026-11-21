@@ -2,33 +2,30 @@ import * as cp from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { openDb, type DbHandle } from "@devtools/db";
 import {
-  createDb,
-  resetDb,
-  runMigrations,
-  type DevtoolsDb,
-  type LighthouseRunRow,
-  type NewLighthouseRunRow,
-} from "@devtools/db";
-import {
-  insertLighthouseRun,
+  createLighthouseStore,
+  type LighthouseRunRecord,
+  type LighthouseStore,
+  type NewLighthouseRunRecord,
   type NormalizedLighthouseRun,
 } from "@devtools/lighthouse";
-import { createProgram } from "../src/cli";
-import { runLighthouseAuditCommand } from "../src/lighthouse/audit";
-import { createLighthouseCliContext } from "../src/lighthouse/context";
-import { runLighthouseDiffCommand } from "../src/lighthouse/diff";
-import { stripAnsi } from "../src/lighthouse/formatters/agent";
-import { runLighthouseListCommand } from "../src/lighthouse/list";
+import { createProgram } from "../src/app";
+import { createLazyLighthouseStore } from "../src/app/program";
+import { runLighthouseAuditCommand } from "../src/commands/lighthouse/audit";
+import { createLighthouseCliContext } from "../src/commands/lighthouse/context";
+import { runLighthouseDiffCommand } from "../src/commands/lighthouse/diff";
+import { stripAnsi } from "../src/commands/lighthouse/formatters/agent";
+import { runLighthouseListCommand } from "../src/commands/lighthouse/list";
 import {
   defaultIsHeadless,
   defaultSpawnOpener,
   runLighthouseOpenCommand,
-} from "../src/lighthouse/open";
-import { LighthouseOpenerError } from "../src/lighthouse/errors";
+} from "../src/commands/lighthouse/open";
+import { LighthouseOpenerError } from "../src/commands/lighthouse/errors";
 
-const DEFAULT_SAMPLE_ROW: Omit<NewLighthouseRunRow, "createdAt"> = {
+const DEFAULT_SAMPLE_ROW: Omit<NewLighthouseRunRecord, "createdAt"> = {
   id: "11111111-2222-3333-4444-555555555555",
   url: "https://example.com/",
   finalUrl: "https://example.com/",
@@ -60,8 +57,8 @@ const DEFAULT_SAMPLE_ROW: Omit<NewLighthouseRunRow, "createdAt"> = {
 };
 
 function makeSampleRow(
-  overrides: Partial<NewLighthouseRunRow> = {},
-): NewLighthouseRunRow {
+  overrides: Partial<NewLighthouseRunRecord> = {},
+): NewLighthouseRunRecord {
   return {
     ...DEFAULT_SAMPLE_ROW,
     createdAt: new Date(),
@@ -99,11 +96,16 @@ const mockNormalizedRun: NormalizedLighthouseRun = {
 };
 
 describe("CLI Lighthouse Command Surface (Unit)", () => {
-  let db: DevtoolsDb;
+  let db: DbHandle;
+  let store: LighthouseStore;
 
   beforeEach(() => {
-    db = createDb({ path: ":memory:" });
-    runMigrations(db);
+    db = openDb({ memory: true });
+    store = createLighthouseStore({ db });
+  });
+
+  afterEach(() => {
+    db.close();
   });
 
   describe("Commander Tree Registration", () => {
@@ -140,13 +142,12 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         "https://example.com/",
         {},
         {
-          runLighthouseAudit: async () => ({
+          runAudit: async () => ({
             normalized: mockNormalizedRun,
-            run: makeSampleRow() as LighthouseRunRow,
+            run: makeSampleRow() as LighthouseRunRecord,
+            previousRun: null,
             representativeRunIndex: 0,
           }),
-          getDb: () => db,
-          findPreviousLighthouseRun: () => null,
           log: (msg) => stdout.push(msg),
           writeStderr: (msg) => stderr.push(msg),
         },
@@ -164,12 +165,12 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         "https://example.com/",
         { agent: true },
         {
-          runLighthouseAudit: async () => ({
+          runAudit: async () => ({
             normalized: mockNormalizedRun,
-            run: makeSampleRow() as LighthouseRunRow,
+            run: makeSampleRow() as LighthouseRunRecord,
+            previousRun: null,
             representativeRunIndex: 0,
           }),
-          getDb: () => db,
           log: (msg) => stdout.push(msg),
         },
       );
@@ -188,12 +189,12 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         "https://example.com/",
         { json: true },
         {
-          runLighthouseAudit: async () => ({
+          runAudit: async () => ({
             normalized: mockNormalizedRun,
-            run: makeSampleRow() as LighthouseRunRow,
+            run: makeSampleRow() as LighthouseRunRecord,
+            previousRun: null,
             representativeRunIndex: 0,
           }),
-          getDb: () => db,
           log: (msg) => stdout.push(msg),
         },
       );
@@ -210,12 +211,12 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         "https://example.com/",
         { failUnder: "perf:80" },
         {
-          runLighthouseAudit: async () => ({
+          runAudit: async () => ({
             normalized: mockNormalizedRun,
-            run: makeSampleRow() as LighthouseRunRow,
+            run: makeSampleRow() as LighthouseRunRecord,
+            previousRun: null,
             representativeRunIndex: 0,
           }),
-          getDb: () => db,
           exit: (code) => {
             exitCode = code;
           },
@@ -232,12 +233,12 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         "https://example.com/",
         { failUnder: "perf:95" },
         {
-          runLighthouseAudit: async () => ({
+          runAudit: async () => ({
             normalized: mockNormalizedRun,
-            run: makeSampleRow() as LighthouseRunRow,
+            run: makeSampleRow() as LighthouseRunRecord,
+            previousRun: null,
             representativeRunIndex: 0,
           }),
-          getDb: () => db,
           exit: (code) => {
             exitCode = code;
           },
@@ -255,10 +256,9 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         "https://example.com/",
         {},
         {
-          runLighthouseAudit: async () => {
+          runAudit: async () => {
             throw new Error("Chromium launch failed");
           },
-          getDb: () => db,
           writeStderr: (msg) => stderr.push(msg),
           exit: (code) => {
             exitCode = code;
@@ -277,10 +277,9 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         { env: { TERM: "xterm-256color" } },
         {
           isStderrTTY: true,
-          getDb: () => db,
           writeStderr: (msg) => stderrInteractive.push(msg),
           exit: () => {},
-          runLighthouseAudit: async () => {
+          runAudit: async () => {
             throw new Error("Audit execution failed");
           },
         },
@@ -294,10 +293,9 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         { env: { TERM: "xterm-256color" } },
         {
           isStderrTTY: false,
-          getDb: () => db,
           writeStderr: (msg) => stderrRedirected.push(msg),
           exit: () => {},
-          runLighthouseAudit: async () => {
+          runAudit: async () => {
             throw new Error("Audit execution failed");
           },
         },
@@ -311,10 +309,9 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         { env: { TERM: "xterm-256color", NO_COLOR: "1" } },
         {
           isStderrTTY: true,
-          getDb: () => db,
           writeStderr: (msg) => stderrNoColor.push(msg),
           exit: () => {},
-          runLighthouseAudit: async () => {
+          runAudit: async () => {
             throw new Error("Audit execution failed");
           },
         },
@@ -331,8 +328,19 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         "https://example.com/",
         { categories: "performance,seo" },
         {
-          runLighthouseAudit: async (opts) => {
+          runAudit: async (opts) => {
             capturedCategories = opts.categories;
+            opts.onProgress?.({
+              stage: "analyzing",
+              message: "Single run",
+              runIndex: 0,
+              totalRuns: 1,
+            });
+            opts.onProgress?.({
+              stage: "analyzing",
+              message: "Missing index",
+              totalRuns: 2,
+            });
             opts.onProgress?.({
               stage: "navigating",
               message: "Navigating to URL",
@@ -341,20 +349,24 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
             });
             return {
               normalized: mockNormalizedRun,
-              run: makeSampleRow() as LighthouseRunRow,
+              run: makeSampleRow() as LighthouseRunRecord,
+              previousRun: null,
               representativeRunIndex: 0,
             };
           },
-          getDb: () => db,
           writeStderr: (msg) => stderr.push(msg),
-          findPreviousLighthouseRun: () => {
-            throw new Error("DB read error");
-          },
         },
       );
 
       expect(capturedCategories).toEqual(["performance", "seo"]);
-      expect(stderr.join("\n")).toContain(
+      const combinedStderr = stderr.join("\n");
+      expect(combinedStderr).toContain("[lighthouse] [analyzing] Single run\n");
+      expect(combinedStderr).toContain(
+        "[lighthouse] [analyzing] Missing index\n",
+      );
+      expect(combinedStderr).not.toContain("(run 1/1)");
+      expect(combinedStderr).not.toContain("NaN");
+      expect(combinedStderr).toContain(
         "[lighthouse] [navigating] Navigating to URL (run 1/2)",
       );
     });
@@ -367,12 +379,12 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         "https://example.com/",
         { agent: true, failUnder: "perf:80" },
         {
-          runLighthouseAudit: async () => ({
+          runAudit: async () => ({
             normalized: mockNormalizedRun,
-            run: makeSampleRow() as LighthouseRunRow,
+            run: makeSampleRow() as LighthouseRunRecord,
+            previousRun: null,
             representativeRunIndex: 0,
           }),
-          getDb: () => db,
           log: (msg) => stdout.push(msg),
           exit: (code) => {
             exitCode = code;
@@ -396,12 +408,12 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         "https://example.com/",
         { failUnder: "invalid_rule" },
         {
-          runLighthouseAudit: async () => ({
+          runAudit: async () => ({
             normalized: mockNormalizedRun,
-            run: makeSampleRow() as LighthouseRunRow,
+            run: makeSampleRow() as LighthouseRunRecord,
+            previousRun: null,
             representativeRunIndex: 0,
           }),
-          getDb: () => db,
           writeStderr: (msg) => stderr.push(msg),
           exit: (code) => {
             exitCode = code;
@@ -413,7 +425,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
       expect(stderr.join("\n")).toContain("Error parsing budget rules");
     });
 
-    test("exits 1 on invalid budget rule syntax upfront without invoking runLighthouseAudit", async () => {
+    test("exits 1 on invalid budget rule syntax upfront without invoking audit execution", async () => {
       let exitCode: number | undefined;
       let auditCalled = false;
       const stderr: string[] = [];
@@ -422,15 +434,15 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         "https://example.com/",
         { failUnder: "invalid_rule" },
         {
-          runLighthouseAudit: async () => {
+          runAudit: async () => {
             auditCalled = true;
             return {
               normalized: mockNormalizedRun,
-              run: makeSampleRow() as LighthouseRunRow,
+              run: makeSampleRow() as LighthouseRunRecord,
+              previousRun: null,
               representativeRunIndex: 0,
             };
           },
-          getDb: () => db,
           writeStderr: (msg) => stderr.push(msg),
           exit: (code) => {
             exitCode = code;
@@ -443,43 +455,304 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
       expect(stderr.join("\n")).toContain("Error parsing budget rules");
     });
 
-    test("passes canonical normalized record.url to findPrevious baseline lookup", async () => {
-      let findPreviousUrl: string | undefined;
+    test("renders baseline header when runAudit returns a previousRun", async () => {
       const stdout: string[] = [];
 
       await runLighthouseAuditCommand(
         "http://example.com",
         {},
         {
-          runLighthouseAudit: async () => ({
+          runAudit: async () => ({
             normalized: mockNormalizedRun,
             run: makeSampleRow({
               url: "http://example.com/",
-            }) as LighthouseRunRow,
+            }) as LighthouseRunRecord,
+            previousRun: makeSampleRow({
+              id: "prev-111-222",
+              url: "http://example.com/",
+            }) as LighthouseRunRecord,
             representativeRunIndex: 0,
           }),
-          getDb: () => db,
-          findPreviousLighthouseRun: (_db, opts) => {
-            findPreviousUrl = opts.url;
-            return null;
-          },
           log: (msg) => stdout.push(msg),
         },
       );
 
-      expect(findPreviousUrl).toBe("http://example.com/");
+      expect(stdout.join("\n")).toContain("Baseline: Run prev-111");
+    });
+
+    test("forwards explicit options.signal via store.runAudit and exits 1 when store connection fails", async () => {
+      const controller = new AbortController();
+      let capturedSignal: AbortSignal | undefined;
+      const stdout: string[] = [];
+      let exitCode: number | undefined;
+      const stderr: string[] = [];
+
+      await runLighthouseAuditCommand(
+        "https://example.com/",
+        { json: true },
+        {
+          openStore: () => {
+            throw new Error("DB unreachable");
+          },
+          error: (msg) => stderr.push(msg),
+          exit: (code) => {
+            exitCode = code;
+          },
+        },
+      );
+      expect(exitCode).toBe(1);
+      expect(stderr.join("\n")).toContain("DB unreachable");
+
+      await runLighthouseAuditCommand(
+        "https://example.com/",
+        { signal: controller.signal, json: true },
+        {
+          openStore: () => ({
+            ...store,
+            runAudit: async (opts) => {
+              capturedSignal = opts.signal;
+              return {
+                normalized: mockNormalizedRun,
+                run: makeSampleRow() as LighthouseRunRecord,
+                previousRun: null,
+                representativeRunIndex: 0,
+              };
+            },
+          }),
+          log: (msg) => stdout.push(msg),
+        },
+      );
+
+      expect(capturedSignal).toBe(controller.signal);
+      expect(JSON.parse(stdout.join("\n")).requestedUrl).toBe(
+        "https://example.com/",
+      );
+    });
+
+    test("forwards deps.signal, closes store before exit, and skips exit(1) when aborted", async () => {
+      const controller = new AbortController();
+      const events: string[] = [];
+
+      await runLighthouseAuditCommand(
+        "https://example.com/",
+        {},
+        {
+          signal: controller.signal,
+          runAudit: async (opts) => {
+            expect(opts.signal).toBe(controller.signal);
+            controller.abort(new Error("SIGTERM"));
+            throw new Error("aborted during cleanup");
+          },
+          closeStore: () => {
+            events.push("closeStore");
+          },
+          writeStderr: () => {},
+          exit: (code) => {
+            events.push(`exit:${code}`);
+          },
+        },
+      );
+      expect(events).toEqual(["closeStore"]);
+
+      const failureEvents: string[] = [];
+      await runLighthouseAuditCommand(
+        "https://example.com/",
+        { failUnder: "perf:99" },
+        {
+          runAudit: async () => ({
+            normalized: mockNormalizedRun,
+            run: makeSampleRow() as LighthouseRunRecord,
+            previousRun: null,
+            representativeRunIndex: 0,
+          }),
+          closeStore: () => {
+            failureEvents.push("closeStore");
+          },
+          log: () => {},
+          exit: (code) => {
+            failureEvents.push(`exit:${code}`);
+          },
+        },
+      );
+      expect(failureEvents).toEqual(["closeStore", "exit:1"]);
+    });
+
+    test("validates list options before opening DB and closes store before exit on query error", async () => {
+      let openStoreCalls = 0;
+      const errors: string[] = [];
+      const exitCodes: Array<number | undefined> = [];
+
+      await runLighthouseListCommand(
+        { limit: -1 },
+        {
+          openStore: () => {
+            openStoreCalls += 1;
+            return store;
+          },
+          error: (msg) => errors.push(msg),
+          exit: (code) => {
+            exitCodes.push(code);
+          },
+        },
+      );
+      expect(openStoreCalls).toBe(0);
+      expect(exitCodes).toEqual([1]);
+
+      const events: string[] = [];
+      await runLighthouseListCommand(
+        {},
+        {
+          openStore: () => ({
+            ...store,
+            listRuns: () => {
+              throw new Error("boom");
+            },
+          }),
+          closeStore: () => {
+            events.push("closeStore");
+          },
+          error: () => {},
+          exit: (code) => {
+            events.push(`exit:${code}`);
+          },
+        },
+      );
+      expect(events).toEqual(["closeStore", "exit:1"]);
+    });
+
+    test("closes store before exit across runLighthouseDiffCommand and runLighthouseOpenCommand", async () => {
+      store.insertRun(
+        makeSampleRow({
+          id: "order-open-1",
+          htmlReportPath: "/tmp/order-open-report.html",
+        }),
+      );
+
+      const diffFailEvents: string[] = [];
+      await runLighthouseDiffCommand(
+        "missing-1",
+        "missing-2",
+        {},
+        {
+          openStore: () => store,
+          closeStore: () => {
+            diffFailEvents.push("closeStore");
+          },
+          error: () => {},
+          exit: (code) => {
+            diffFailEvents.push(`exit:${code}`);
+          },
+        },
+      );
+      expect(diffFailEvents).toEqual(["closeStore", "exit:1"]);
+
+      const openSuccessEvents: string[] = [];
+      await runLighthouseOpenCommand(
+        "order-open-1",
+        {},
+        {
+          openStore: () => store,
+          closeStore: () => {
+            openSuccessEvents.push("closeStore");
+          },
+          fileExists: () => true,
+          isHeadless: () => true,
+          log: () => {},
+          exit: (code) => {
+            openSuccessEvents.push(`exit:${code}`);
+          },
+        },
+      );
+      expect(openSuccessEvents).toEqual(["closeStore", "exit:0"]);
+
+      const openFailEvents: string[] = [];
+      await runLighthouseOpenCommand(
+        "order-open-1",
+        {},
+        {
+          openStore: () => store,
+          closeStore: () => {
+            openFailEvents.push("closeStore");
+          },
+          fileExists: () => false,
+          error: () => {},
+          exit: (code) => {
+            openFailEvents.push(`exit:${code}`);
+          },
+        },
+      );
+      expect(openFailEvents).toEqual(["closeStore", "exit:1"]);
+    });
+
+    test("forwards --no-sandbox, explicit disableSandbox precedence, and audit options to runAudit", async () => {
+      const capturedOptions: Array<Record<string, unknown>> = [];
+      const mockResult = {
+        normalized: mockNormalizedRun,
+        run: makeSampleRow() as LighthouseRunRecord,
+        previousRun: null,
+        representativeRunIndex: 0,
+      };
+
+      await runLighthouseAuditCommand(
+        "https://example.com/",
+        {
+          sandbox: false,
+          runs: 3,
+          formFactor: "desktop",
+          throttlingMethod: "provided",
+          categories: "performance, seo",
+          chromePath: "/mock/chromium",
+          artifactsDir: "/tmp/lh-artifacts",
+          env: { CUSTOM_ENV: "1" },
+          json: true,
+        },
+        {
+          runAudit: async (opts) => {
+            capturedOptions.push({ ...opts });
+            return mockResult;
+          },
+          log: () => {},
+        },
+      );
+
+      expect(capturedOptions[0]?.disableSandbox).toBe(true);
+      expect(capturedOptions[0]?.runs).toBe(3);
+      expect(capturedOptions[0]?.formFactor).toBe("desktop");
+      expect(capturedOptions[0]?.throttlingMethod).toBe("provided");
+      expect(capturedOptions[0]?.categories).toEqual(["performance", "seo"]);
+      expect(capturedOptions[0]?.chromePath).toBe("/mock/chromium");
+      expect(capturedOptions[0]?.artifactsDir).toBe("/tmp/lh-artifacts");
+      expect(capturedOptions[0]?.env).toEqual({ CUSTOM_ENV: "1" });
+
+      await runLighthouseAuditCommand(
+        "https://example.com/",
+        {
+          disableSandbox: false,
+          sandbox: false,
+          json: true,
+        },
+        {
+          runAudit: async (opts) => {
+            capturedOptions.push({ ...opts });
+            return mockResult;
+          },
+          log: () => {},
+        },
+      );
+
+      expect(capturedOptions[1]?.disableSandbox).toBe(false);
     });
   });
 
   describe("runLighthouseListCommand", () => {
     test("lists historical runs in terminal mode", async () => {
-      insertLighthouseRun(db, makeSampleRow({ id: "run-aaa-111" }));
+      store.insertRun(makeSampleRow({ id: "run-aaa-111" }));
       const stdout: string[] = [];
 
       await runLighthouseListCommand(
         {},
         {
-          getDb: () => db,
+          openStore: () => store,
           log: (msg) => stdout.push(msg),
         },
       );
@@ -490,13 +763,13 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
     });
 
     test("lists historical runs in --json mode", async () => {
-      insertLighthouseRun(db, makeSampleRow({ id: "run-bbb-222" }));
+      store.insertRun(makeSampleRow({ id: "run-bbb-222" }));
       const stdout: string[] = [];
 
       await runLighthouseListCommand(
         { json: true },
         {
-          getDb: () => db,
+          openStore: () => store,
           log: (msg) => stdout.push(msg),
         },
       );
@@ -507,19 +780,15 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
     });
 
     test("filters runs cleanly when valid formFactor mobile or desktop is passed", async () => {
-      insertLighthouseRun(
-        db,
-        makeSampleRow({ id: "run-mob-1", formFactor: "mobile" }),
-      );
-      insertLighthouseRun(
-        db,
+      store.insertRun(makeSampleRow({ id: "run-mob-1", formFactor: "mobile" }));
+      store.insertRun(
         makeSampleRow({ id: "run-desk-2", formFactor: "desktop" }),
       );
       const desktopOut: string[] = [];
       await runLighthouseListCommand(
         { formFactor: "desktop", json: true },
         {
-          getDb: () => db,
+          openStore: () => store,
           log: (msg) => desktopOut.push(msg),
         },
       );
@@ -531,7 +800,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
       await runLighthouseListCommand(
         { formFactor: "mobile", json: true },
         {
-          getDb: () => db,
+          openStore: () => store,
           log: (msg) => mobileOut.push(msg),
         },
       );
@@ -549,7 +818,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         await runLighthouseListCommand(
           {},
           {
-            getDb: () => {
+            openStore: () => {
               throw new Error("DB connection failure");
             },
             exit: (code) => {
@@ -570,10 +839,12 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
       await runLighthouseListCommand(
         {},
         {
-          getDb: () => db,
-          listRuns: () => {
-            throw new Error("Query execution error");
-          },
+          openStore: () => ({
+            ...store,
+            listRuns: () => {
+              throw new Error("Query execution error");
+            },
+          }),
           error: (msg) => errors.push(msg),
           exit: (code) => {
             exitCode = code;
@@ -588,34 +859,78 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
     });
 
     test("exits with 1 when limit is negative or invalid in list command", async () => {
-      let exitCode: number | undefined;
-      const errors: string[] = [];
+      for (const badLimit of [-5, 1.5, Number.NaN]) {
+        let openStoreCalls = 0;
+        let exitCode: number | undefined;
+        const errors: string[] = [];
+
+        await runLighthouseListCommand(
+          { limit: badLimit },
+          {
+            openStore: () => {
+              openStoreCalls += 1;
+              return store;
+            },
+            error: (msg) => errors.push(msg),
+            exit: (code) => {
+              exitCode = code;
+            },
+          },
+        );
+
+        expect(openStoreCalls).toBe(0);
+        expect(exitCode).toBe(1);
+        expect(errors.join("\n")).toContain(
+          `Invalid limit "${badLimit}": must be a non-negative integer`,
+        );
+      }
+    });
+
+    test("forwards limit: 0 cleanly without fallback to default limit 10", async () => {
+      store.insertRun(makeSampleRow({ id: "run-zero-limit-1" }));
+      let capturedLimit: number | undefined;
+      let openStoreCalls = 0;
+      const stdout: string[] = [];
+      const exitCodes: number[] = [];
 
       await runLighthouseListCommand(
-        { limit: -5 },
+        { limit: 0, json: true },
         {
-          getDb: () => db,
-          error: (msg) => errors.push(msg),
+          openStore: () => {
+            openStoreCalls += 1;
+            return {
+              ...store,
+              listRuns: (opts) => {
+                capturedLimit = opts?.limit;
+                return store.listRuns(opts);
+              },
+            };
+          },
+          log: (msg) => stdout.push(msg),
           exit: (code) => {
-            exitCode = code;
+            exitCodes.push(code);
           },
         },
       );
 
-      expect(exitCode).toBe(1);
-      expect(errors.join("\n")).toContain(
-        'Invalid limit "-5": must be a non-negative integer',
-      );
+      expect(openStoreCalls).toBe(1);
+      expect(capturedLimit).toBe(0);
+      expect(exitCodes).toEqual([]);
+      expect(JSON.parse(stdout.join("\n"))).toEqual([]);
     });
 
     test("exits with 1 when form-factor is invalid in list command", async () => {
+      let openStoreCalls = 0;
       let exitCode: number | undefined;
       const errors: string[] = [];
 
       await runLighthouseListCommand(
         { formFactor: "tablet" as never },
         {
-          getDb: () => db,
+          openStore: () => {
+            openStoreCalls += 1;
+            return store;
+          },
           error: (msg) => errors.push(msg),
           exit: (code) => {
             exitCode = code;
@@ -623,6 +938,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         },
       );
 
+      expect(openStoreCalls).toBe(0);
       expect(exitCode).toBe(1);
       expect(errors.join("\n")).toContain(
         'Invalid form-factor "tablet": must be "mobile" or "desktop"',
@@ -635,7 +951,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         { env: { TERM: "xterm-256color" }, limit: -1 },
         {
           isStderrTTY: true,
-          getDb: () => db,
+          openStore: () => store,
           error: (msg) => errorsInteractive.push(msg),
           exit: () => {},
         },
@@ -647,7 +963,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         { env: { TERM: "xterm-256color" }, limit: -1 },
         {
           isStderrTTY: false,
-          getDb: () => db,
+          openStore: () => store,
           error: (msg) => errorsRedirected.push(msg),
           exit: () => {},
         },
@@ -659,7 +975,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         { env: { TERM: "xterm-256color", NO_COLOR: "1" }, limit: -1 },
         {
           isStderrTTY: true,
-          getDb: () => db,
+          openStore: () => store,
           error: (msg) => errorsNoColor.push(msg),
           exit: () => {},
         },
@@ -670,12 +986,10 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
 
   describe("runLighthouseDiffCommand", () => {
     test("compares two runs and prints diff table", async () => {
-      insertLighthouseRun(
-        db,
+      store.insertRun(
         makeSampleRow({ id: "111111-aaa", performanceScore: 70 }),
       );
-      insertLighthouseRun(
-        db,
+      store.insertRun(
         makeSampleRow({ id: "222222-bbb", performanceScore: 85 }),
       );
       const stdout: string[] = [];
@@ -685,7 +999,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         "222222",
         {},
         {
-          getDb: () => db,
+          openStore: () => store,
           log: (msg) => stdout.push(msg),
         },
       );
@@ -697,12 +1011,10 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
     });
 
     test("compares two runs in --json mode", async () => {
-      insertLighthouseRun(
-        db,
+      store.insertRun(
         makeSampleRow({ id: "111111-aaa", performanceScore: 70 }),
       );
-      insertLighthouseRun(
-        db,
+      store.insertRun(
         makeSampleRow({ id: "222222-bbb", performanceScore: 85 }),
       );
       const stdout: string[] = [];
@@ -712,7 +1024,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         "222222",
         { json: true },
         {
-          getDb: () => db,
+          openStore: () => store,
           log: (msg) => stdout.push(msg),
         },
       );
@@ -724,8 +1036,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
     });
 
     test("compares runs with insight audits and culprit deltas in terminal mode", async () => {
-      insertLighthouseRun(
-        db,
+      store.insertRun(
         makeSampleRow({
           id: "333333-aaa",
           summaryJson: {
@@ -764,8 +1075,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
           },
         }),
       );
-      insertLighthouseRun(
-        db,
+      store.insertRun(
         makeSampleRow({
           id: "444444-bbb",
           summaryJson: {
@@ -798,7 +1108,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         "444444",
         {},
         {
-          getDb: () => db,
+          openStore: () => store,
           log: (msg) => stdout.push(msg),
         },
       );
@@ -813,8 +1123,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
     });
 
     test("compares runs with insight audits in --json mode", async () => {
-      insertLighthouseRun(
-        db,
+      store.insertRun(
         makeSampleRow({
           id: "555555-aaa",
           summaryJson: {
@@ -840,8 +1149,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
           },
         }),
       );
-      insertLighthouseRun(
-        db,
+      store.insertRun(
         makeSampleRow({
           id: "666666-bbb",
           summaryJson: {
@@ -863,7 +1171,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         "666666",
         { json: true },
         {
-          getDb: () => db,
+          openStore: () => store,
           log: (msg) => stdout.push(msg),
         },
       );
@@ -877,8 +1185,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
     });
 
     test("handles malformed summaryJson gracefully in diff command", async () => {
-      insertLighthouseRun(
-        db,
+      store.insertRun(
         makeSampleRow({
           id: "777777-aaa",
           summaryJson:
@@ -889,33 +1196,86 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
               : never,
         }),
       );
-      insertLighthouseRun(
-        db,
+      store.insertRun(
         makeSampleRow({
           id: "888888-bbb",
-          summaryJson:
-            "invalid-json" as unknown as typeof makeSampleRow extends (
-              ...args: unknown[]
-            ) => { summaryJson: infer T }
-              ? T
-              : never,
+          summaryJson: {
+            lcpElement: null,
+            lcpPhases: null,
+            clsCulprits: [
+              {
+                element: {
+                  selector: "main > div.ad-slot",
+                  snippet: '<div class="ad-slot"></div>',
+                  nodeLabel: "Ad Slot",
+                  path: null,
+                  lhId: null,
+                  boundingRect: {
+                    top: 0,
+                    bottom: 100,
+                    left: 0,
+                    right: 320,
+                    width: 320,
+                    height: 100,
+                  },
+                },
+                score: 0.2,
+                causes: [],
+              },
+            ],
+            insights: [
+              {
+                id: "modern-image-formats",
+                title: "Improve image delivery",
+                description: "Serve WebP/AVIF.",
+                score: 0.2,
+                scoreDisplayMode: "numeric",
+                displayValue: "Est savings: 350 ms",
+                metricSavings: { LCP: 350 },
+                replacesAudits: [],
+              },
+            ],
+            failedAudits: [],
+            runWarnings: [],
+            runtimeError: null,
+            medianMetadata: null,
+          },
         }),
       );
-      const stdout: string[] = [];
 
+      const malformedToValidOut: string[] = [];
       await runLighthouseDiffCommand(
         "777777",
         "888888",
         { json: true },
         {
-          getDb: () => db,
-          log: (msg) => stdout.push(msg),
+          openStore: () => store,
+          log: (msg) => malformedToValidOut.push(msg),
         },
       );
+      const parsedForward = JSON.parse(malformedToValidOut.join("\n"));
+      expect(parsedForward.deltas.insights).toEqual({
+        resolved: [],
+        regressed: [],
+        clsCulpritDelta: null,
+      });
 
-      const parsed = JSON.parse(stdout.join("\n"));
-      expect(parsed.deltas.insights.resolved).toEqual([]);
-      expect(parsed.deltas.insights.regressed).toEqual([]);
+      const validToMalformedOut: string[] = [];
+      await runLighthouseDiffCommand(
+        "888888",
+        "777777",
+        { json: true },
+        {
+          openStore: () => store,
+          log: (msg) => validToMalformedOut.push(msg),
+        },
+      );
+      const parsedReverse = JSON.parse(validToMalformedOut.join("\n"));
+      expect(parsedReverse.deltas.insights).toEqual({
+        resolved: [],
+        regressed: [],
+        clsCulpritDelta: null,
+      });
     });
 
     test("exits with 1 when diff ID cannot be resolved", async () => {
@@ -927,7 +1287,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         "invalid2",
         {},
         {
-          getDb: () => db,
+          openStore: () => store,
           error: (msg) => errors.push(msg),
           exit: (code) => {
             exitCode = code;
@@ -947,7 +1307,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         { env: { TERM: "xterm-256color" } },
         {
           isStderrTTY: true,
-          getDb: () => db,
+          openStore: () => store,
           error: (msg) => errorsInteractive.push(msg),
           exit: () => {},
         },
@@ -961,7 +1321,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         { env: { TERM: "xterm-256color" } },
         {
           isStderrTTY: false,
-          getDb: () => db,
+          openStore: () => store,
           error: (msg) => errorsRedirected.push(msg),
           exit: () => {},
         },
@@ -975,7 +1335,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         { env: { TERM: "xterm-256color", NO_COLOR: "1" } },
         {
           isStderrTTY: true,
-          getDb: () => db,
+          openStore: () => store,
           error: (msg) => errorsNoColor.push(msg),
           exit: () => {},
         },
@@ -992,7 +1352,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         "id2",
         {},
         {
-          getDb: () => {
+          openStore: () => {
             throw new Error("DB connection failure");
           },
           error: (msg) => errors.push(msg),
@@ -1009,8 +1369,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
 
   describe("runLighthouseOpenCommand", () => {
     test("prints file URI and exits 0 when running in headless environment", async () => {
-      insertLighthouseRun(
-        db,
+      store.insertRun(
         makeSampleRow({
           id: "333333-ccc",
           htmlReportPath: "/tmp/fake-report.html",
@@ -1024,7 +1383,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         "333333",
         {},
         {
-          getDb: () => db,
+          openStore: () => store,
           fileExists: () => true,
           isHeadless: () => true,
           spawnOpener: (p) => {
@@ -1043,8 +1402,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
     });
 
     test("forwards options.env to isHeadless seam", async () => {
-      insertLighthouseRun(
-        db,
+      store.insertRun(
         makeSampleRow({
           id: "open-env-111",
           htmlReportPath: "/tmp/report.html",
@@ -1058,7 +1416,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         "open-env-111",
         { env: { CI: "true" } },
         {
-          getDb: () => db,
+          openStore: () => store,
           fileExists: () => true,
           isHeadless: (env) => {
             capturedEnv = env;
@@ -1074,8 +1432,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
     });
 
     test("invokes opener when not in headless environment", async () => {
-      insertLighthouseRun(
-        db,
+      store.insertRun(
         makeSampleRow({
           id: "444444-ddd",
           htmlReportPath: "/tmp/fake-report.html",
@@ -1087,7 +1444,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         "444444",
         {},
         {
-          getDb: () => db,
+          openStore: () => store,
           fileExists: () => true,
           isHeadless: () => false,
           spawnOpener: (p) => {
@@ -1100,8 +1457,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
     });
 
     test("resolves latest run when id is omitted", async () => {
-      insertLighthouseRun(
-        db,
+      store.insertRun(
         makeSampleRow({
           id: "555555-eee",
           htmlReportPath: "/tmp/latest-report.html",
@@ -1113,7 +1469,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         undefined,
         {},
         {
-          getDb: () => db,
+          openStore: () => store,
           fileExists: () => true,
           isHeadless: () => false,
           spawnOpener: (p) => {
@@ -1126,8 +1482,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
     });
 
     test("exits with 1 when HTML report artifact is missing on disk", async () => {
-      insertLighthouseRun(
-        db,
+      store.insertRun(
         makeSampleRow({
           id: "666666-fff",
           htmlReportPath: "/tmp/missing-report.html",
@@ -1140,7 +1495,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         "666666",
         {},
         {
-          getDb: () => db,
+          openStore: () => store,
           fileExists: () => false,
           error: (msg) => errors.push(msg),
           exit: (code) => {
@@ -1161,7 +1516,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         "id1",
         {},
         {
-          getDb: () => {
+          openStore: () => {
             throw new Error("DB connection failure");
           },
           error: (msg) => errors.push(msg),
@@ -1176,8 +1531,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
     });
 
     test("exits with 1 when spawnOpener throws in open command", async () => {
-      insertLighthouseRun(
-        db,
+      store.insertRun(
         makeSampleRow({
           id: "777777-ggg",
           htmlReportPath: "/tmp/report.html",
@@ -1190,7 +1544,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         "777777",
         {},
         {
-          getDb: () => db,
+          openStore: () => store,
           fileExists: () => true,
           isHeadless: () => false,
           spawnOpener: () => {
@@ -1319,6 +1673,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
       }
 
       const spawnNonErrorSpy = spyOn(cp, "spawn").mockImplementation(() => {
+        // oxlint-disable-next-line typescript/only-throw-error -- intentional non-Error throw test
         throw "string error thrown";
       });
       try {
@@ -1338,7 +1693,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         "non-existent-id",
         {},
         {
-          getDb: () => db,
+          openStore: () => store,
           error: (msg) => errors.push(msg),
           exit: (code) => {
             exitCode = code;
@@ -1358,7 +1713,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         "",
         {},
         {
-          getDb: () => db,
+          openStore: () => store,
           error: (msg) => errors.push(msg),
           exit: (code) => {
             exitCode = code;
@@ -1379,7 +1734,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
           "non-existent-id",
           {},
           {
-            getDb: () => db,
+            openStore: () => store,
             error: () => {},
           },
         );
@@ -1390,8 +1745,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
     });
 
     test("runLighthouseOpenCommand executes defaultIsHeadless with options.env when isHeadless is omitted", async () => {
-      insertLighthouseRun(
-        db,
+      store.insertRun(
         makeSampleRow({
           id: "888888-hhh",
           htmlReportPath: "/tmp/report.html",
@@ -1404,7 +1758,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         "888888",
         { env: { CI: "true" } },
         {
-          getDb: () => db,
+          openStore: () => store,
           fileExists: () => true,
           log: (msg) => stdout.push(msg),
           exit: (code) => {
@@ -1417,19 +1771,20 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
       expect(stdout.join("\n")).toContain("file:///tmp/report.html");
     });
 
-    test("forwards options.env to getDb across createLighthouseCliContext and runLighthouseOpenCommand", async () => {
+    test("forwards options.env to openStore across createLighthouseCliContext and runLighthouseOpenCommand", async () => {
       const customEnv = { DEVTOOLS_DB_PATH: "/tmp/custom-env.sqlite" };
       let contextCapturedEnv: Record<string, string | undefined> | undefined;
       const ctx = createLighthouseCliContext(
         { env: customEnv },
         {
-          getDb: (opts?: { env?: Record<string, string | undefined> }) => {
+          openStore: (opts?: { env?: Record<string, string | undefined> }) => {
             contextCapturedEnv = opts?.env;
-            return db;
+            return store;
           },
         },
       );
-      await ctx.getDb();
+      await ctx.openStore();
+      ctx.closeStore();
       expect(contextCapturedEnv).toEqual(customEnv);
 
       let openCapturedEnv: Record<string, string | undefined> | undefined;
@@ -1437,9 +1792,9 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         "non-existent-id",
         { env: customEnv },
         {
-          getDb: (opts?: { env?: Record<string, string | undefined> }) => {
+          openStore: (opts?: { env?: Record<string, string | undefined> }) => {
             openCapturedEnv = opts?.env;
-            return db;
+            return store;
           },
           error: () => {},
           exit: () => {},
@@ -1447,27 +1802,36 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
       );
       expect(openCapturedEnv).toEqual(customEnv);
 
-      // Default @devtools/db getDb path honors options.env without deps.getDb
+      // Missing openStore rejects with explicit composition-root requirement error
+      const missingCtx = createLighthouseCliContext({});
+      await expect(missingCtx.openStore()).rejects.toThrow(
+        "openStore dependency is required in Lighthouse CLI context",
+      );
+
+      // Composition-root lazy store path honors options.env
       const tempDir = mkdtempSync(join(tmpdir(), "devtools-cli-env-db-"));
       const customDbPath = join(tempDir, "isolated.db");
-      resetDb();
       try {
-        const seededDb = createDb({ path: customDbPath });
-        runMigrations(seededDb);
-        insertLighthouseRun(
-          seededDb,
-          makeSampleRow({
-            id: "env-seed-111",
-            htmlReportPath: "/tmp/env-seeded-report.html",
-          }),
-        );
+        {
+          using seededDb = openDb({ path: customDbPath });
+          const seededStore = createLighthouseStore({ db: seededDb });
+          seededStore.insertRun(
+            makeSampleRow({
+              id: "env-seed-111",
+              htmlReportPath: "/tmp/env-seeded-report.html",
+            }),
+          );
+        }
         const stdout: string[] = [];
         let openExitCode: number | undefined;
+        const lazyStore = createLazyLighthouseStore();
 
         await runLighthouseOpenCommand(
           "env-seed-111",
           { env: { DEVTOOLS_DB_PATH: customDbPath, CI: "true" } },
           {
+            openStore: lazyStore.openStore,
+            closeStore: lazyStore.closeStore,
             fileExists: () => true,
             log: (msg) => stdout.push(msg),
             exit: (code) => {
@@ -1481,14 +1845,12 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
           "file:///tmp/env-seeded-report.html",
         );
       } finally {
-        resetDb();
         rmSync(tempDir, { recursive: true, force: true });
       }
     });
 
     test("isolates stdout and stderr color formatting in runLighthouseOpenCommand", async () => {
-      insertLighthouseRun(
-        db,
+      store.insertRun(
         makeSampleRow({
           id: "open-tty-111",
           htmlReportPath: "/tmp/open-tty-report.html",
@@ -1503,7 +1865,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         {
           isStderrTTY: true,
           isStdoutTTY: false,
-          getDb: () => db,
+          openStore: () => store,
           fileExists: () => true,
           isHeadless: () => false,
           spawnOpener: () => {},
@@ -1522,7 +1884,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         {
           isStderrTTY: true,
           isStdoutTTY: false,
-          getDb: () => db,
+          openStore: () => store,
           fileExists: () => false,
           error: (msg) => stderrInteractive.push(msg),
           exit: () => {},
@@ -1538,7 +1900,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         {
           isStderrTTY: false,
           isStdoutTTY: true,
-          getDb: () => db,
+          openStore: () => store,
           fileExists: () => true,
           isHeadless: () => false,
           spawnOpener: () => {},
@@ -1554,7 +1916,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         {
           isStderrTTY: false,
           isStdoutTTY: true,
-          getDb: () => db,
+          openStore: () => store,
           fileExists: () => false,
           error: (msg) => stderrRedirected.push(msg),
           exit: () => {},
@@ -1569,7 +1931,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         { env: { TERM: "xterm-256color", NO_COLOR: "1" } },
         {
           isStdoutTTY: true,
-          getDb: () => db,
+          openStore: () => store,
           fileExists: () => true,
           isHeadless: () => false,
           spawnOpener: () => {},
@@ -1597,7 +1959,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         env: { TERM: "xterm-256color" },
       });
       expect(ctxDefault.pcStdout.green("ok").includes("\x1b[")).toBe(
-        Boolean(process.stdout.isTTY),
+        Object.is(process.stdout.isTTY, true),
       );
     });
 
@@ -1613,10 +1975,9 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
           "https://example.com/",
           {},
           {
-            runLighthouseAudit: async () => {
+            runAudit: async () => {
               throw new Error("Audit error");
             },
-            getDb: () => db,
             writeStderr: () => {},
           },
         );
@@ -1625,7 +1986,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         await runLighthouseListCommand(
           {},
           {
-            getDb: () => {
+            openStore: () => {
               throw new Error("List DB error");
             },
           },
@@ -1637,7 +1998,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
           "id2",
           {},
           {
-            getDb: () => {
+            openStore: () => {
               throw new Error("Diff DB error");
             },
             error: () => {},

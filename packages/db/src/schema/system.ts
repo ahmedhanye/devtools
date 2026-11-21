@@ -13,13 +13,3 @@ export const systemMetadata = sqliteTable("system_metadata", {
     .notNull()
     .$defaultFn(() => new Date()),
 });
-
-/**
- * Row model selected from the {@link systemMetadata} table.
- */
-export type SystemMetadata = typeof systemMetadata.$inferSelect;
-
-/**
- * Insert payload model for the {@link systemMetadata} table.
- */
-export type NewSystemMetadata = typeof systemMetadata.$inferInsert;

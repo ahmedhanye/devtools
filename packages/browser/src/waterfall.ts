@@ -30,13 +30,14 @@ export interface WaterfallDependencies {
     cacheDir?: string,
     env?: EnvMap,
     timeoutMs?: number,
+    signal?: AbortSignal,
   ) => Promise<{ path: string; version: string } | null>;
   /** Overrides Tier 2.2 system Chrome/Chromium discovery. */
   probeSystemInstallations?: () => Promise<string[]>;
   /** Overrides Tier 2.3 alternative Chromium browser (Edge, Brave) discovery. */
   probeAlternativeBrowsers?: (
     optionsOrEnv?: ProbeAlternativeBrowsersOptions | EnvMap,
-    platformOverride?: NodeJS.Platform | string,
+    platformOverride?: string,
   ) => Promise<Array<CandidateBrowser<"edge" | "brave">>>;
   /** Overrides Tier 2.4 Playwright and Puppeteer cache discovery. */
   probeToolCaches?: (
@@ -53,7 +54,14 @@ export interface WaterfallDependencies {
 type VerifyFn = (
   path: string,
   timeoutMs: number,
+  signal?: AbortSignal,
 ) => Promise<{ valid: boolean; version?: string }>;
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new Error("Browser resolution was aborted", { cause: signal.reason });
+  }
+}
 
 /**
  * Iterates through candidate browser paths in order and returns the first candidate that passes verification.
@@ -62,9 +70,12 @@ async function findFirstRunnableCandidate(
   candidates: Array<{ path: string; source: BrowserSource }>,
   verify: VerifyFn,
   timeoutMs: number,
+  signal?: AbortSignal,
 ): Promise<BrowserResolution | null> {
   for (const candidate of candidates) {
-    const check = await verify(candidate.path, timeoutMs);
+    throwIfAborted(signal);
+    const check = await verify(candidate.path, timeoutMs, signal);
+    throwIfAborted(signal);
     if (check.valid && check.version) {
       return {
         executablePath: candidate.path,
@@ -83,8 +94,10 @@ async function verifyExplicitCandidateOrThrow(
   candidatePath: string,
   verify: VerifyFn,
   timeoutMs: number,
+  signal?: AbortSignal,
 ): Promise<BrowserResolution> {
-  const check = await verify(candidatePath, timeoutMs);
+  const check = await verify(candidatePath, timeoutMs, signal);
+  throwIfAborted(signal);
   if (check.valid && check.version) {
     return {
       executablePath: candidatePath,
@@ -116,12 +129,22 @@ async function resolveExplicitTier(
         "explicit --chrome-path cannot be empty or whitespace",
       );
     }
-    return verifyExplicitCandidateOrThrow(trimmedPath, verify, timeoutMs);
+    return verifyExplicitCandidateOrThrow(
+      trimmedPath,
+      verify,
+      timeoutMs,
+      options.signal,
+    );
   }
 
   const envPath = resolveChromePathOverride(seam);
   return envPath
-    ? verifyExplicitCandidateOrThrow(envPath, verify, timeoutMs)
+    ? verifyExplicitCandidateOrThrow(
+        envPath,
+        verify,
+        timeoutMs,
+        options?.signal,
+      )
     : null;
 }
 
@@ -130,7 +153,7 @@ async function resolveExplicitTier(
  */
 async function probeFallbackCandidates(
   seam: BrowserConfigSeam,
-  env: EnvMap | undefined,
+  signal: AbortSignal | undefined,
   deps: WaterfallDependencies | undefined,
   verify: VerifyFn,
   timeoutMs: number,
@@ -144,23 +167,28 @@ async function probeFallbackCandidates(
     systemCandidates,
     verify,
     timeoutMs,
+    signal,
   );
   if (systemHit) return systemHit;
 
+  throwIfAborted(signal);
   const probeAlternatives =
     deps?.probeAlternativeBrowsers ?? defaultProbeAlternatives;
   const altHit = await findFirstRunnableCandidate(
     await probeAlternatives({ seam }),
     verify,
     timeoutMs,
+    signal,
   );
   if (altHit) return altHit;
 
+  throwIfAborted(signal);
   const probeToolCaches = deps?.probeToolCaches ?? defaultProbeToolCaches;
   return findFirstRunnableCandidate(
     await probeToolCaches(undefined, seam),
     verify,
     timeoutMs,
+    signal,
   );
 }
 
@@ -186,9 +214,13 @@ export async function resolveBrowserPath(
   options?: ResolveBrowserOptions,
   deps?: WaterfallDependencies,
 ): Promise<BrowserResolution> {
+  throwIfAborted(options?.signal);
   const seam: BrowserConfigSeam = { env: options?.env };
   const timeoutMs = options?.timeoutMs ?? 3000;
-  const verify = deps?.verifyBrowserExecutable ?? defaultVerify;
+  const verify: VerifyFn =
+    deps?.verifyBrowserExecutable ??
+    ((candidatePath, ms, sig) =>
+      defaultVerify(candidatePath, ms, undefined, sig));
 
   const explicitHit = await resolveExplicitTier(
     options,
@@ -201,7 +233,13 @@ export async function resolveBrowserPath(
   }
 
   const probeCache = deps?.probeManagedCache ?? defaultProbeCache;
-  const cacheHit = await probeCache(options?.cacheDir, options?.env, timeoutMs);
+  const cacheHit = await probeCache(
+    options?.cacheDir,
+    options?.env,
+    timeoutMs,
+    options?.signal,
+  );
+  throwIfAborted(options?.signal);
   if (cacheHit) {
     return {
       executablePath: cacheHit.path,
@@ -212,7 +250,7 @@ export async function resolveBrowserPath(
 
   const fallbackHit = await probeFallbackCandidates(
     seam,
-    options?.env,
+    options?.signal,
     deps,
     verify,
     timeoutMs,

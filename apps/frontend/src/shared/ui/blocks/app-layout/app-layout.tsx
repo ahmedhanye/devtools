@@ -18,35 +18,13 @@ import {
   SidebarTrigger,
 } from "@/shared/ui/shadcn/sidebar";
 
-/**
- * Navigation item entry displayed in the application sidebar shell.
- */
-export interface NavItem {
-  /** Human-readable label for the navigation destination. */
-  title: string;
-  /** Route pathname (`href`) linked by the sidebar button. */
-  href: string;
-  /** Icon component rendered alongside the label. */
-  icon: React.ComponentType<{ className?: string }>;
-}
-
-const DEFAULT_NAV_ITEMS: readonly NavItem[] = [
+const DEFAULT_NAV_ITEMS = [
   {
     title: "Dashboard",
     href: "/",
     icon: LayoutDashboard,
   },
-];
-
-/**
- * Props for the {@link AppLayout} shell component.
- */
-export interface AppLayoutProps {
-  /** Primary page content rendered inside the sidebar inset region. */
-  children: React.ReactNode;
-  /** Navigation links rendered in the collapsible sidebar menu. */
-  navItems?: readonly NavItem[];
-}
+] as const;
 
 /**
  * Collapsible application shell providing sidebar navigation, header trigger, and main content inset.
@@ -57,7 +35,19 @@ export interface AppLayoutProps {
 export function AppLayout({
   children,
   navItems = DEFAULT_NAV_ITEMS,
-}: AppLayoutProps) {
+}: {
+  /** Primary page content rendered inside the sidebar inset region. */
+  children: React.ReactNode;
+  /** Navigation links rendered in the collapsible sidebar menu. */
+  navItems?: readonly {
+    /** Human-readable label for the navigation destination. */
+    title: string;
+    /** Route pathname (`href`) linked by the sidebar button. */
+    href: string;
+    /** Icon component rendered alongside the label. */
+    icon: React.ComponentType<{ className?: string }>;
+  }[];
+}) {
   const pathname = usePathname();
 
   return (

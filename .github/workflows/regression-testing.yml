@@ -52,13 +52,14 @@ jobs:
               - 'bun.lock'
               - 'bunfig.toml'
               - 'tsconfig*.json'
-              - '.github/**'
+              - '.github/workflows/**'
+              - '.github/actions/**'
               - '.oxlintrc.json'
               - '.fallowrc.json'
               - '.fallow/**'
+              - 'fallow-baselines/**'
+              - 'doctor.config.json'
               - 'lefthook.yml'
-              - '.agents/**'
-              - 'skills-lock.json'
             site:
               - 'site/**'
             scripts:
@@ -88,9 +89,6 @@ jobs:
       - name: Run Steiger FSD architecture linting
         run: bun run lint:fsd
 
-      - name: Run frontend design tokens linting
-        run: bun run lint:design
-
       - name: Verify agent skills and rules
         run: bun run lint:agents
 
@@ -115,12 +113,26 @@ jobs:
       - name: Verify architecture boundaries and dead code (Fallow)
         run: bun run fallow:dead-code
 
+      - name: Verify database schema and migration parity
+        run: bun run verify:db-migrations
+
       - name: Verify duplication baseline (Fallow)
-        if: github.event_name == 'pull_request'
         run: bun run fallow:dupes
 
-      - name: Scan React regressions (React Doctor)
+      - name: Verify code health baseline (Fallow)
+        run: bun run fallow:health
+
+      - name: Verify new security sinks (Fallow)
         if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: bunx fallow security --gate new --changed-since "origin/${BASE_REF}"
+
+      - name: Verify new security sinks on push (Fallow)
+        if: github.event_name == 'push'
+        run: bunx fallow security --gate new --changed-since HEAD~1
+
+      - name: Scan React regressions (React Doctor)
         run: bun run react-doctor
 
   typecheck:
@@ -163,22 +175,25 @@ jobs:
         uses: ./.github/actions/setup-bun
 
       - name: Build frontend static assets
+        if: needs.changes.outputs.code == 'true' || needs.changes.outputs.site == 'true'
         run: bun --filter @devtools/frontend build
 
-      - name: Compile standalone CLI binary for compiled E2E checks
-        run: bun run build:bin
+      - name: Execute script unit tests (scripts-only change)
+        if: needs.changes.outputs.code != 'true' && needs.changes.outputs.site != 'true' && needs.changes.outputs.scripts == 'true'
+        run: bun test scripts/
 
       - name: Execute test suites with coverage aggregation
+        if: needs.changes.outputs.code == 'true' || needs.changes.outputs.site == 'true'
         run: bun run test:coverage
 
       - name: Verify 100% diff coverage gate
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && (needs.changes.outputs.code == 'true' || needs.changes.outputs.site == 'true')
         env:
           BASE_REF: ${{ github.base_ref }}
-        run: bun scripts/verify-diff-coverage/verify-diff-coverage.ts --base "origin/${BASE_REF}" --output coverage/diff-coverage-summary.md
+        run: bun run verify:diff-coverage --base "origin/${BASE_REF}" --output coverage/diff-coverage-summary.md
 
       - name: Post or update sticky PR coverage comment
-        if: github.event_name == 'pull_request' && !cancelled() && github.event.pull_request.head.repo.full_name == github.repository
+        if: github.event_name == 'pull_request' && !cancelled() && github.event.pull_request.head.repo.full_name == github.repository && (needs.changes.outputs.code == 'true' || needs.changes.outputs.site == 'true')
         continue-on-error: true
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
@@ -220,7 +235,7 @@ jobs:
     name: Build & Smoke Test
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.site == 'true'
     timeout-minutes: 15
     permissions:
       contents: read
@@ -234,13 +249,21 @@ jobs:
         uses: ./.github/actions/setup-bun
 
       - name: Build Next.js static production export
+        if: needs.changes.outputs.code == 'true'
         run: bun --filter @devtools/frontend build
 
+      - name: Build documentation site production bundle
+        if: needs.changes.outputs.code == 'true' || needs.changes.outputs.site == 'true'
+        run: bun --filter @devtools/site build
+
       - name: Build Storybook static production bundle
+        if: needs.changes.outputs.code == 'true'
         run: bun --filter @devtools/frontend build-storybook
 
       - name: Compile and smoke test host CLI binary
+        if: needs.changes.outputs.code == 'true'
         run: bun run build:smoke
 
       - name: Cross-compile standalone CLI for darwin-arm64
+        if: needs.changes.outputs.code == 'true'
         run: bun run build:darwin-arm64

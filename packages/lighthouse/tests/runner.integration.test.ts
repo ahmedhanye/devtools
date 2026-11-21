@@ -5,28 +5,23 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  createDb,
-  resetDb,
-  runMigrations,
-  type DevtoolsDb,
-} from "@devtools/db";
+import { InvalidBrowserPathError } from "@devtools/browser";
+import { openDb, type DbHandle } from "@devtools/db";
 import {
   AuditCancelledError,
-  executeIteration,
+  createLighthouseStore,
   executeLighthouseBatch,
-  getLighthouseRunById,
   InvalidAuditOptionsError,
-  listLighthouseRuns,
-  persistLighthouseAudit,
-  runLighthouseAudit,
   type ExecuteIterationParams,
   type LighthouseProgressEvent,
+  type LighthouseStore,
   type SingleIterationResult,
 } from "../src";
+import { executeIteration } from "../src/infra/runtime/iteration";
 
 function makeMockIterationResult(
   url: string,
@@ -97,35 +92,40 @@ function makeMockIterationResult(
   };
 }
 
-describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
-  let db: DevtoolsDb;
+describe("LighthouseStore.runAudit & Isolated Worker Orchestration", () => {
+  let db: DbHandle;
+  let store: LighthouseStore;
   let tempArtifactsDir: string;
 
   beforeEach(() => {
-    db = createDb({ path: ":memory:" });
-    runMigrations(db);
     tempArtifactsDir = join(
       tmpdir(),
       `devtools-lh-runner-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     mkdirSync(tempArtifactsDir, { recursive: true });
+    db = openDb({ memory: true });
+    store = createLighthouseStore({
+      db,
+      artifactsDir: tempArtifactsDir,
+    });
   });
 
   afterEach(() => {
+    db.close();
     rmSync(tempArtifactsDir, { recursive: true, force: true });
   });
 
   it("validates URL and runs count before executing", async () => {
+    await expect(store.runAudit({ url: "not-a-valid-url" })).rejects.toThrow(
+      InvalidAuditOptionsError,
+    );
+
     await expect(
-      runLighthouseAudit({ url: "not-a-valid-url", db }),
+      store.runAudit({ url: "ftp://example.com/file" }),
     ).rejects.toThrow(InvalidAuditOptionsError);
 
     await expect(
-      runLighthouseAudit({ url: "ftp://example.com/file", db }),
-    ).rejects.toThrow(InvalidAuditOptionsError);
-
-    await expect(
-      runLighthouseAudit({ url: "https://example.com", runs: 0, db }),
+      store.runAudit({ url: "https://example.com", runs: 0 }),
     ).rejects.toThrow(InvalidAuditOptionsError);
 
     await expect(
@@ -136,7 +136,7 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
     ).rejects.toThrow(InvalidAuditOptionsError);
   });
 
-  it("splits executeLighthouseBatch (SQLite-free) and persistLighthouseAudit cleanly", async () => {
+  it("splits executeLighthouseBatch (SQLite-free) and store.persistBatch cleanly", async () => {
     const progress: LighthouseProgressEvent[] = [];
     const mockIter = makeMockIterationResult(
       "https://example.com/split",
@@ -166,17 +166,98 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
 
     expect(batch.validatedUrl).toBe("https://example.com/split");
     expect(batch.normalized.scores.performanceScore).toBe(96);
-    expect(listLighthouseRuns(db)).toHaveLength(0);
+    expect(store.listRuns()).toHaveLength(0);
 
-    const persisted = persistLighthouseAudit(batch, {
-      db,
+    const persisted = store.persistBatch(batch, {
       artifactsDir: tempArtifactsDir,
       onProgress: (ev) => progress.push(ev),
     });
 
     expect(persisted.run.url).toBe("https://example.com/split");
+    expect(persisted.previousRun).toBeNull();
     expect(existsSync(persisted.run.htmlReportPath)).toBe(true);
     expect(progress.map((e) => e.stage)).toEqual(["navigating", "complete"]);
+
+    // Subsequent persistBatch returns the prior run as previousRun
+    const secondPersisted = store.persistBatch(batch);
+    expect(secondPersisted.previousRun?.id).toBe(persisted.run.id);
+  });
+
+  it("cleans up written cold artifact directory when DB write or abort signal fails during persistBatch", () => {
+    const closedDb = openDb({ memory: true });
+    closedDb.ensureReady();
+    closedDb.close();
+    const closedStore = createLighthouseStore({
+      db: closedDb,
+      artifactsDir: tempArtifactsDir,
+    });
+
+    const batch = {
+      validatedUrl: "https://example.com/rollback",
+      formFactor: "mobile" as const,
+      throttlingMethod: "simulate" as const,
+      totalRuns: 1,
+      normalized: {
+        requestedUrl: "https://example.com/rollback",
+        finalUrl: "https://example.com/rollback",
+        scores: {
+          performanceScore: 90,
+          accessibilityScore: 95,
+          bestPracticesScore: 95,
+          seoScore: 95,
+        },
+        metrics: {
+          lcpMs: 1200,
+          cls: 0.01,
+          tbtMs: 30,
+          fcpMs: 700,
+          siMs: 1000,
+          ttfbMs: 80,
+        },
+        summary: {
+          lcpElement: null,
+          lcpPhases: null,
+          clsCulprits: [],
+          insights: [],
+          failedAudits: [],
+          runWarnings: [],
+          runtimeError: null,
+          medianMetadata: null,
+        },
+      },
+      reportJson: "{}",
+      reportHtml: "<html></html>",
+      representativeRunIndex: 0,
+      durationMs: 100,
+    };
+
+    expect(() => closedStore.persistBatch(batch)).toThrow(
+      "Database handle is closed",
+    );
+    expect(readdirSync(tempArtifactsDir)).toHaveLength(0);
+
+    const aborted = new AbortController();
+    aborted.abort();
+    expect(() => store.persistBatch(batch, { signal: aborted.signal })).toThrow(
+      AuditCancelledError,
+    );
+    expect(readdirSync(tempArtifactsDir)).toHaveLength(0);
+
+    // Best-effort rmSync rollback must not mask the original mkdirSync/ENOTDIR error
+    const occupiedFile = join(tempArtifactsDir, "occupied-file");
+    writeFileSync(occupiedFile, "not a directory");
+    let caughtError: unknown;
+    try {
+      store.persistBatch(batch, { artifactsDir: occupiedFile });
+    } catch (err: unknown) {
+      caughtError = err;
+    }
+    expect(caughtError).toBeInstanceOf(Error);
+    expect((caughtError as NodeJS.ErrnoException).code).toBe("ENOTDIR");
+    expect((caughtError as NodeJS.ErrnoException).syscall).toBe("mkdir");
+    expect((caughtError as Error).message).toContain("mkdir");
+    expect((caughtError as Error).message).not.toContain(", rm ");
+    expect(store.listRuns()).toHaveLength(0);
   });
 
   it("executes a multi-run audit against a local HTTP fixture, selects 1 Representative Run, writes 1 report.{json,html} pair, and persists 1 row in SQLite", async () => {
@@ -207,16 +288,14 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
         makeMockIterationResult(fixtureUrl, 700, 1300, 1100, 98, "iter-2"),
       ];
 
-      const result = await runLighthouseAudit({
+      const result = await store.runAudit({
         url: fixtureUrl,
         formFactor: "desktop",
         throttlingMethod: "provided",
         runs: 3,
         artifactsDir: tempArtifactsDir,
-        db,
         onProgress: (ev) => progressEvents.push(ev),
         executor: async (params) => {
-          // Verify local HTTP fixture responds during iteration
           const res = await fetch(params.url);
           expect(res.status).toBe(200);
           params.onProgress?.({
@@ -235,78 +314,132 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
         },
       });
 
-      // Exactly 1 canonical row in lighthouse_runs
-      const allRows = listLighthouseRuns(db);
+      const allRows = store.listRuns();
       expect(allRows).toHaveLength(1);
       expect(result.run.id).toBe(allRows[0]!.id);
+      expect(result.previousRun).toBeNull();
       expect(result.run.performanceScore).toBe(94);
       expect(result.run.lcpMs).toBe(1350);
       expect(result.run.fcpMs).toBe(850);
       expect(result.run.formFactor).toBe("desktop");
       expect(result.run.throttlingMethod).toBe("provided");
-      expect(result.run.summaryJson.lcpElement?.nodeLabel).toBe(
+      expect(result.run.summaryJson?.lcpElement?.nodeLabel).toBe(
         "iter-1-median",
       );
-      expect(result.run.summaryJson.medianMetadata?.totalRuns).toBe(3);
-      expect(result.run.summaryJson.medianMetadata?.selectedRunIndex).toBe(1);
+      expect(result.run.summaryJson?.medianMetadata?.totalRuns).toBe(3);
+      expect(result.run.summaryJson?.medianMetadata?.selectedRunIndex).toBe(1);
 
-      // Exactly 1 pair of disk artifacts written for the Representative Run
       expect(existsSync(result.run.jsonReportPath)).toBe(true);
       expect(existsSync(result.run.htmlReportPath)).toBe(true);
       expect(readFileSync(result.run.htmlReportPath, "utf-8")).toContain(
         "Report iter-1-median",
       );
 
-      // Progress events include complete stage
       expect(progressEvents.some((e) => e.stage === "navigating")).toBe(true);
       expect(progressEvents.at(-1)?.stage).toBe("complete");
 
-      // Stored row is retrievable by ID
-      const fetched = getLighthouseRunById(db, result.run.id);
-      expect(fetched?.id).toBe(result.run.id);
+      const fetched = store.getRun(result.run.id);
+      expect(fetched.id).toBe(result.run.id);
     } finally {
       await server.stop(true);
     }
   });
 
-  it("passes options.env to getDb to honor ADR-0002 database seam when db option is omitted", async () => {
-    resetDb();
+  it("passes options.env to createLighthouseStore with explicit openDb handle (auto-initializing empty DB)", async () => {
     const customDbPath = join(tempArtifactsDir, "isolated-test.db");
-    const isolatedDb = createDb({ path: customDbPath });
-    runMigrations(isolatedDb);
 
-    try {
-      const mockResult = makeMockIterationResult(
-        "https://example.com/db-test",
-        800,
-        1500,
-        1200,
-        95,
-        "db-test",
-      );
+    const mockResult = makeMockIterationResult(
+      "https://example.com/db-test",
+      800,
+      1500,
+      1200,
+      95,
+      "db-test",
+    );
 
-      const result = await runLighthouseAudit({
-        url: "https://example.com/db-test",
-        runs: 1,
+    const isolatedEnv = {
+      DEVTOOLS_DB_PATH: customDbPath,
+      NODE_ENV: "test",
+    };
+    using customDb = openDb({ env: isolatedEnv });
+    const customStore = createLighthouseStore({
+      db: customDb,
+      artifactsDir: tempArtifactsDir,
+      env: isolatedEnv,
+    });
+
+    const capturedEnvs: Array<Record<string, string | undefined> | undefined> =
+      [];
+    const mockBrowser = {
+      executablePath: "/mock/chrome",
+      version: "Chromium 136.0.0",
+      source: "explicit" as const,
+    };
+
+    const result = await customStore.runAudit({
+      url: "https://example.com/db-test",
+      runs: 1,
+      artifactsDir: tempArtifactsDir,
+      browser: mockBrowser,
+      executor: async (params) => {
+        capturedEnvs.push(params.env);
+        return mockResult;
+      },
+    });
+
+    expect(result.run.url).toBe("https://example.com/db-test");
+    expect(existsSync(customDbPath)).toBe(true);
+    expect(capturedEnvs[0]).toEqual({
+      DEVTOOLS_DB_PATH: customDbPath,
+      NODE_ENV: "test",
+    });
+
+    await customStore.runAudit({
+      url: "https://example.com/db-test",
+      runs: 1,
+      artifactsDir: tempArtifactsDir,
+      browser: mockBrowser,
+      env: {
+        DEVTOOLS_DB_PATH: customDbPath,
+        CUSTOM_OVERRIDE: "yes",
+      },
+      executor: async (params) => {
+        capturedEnvs.push(params.env);
+        return mockResult;
+      },
+    });
+
+    expect(capturedEnvs[1]).toEqual({
+      DEVTOOLS_DB_PATH: customDbPath,
+      CUSTOM_OVERRIDE: "yes",
+    });
+
+    const persisted = customStore.persistBatch(
+      {
+        validatedUrl: "https://example.com/db-test-2",
+        formFactor: "mobile",
+        throttlingMethod: "simulate",
+        totalRuns: 1,
+        normalized: result.normalized,
+        reportJson: "{}",
+        reportHtml: "<html></html>",
+        representativeRunIndex: 0,
+        durationMs: 50,
+      },
+      {
         artifactsDir: tempArtifactsDir,
-        env: {
-          DEVTOOLS_DB_PATH: customDbPath,
-          NODE_ENV: "test",
-        },
-        executor: async () => mockResult,
-      });
-
-      expect(result.run.url).toBe("https://example.com/db-test");
-      expect(existsSync(customDbPath)).toBe(true);
-    } finally {
-      resetDb();
-    }
+      },
+    );
+    expect(persisted.run.url).toBe("https://example.com/db-test-2");
   });
 
-  it("executeIteration resolves browser, launches Chrome on port 0, runs Lighthouse with enableErrorReporting: false, and guarantees launchedChrome.kill() in finally", async () => {
+  it("executeIteration passes handleSIGINT: false, registers zero process signal listeners, and guarantees launchedChrome.kill() in finally", async () => {
     let chromeKilled = false;
     let capturedFlags: Record<string, unknown> | undefined;
+    let capturedHandleSigint: boolean | undefined;
     const stages: string[] = [];
+    const sigtermBefore = process.listenerCount("SIGTERM");
+    const sigintBefore = process.listenerCount("SIGINT");
 
     const payload: ExecuteIterationParams = {
       url: "https://example.com",
@@ -336,6 +469,10 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
       launchChrome: async (opts) => {
         expect(opts.chromePath).toBe("/mock/chrome");
         expect(opts.port).toBe(0);
+        capturedHandleSigint = opts.handleSIGINT;
+        // Must not attach global SIGINT/SIGTERM listeners inside headless packages
+        expect(process.listenerCount("SIGTERM")).toBe(sigtermBefore);
+        expect(process.listenerCount("SIGINT")).toBe(sigintBefore);
         return {
           port: 54321,
           kill: async () => {
@@ -344,7 +481,9 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
         };
       },
       runLighthouse: async (_url, flags) => {
-        capturedFlags = flags as Record<string, unknown>;
+        capturedFlags = flags;
+        expect(process.listenerCount("SIGTERM")).toBe(sigtermBefore);
+        expect(process.listenerCount("SIGINT")).toBe(sigintBefore);
         return {
           lhr: mockResult.lhr,
           report: [mockResult.reportJson, mockResult.reportHtml],
@@ -353,6 +492,7 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
     });
 
     expect(chromeKilled).toBe(true);
+    expect(capturedHandleSigint).toBe(false);
     expect(capturedFlags?.port).toBe(54321);
     expect(capturedFlags?.enableErrorReporting).toBe(false);
     expect(output.reportHtml).toBe(mockResult.reportHtml);
@@ -365,32 +505,51 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
     ]);
   });
 
-  it("executeIteration kills launched Chrome even when Lighthouse throws or returns undefined", async () => {
-    let killedOnError = false;
-    const payload: ExecuteIterationParams = {
-      url: "https://example.com",
-      formFactor: "mobile",
-      throttlingMethod: "simulate",
-      categories: ["performance"],
-      runIndex: 0,
-      totalRuns: 1,
-    };
-
+  it("executeIteration propagates non-abort resolveBrowser failures and kills Chrome when Lighthouse fails", async () => {
     await expect(
-      executeIteration(payload, {
-        resolveBrowser: async () => ({
-          executablePath: "/mock/chrome",
-          version: "Chrome 136.0.0",
-          source: "explicit",
-        }),
-        launchChrome: async () => ({
-          port: 55555,
-          kill: async () => {
-            killedOnError = true;
+      executeIteration(
+        {
+          url: "https://example.com",
+          formFactor: "mobile",
+          throttlingMethod: "simulate",
+          categories: ["performance"],
+          runIndex: 0,
+          totalRuns: 1,
+        },
+        {
+          resolveBrowser: async () => {
+            throw new Error("No browser installed");
           },
-        }),
-        runLighthouse: async () => undefined,
-      }),
+        },
+      ),
+    ).rejects.toThrow("No browser installed");
+
+    let killedOnError = false;
+    await expect(
+      executeIteration(
+        {
+          url: "https://example.com",
+          formFactor: "mobile",
+          throttlingMethod: "simulate",
+          categories: ["performance"],
+          runIndex: 0,
+          totalRuns: 1,
+        },
+        {
+          resolveBrowser: async () => ({
+            executablePath: "/mock/chrome",
+            version: "Chrome 136.0.0",
+            source: "explicit",
+          }),
+          launchChrome: async () => ({
+            port: 55555,
+            kill: async () => {
+              killedOnError = true;
+            },
+          }),
+          runLighthouse: async () => undefined,
+        },
+      ),
     ).rejects.toThrow("Lighthouse returned an empty runner result");
 
     expect(killedOnError).toBe(true);
@@ -461,91 +620,6 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
     expect(result.reportHtml).toBe(mockResult.reportHtml);
   });
 
-  it("executeIteration cleans up SIGTERM and SIGINT listeners after completion or failure", async () => {
-    const sigtermCountBefore = process.listenerCount("SIGTERM");
-    const sigintCountBefore = process.listenerCount("SIGINT");
-
-    const mockResult = makeMockIterationResult(
-      "https://example.com",
-      800,
-      1500,
-      1200,
-      90,
-      "cleanup-test",
-    );
-
-    await executeIteration(
-      {
-        url: "https://example.com",
-        formFactor: "mobile",
-        throttlingMethod: "simulate",
-        categories: ["performance"],
-        runIndex: 0,
-        totalRuns: 1,
-      },
-      {
-        resolveBrowser: async () => ({
-          executablePath: "/mock/chrome",
-          version: "Chrome 136",
-          source: "explicit",
-        }),
-        launchChrome: async () => ({
-          port: 44444,
-          kill: async () => {},
-        }),
-        runLighthouse: async () => ({
-          lhr: mockResult.lhr,
-          report: [mockResult.reportJson, mockResult.reportHtml],
-        }),
-      },
-    );
-
-    expect(process.listenerCount("SIGTERM")).toBe(sigtermCountBefore);
-    expect(process.listenerCount("SIGINT")).toBe(sigintCountBefore);
-  });
-
-  it("executeIteration handles SIGTERM cleanup listener", async () => {
-    let killedViaSignal = false;
-    const payload: ExecuteIterationParams = {
-      url: "https://example.com",
-      formFactor: "mobile",
-      throttlingMethod: "simulate",
-      categories: ["performance"],
-      runIndex: 0,
-      totalRuns: 1,
-    };
-    const mockIter = makeMockIterationResult(
-      "https://example.com",
-      800,
-      1500,
-      1200,
-      90,
-      "sigterm-test",
-    );
-
-    await executeIteration(payload, {
-      resolveBrowser: async () => ({
-        executablePath: "/mock/chrome",
-        version: "Chrome 136",
-        source: "explicit",
-      }),
-      launchChrome: async () => ({
-        port: 44444,
-        kill: async () => {
-          killedViaSignal = true;
-        },
-      }),
-      runLighthouse: async () => {
-        process.emit("SIGTERM", "SIGTERM");
-        return {
-          lhr: mockIter.lhr,
-          report: [mockIter.reportJson, mockIter.reportHtml],
-        };
-      },
-    });
-    expect(killedViaSignal).toBe(true);
-  });
-
   it("executeIteration rejects before browser resolution or Chrome launch when signal is already aborted", async () => {
     const controller = new AbortController();
     controller.abort("pre-aborted");
@@ -585,8 +659,8 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
     expect(launchChromeCalled).toBe(false);
   });
 
-  it("executeIteration rejects before launching Chrome if signal aborts during resolveBrowser", async () => {
-    const controller = new AbortController();
+  it("executeIteration rejects with AuditCancelledError if signal aborts during resolveBrowser (returning or throwing)", async () => {
+    const controllerReturn = new AbortController();
     let launchChromeCalled = false;
 
     await expect(
@@ -598,11 +672,11 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
           categories: ["performance"],
           runIndex: 0,
           totalRuns: 1,
-          signal: controller.signal,
+          signal: controllerReturn.signal,
         },
         {
           resolveBrowser: async () => {
-            controller.abort();
+            controllerReturn.abort();
             return {
               executablePath: "/mock/chrome",
               version: "Chrome 136",
@@ -618,6 +692,27 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
     ).rejects.toBeInstanceOf(AuditCancelledError);
 
     expect(launchChromeCalled).toBe(false);
+
+    const controllerThrow = new AbortController();
+    await expect(
+      executeIteration(
+        {
+          url: "https://example.com",
+          formFactor: "mobile",
+          throttlingMethod: "simulate",
+          categories: ["performance"],
+          runIndex: 0,
+          totalRuns: 1,
+          signal: controllerThrow.signal,
+        },
+        {
+          resolveBrowser: async () => {
+            controllerThrow.abort();
+            throw new Error("aborted in resolver");
+          },
+        },
+      ),
+    ).rejects.toBeInstanceOf(AuditCancelledError);
   });
 
   it("executeIteration kills launchedChrome immediately if signal aborts while launchChrome is in flight", async () => {
@@ -767,7 +862,6 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
     expect(stages).not.toContain("analyzing");
     expect(stages).not.toContain("generating_report");
 
-    // Listener is also removed when completing normally with an un-aborted signal
     const healthyController = new AbortController();
     let removed = 0;
     const origRemove = healthyController.signal.removeEventListener.bind(
@@ -837,17 +931,16 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
     expect(calls).toBe(0);
   });
 
-  it("executeLighthouseBatch forwards signal, halts multi-run loop on abort, and prevents persistence in runLighthouseAudit", async () => {
+  it("executeLighthouseBatch forwards signal, halts multi-run loop on abort, and prevents persistence in store.runAudit", async () => {
     const controller = new AbortController();
     const seenSignals: Array<AbortSignal | undefined> = [];
     let calls = 0;
 
     await expect(
-      runLighthouseAudit({
+      store.runAudit({
         url: "https://example.com/multi-abort",
         runs: 3,
         artifactsDir: tempArtifactsDir,
-        db,
         signal: controller.signal,
         executor: async (params) => {
           calls += 1;
@@ -869,8 +962,146 @@ describe("runLighthouseAudit & Isolated Worker Orchestration", () => {
 
     expect(calls).toBe(1);
     expect(seenSignals).toEqual([controller.signal]);
-    expect(listLighthouseRuns(db)).toHaveLength(0);
+    expect(store.listRuns()).toHaveLength(0);
     expect(readdirSync(tempArtifactsDir)).toHaveLength(0);
+  });
+
+  it("executeLighthouseBatch resolves Chromium once across runs: 3, passes pre-resolved browser, and handles abort/failure paths", async () => {
+    const resolvedBrowser = {
+      executablePath: "/mock/chrome-batch",
+      version: "Chrome 136.0.0",
+      source: "explicit" as const,
+    };
+    let resolveCount = 0;
+    const seenBrowsers: unknown[] = [];
+    const stages: string[] = [];
+
+    const batch = await executeLighthouseBatch({
+      url: "https://example.com/batch-cache",
+      runs: 3,
+      chromePath: "/mock/chrome-batch",
+      onProgress: (ev) => stages.push(ev.stage),
+      resolveBrowser: async (opts) => {
+        resolveCount += 1;
+        expect(opts?.chromePath).toBe("/mock/chrome-batch");
+        return resolvedBrowser;
+      },
+      executor: async (params) => {
+        seenBrowsers.push(params.browser);
+        return makeMockIterationResult(
+          params.url,
+          750,
+          1400,
+          1100,
+          94,
+          `batch-run-${params.runIndex}`,
+        );
+      },
+    });
+
+    expect(batch.totalRuns).toBe(3);
+    expect(resolveCount).toBe(1);
+    expect(stages.filter((stage) => stage === "locating_browser")).toHaveLength(
+      1,
+    );
+    expect(seenBrowsers).toEqual([
+      resolvedBrowser,
+      resolvedBrowser,
+      resolvedBrowser,
+    ]);
+
+    const abortController = new AbortController();
+    await expect(
+      executeLighthouseBatch({
+        url: "https://example.com/batch-abort-resolve",
+        signal: abortController.signal,
+        resolveBrowser: async () => {
+          abortController.abort();
+          throw new Error("resolver interrupted");
+        },
+        executor: async () =>
+          makeMockIterationResult("https://example.com", 1, 2, 3, 99, "unused"),
+      }),
+    ).rejects.toBeInstanceOf(AuditCancelledError);
+
+    await expect(
+      executeLighthouseBatch({
+        url: "https://example.com/batch-invalid-chrome",
+        chromePath: "/nonexistent/devtools-missing-chrome",
+      }),
+    ).rejects.toBeInstanceOf(InvalidBrowserPathError);
+  });
+
+  it("executeIteration skips locating_browser when params.browser is pre-resolved and propagates non-abort launch failures", async () => {
+    const stages: string[] = [];
+    const mockResult = makeMockIterationResult(
+      "https://example.com/pre-resolved",
+      700,
+      1200,
+      1000,
+      95,
+      "pre-resolved",
+    );
+
+    const output = await executeIteration(
+      {
+        url: "https://example.com/pre-resolved",
+        formFactor: "mobile",
+        throttlingMethod: "simulate",
+        categories: ["performance"],
+        browser: {
+          executablePath: "/mock/chrome-pre",
+          version: "Chrome 136.0.0",
+          source: "explicit",
+        },
+        runIndex: 0,
+        totalRuns: 1,
+        onProgress: (ev) => stages.push(ev.stage),
+      },
+      {
+        launchChrome: async (opts) => {
+          expect(opts.chromePath).toBe("/mock/chrome-pre");
+          expect(opts.ignoreDefaultFlags).toBe(true);
+          return { port: 44556, kill: async () => {} };
+        },
+        runLighthouse: async () => ({
+          lhr: mockResult.lhr,
+          report: [mockResult.reportJson, mockResult.reportHtml],
+        }),
+      },
+    );
+
+    expect(output.reportHtml).toBe(mockResult.reportHtml);
+    expect(stages).toEqual([
+      "launching_browser",
+      "navigating",
+      "analyzing",
+      "generating_report",
+    ]);
+
+    await expect(
+      executeIteration(
+        {
+          url: "https://example.com/launch-fail",
+          formFactor: "mobile",
+          throttlingMethod: "simulate",
+          categories: ["performance"],
+          browser: {
+            executablePath: "/mock/chrome-pre",
+            version: "Chrome 136.0.0",
+            source: "explicit",
+          },
+          runIndex: 0,
+          totalRuns: 1,
+        },
+        {
+          launchChrome: async () => {
+            throw new Error("Chrome process failed to spawn");
+          },
+          runLighthouse: async () => undefined,
+        },
+      ),
+    ).rejects.toThrow("Chrome process failed to spawn");
   });
 
   it("executeIteration handles rejected and synchronously throwing kill() inside abort listener and retries in finally", async () => {

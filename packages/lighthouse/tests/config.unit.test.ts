@@ -9,10 +9,11 @@ import {
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { findWorkspaceRoot } from "@devtools/core/node";
 import {
-  findWorkspaceRoot,
   resolveArtifactsDir,
-  resolveChromeSandboxDisabled,
+  resolveArtifactsTargetDir,
+  resolveCanonicalArtifactsDir,
   resolveSafeHtmlReportPath,
 } from "../src/config";
 
@@ -38,6 +39,13 @@ describe("resolveArtifactsDir (4-tier precedence waterfall)", () => {
     });
     expect(resolvedFromOptions).toBe(explicitOptsPath);
     expect(existsSync(explicitOptsPath)).toBe(true);
+
+    const positionalProd = resolveArtifactsDir(undefined, {
+      NODE_ENV: "production",
+    });
+    expect(positionalProd).toBe(
+      join(homedir(), ".devtools", "artifacts", "lighthouse"),
+    );
   });
 
   it("Tier 1: respects DEVTOOLS_LIGHTHOUSE_ARTIFACTS_DIR environment variable", () => {
@@ -87,6 +95,7 @@ describe("resolveArtifactsDir (4-tier precedence waterfall)", () => {
     const resolved = resolveArtifactsDir({
       env: { NODE_ENV: "development" },
       cwd: () => import.meta.dir,
+      isStandalone: false,
     });
     expect(resolved).toBe(
       join(repoRoot, ".devtools", "artifacts", "lighthouse"),
@@ -103,6 +112,7 @@ describe("resolveArtifactsDir (4-tier precedence waterfall)", () => {
       const resolved = resolveArtifactsDir({
         env: { NODE_ENV: "development" },
         cwd: () => isolatedDir,
+        isStandalone: false,
       });
       expect(resolved).toBe(
         join(isolatedDir, ".devtools", "artifacts", "lighthouse"),
@@ -112,11 +122,20 @@ describe("resolveArtifactsDir (4-tier precedence waterfall)", () => {
     }
   });
 
-  it("Tier 4: resolves to ~/.devtools/artifacts/lighthouse in production", () => {
-    const resolved = resolveArtifactsDir({
+  it("Tier 4: resolves to ~/.devtools/artifacts/lighthouse in production or standalone binaries", () => {
+    const resolvedProd = resolveArtifactsDir({
       env: { NODE_ENV: "production" },
+      isStandalone: false,
     });
-    expect(resolved).toBe(
+    expect(resolvedProd).toBe(
+      join(homedir(), ".devtools", "artifacts", "lighthouse"),
+    );
+
+    const resolvedStandalone = resolveArtifactsDir({
+      env: { NODE_ENV: "development" },
+      isStandalone: true,
+    });
+    expect(resolvedStandalone).toBe(
       join(homedir(), ".devtools", "artifacts", "lighthouse"),
     );
   });
@@ -126,88 +145,6 @@ describe("resolveArtifactsDir (4-tier precedence waterfall)", () => {
       resolveArtifactsDir({
         env: process.env,
         cwd: () => process.cwd(),
-      }),
-    );
-  });
-});
-
-describe("resolveChromeSandboxDisabled (Chromium sandbox policy seam)", () => {
-  it("respects explicit disableSandbox boolean overrides", () => {
-    expect(resolveChromeSandboxDisabled({ disableSandbox: true })).toBe(true);
-    expect(
-      resolveChromeSandboxDisabled({
-        disableSandbox: false,
-        env: { CI: "true", CHROME_NO_SANDBOX: "1" },
-        getuid: () => 0,
-      }),
-    ).toBe(false);
-  });
-
-  it("disables sandbox when CHROME_NO_SANDBOX is configured", () => {
-    expect(
-      resolveChromeSandboxDisabled({
-        env: { CHROME_NO_SANDBOX: "1" },
-        getuid: () => 1000,
-      }),
-    ).toBe(true);
-    expect(
-      resolveChromeSandboxDisabled({
-        env: { CHROME_NO_SANDBOX: "true" },
-        getuid: () => 1000,
-      }),
-    ).toBe(true);
-  });
-
-  it("disables sandbox when running in CI environment", () => {
-    expect(
-      resolveChromeSandboxDisabled({
-        env: { CI: "true" },
-        getuid: () => 1000,
-      }),
-    ).toBe(true);
-    expect(
-      resolveChromeSandboxDisabled({
-        env: { CI: "1" },
-        getuid: () => 1000,
-      }),
-    ).toBe(true);
-  });
-
-  it("disables sandbox when running as root (uid 0)", () => {
-    expect(
-      resolveChromeSandboxDisabled({
-        env: {},
-        getuid: () => 0,
-      }),
-    ).toBe(true);
-  });
-
-  it("keeps sandboxing enabled in non-root desktop environments or when UID is unavailable", () => {
-    expect(
-      resolveChromeSandboxDisabled({
-        env: {},
-        getuid: () => 1000,
-      }),
-    ).toBe(false);
-    expect(
-      resolveChromeSandboxDisabled({
-        env: {},
-        getuid: () => undefined,
-      }),
-    ).toBe(false);
-  });
-
-  it("delegates to default process.env and process.getuid when seams are omitted", () => {
-    expect(resolveChromeSandboxDisabled({ env: {} })).toBe(
-      resolveChromeSandboxDisabled({
-        env: {},
-        getuid: process.getuid,
-      }),
-    );
-    expect(resolveChromeSandboxDisabled()).toBe(
-      resolveChromeSandboxDisabled({
-        env: process.env,
-        getuid: process.getuid,
       }),
     );
   });
@@ -236,9 +173,26 @@ describe("resolveSafeHtmlReportPath (Artifact symlink & path confinement)", () =
     symlinkSync(outsideHtmlPath, symlinkEscapePath);
 
     try {
+      expect(
+        resolveArtifactsTargetDir(join(artifactsDir, "never-created")),
+      ).toBe(join(artifactsDir, "never-created"));
+      expect(existsSync(join(artifactsDir, "never-created"))).toBe(false);
+
+      const canonicalBase = resolveCanonicalArtifactsDir(artifactsDir);
+      expect(canonicalBase).toBe(artifactsDir);
+      expect(
+        resolveCanonicalArtifactsDir(join(artifactsDir, "missing")),
+      ).toBeNull();
+
       expect(resolveSafeHtmlReportPath(validHtmlPath, artifactsDir)).toBe(
         validHtmlPath,
       );
+      expect(
+        resolveSafeHtmlReportPath(validHtmlPath, artifactsDir, canonicalBase),
+      ).toBe(validHtmlPath);
+      expect(
+        resolveSafeHtmlReportPath(validHtmlPath, artifactsDir, null),
+      ).toBeNull();
       expect(resolveSafeHtmlReportPath("", artifactsDir)).toBeNull();
       expect(
         resolveSafeHtmlReportPath(validHtmlPath, join(artifactsDir, "missing")),

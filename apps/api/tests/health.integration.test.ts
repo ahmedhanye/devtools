@@ -4,9 +4,10 @@ import {
   ApiErrorResponseSchema,
   HealthResponseSchema,
 } from "@devtools/core";
-import { app, createApp } from "../src/index";
+import { createApp } from "../src/index";
 
 describe("Health API Endpoint (/api/health) & Security Boundaries", () => {
+  const app = createApp();
   test("GET /api/health returns 200 and matches HealthResponseSchema", async () => {
     const res = await app.request("/api/health");
     expect(res.status).toBe(200);
@@ -33,6 +34,56 @@ describe("Health API Endpoint (/api/health) & Security Boundaries", () => {
     const json = await res.json();
     const parsed = HealthResponseSchema.parse(json);
     expect(parsed.status).toBe("ok");
+  });
+
+  test("normalizes trailing slashes on basePath without bypassing security middleware", async () => {
+    const rootSlashApp = createApp({ basePath: "/" });
+    expect((await rootSlashApp.request("/health")).status).toBe(200);
+    expect(
+      (
+        await rootSlashApp.request("/health", {
+          headers: { Host: "evil.example" },
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await rootSlashApp.request("/health", {
+          headers: { Origin: "https://evil.example" },
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await rootSlashApp.request("/health", {
+          headers: { "Sec-Fetch-Site": "cross-site" },
+        })
+      ).status,
+    ).toBe(403);
+
+    const apiSlashApp = createApp({ basePath: "/api/" });
+    expect((await apiSlashApp.request("/api/health")).status).toBe(200);
+    expect(
+      (
+        await apiSlashApp.request("/api/health", {
+          headers: { Host: "evil.example" },
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await apiSlashApp.request("/api/health", {
+          headers: { Origin: "https://evil.example" },
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await apiSlashApp.request("/api/health", {
+          headers: { "Sec-Fetch-Site": "cross-site" },
+        })
+      ).status,
+    ).toBe(403);
   });
 
   test("returns 404 with ApiErrorResponseSchema on unknown route", async () => {
@@ -277,7 +328,7 @@ describe("Health API Endpoint (/api/health) & Security Boundaries", () => {
             port: 51234,
           }),
         },
-      } as never,
+      },
     );
     expect(remoteIpRes.status).toBe(403);
     expect(
@@ -294,7 +345,7 @@ describe("Health API Endpoint (/api/health) & Security Boundaries", () => {
             port: 51235,
           }),
         },
-      } as never,
+      },
     );
     expect(mappedLoopbackRes.status).toBe(200);
   });

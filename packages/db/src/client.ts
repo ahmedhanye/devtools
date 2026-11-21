@@ -1,124 +1,276 @@
-import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
-import type { Database } from "bun:sqlite";
+import { Database } from "bun:sqlite";
 import type { EnvMap } from "@devtools/core";
-import { resolveDatabasePath } from "./config";
-import { createSqliteConnection } from "./connection";
-import * as schema from "./schema";
+import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
+import { ensureParentDirectory, resolveDatabaseTargetPath } from "./config";
+import { initializeBaselineSchema } from "./migrator";
+import { schema } from "./schema";
+
+const DEFAULT_BUSY_TIMEOUT_MS = 5000;
+const DEFAULT_IDLE_TIMEOUT_MS = 30_000;
 
 /**
- * Complete relational schema map registered with the Drizzle ORM client.
+ * Drizzle ORM database instance bound to the devtools schema.
  */
-export type DevtoolsSchema = typeof schema;
+export type DevtoolsDb = BunSQLiteDatabase<typeof schema>;
 
 /**
- * Typed Drizzle ORM database client backed by `bun:sqlite` and {@link DevtoolsSchema}.
+ * Borrowed read/write session passed to application stores and repositories.
+ *
+ * Exposes query and transaction execution without exposing connection
+ * ownership or `close()` so domain code cannot close a shared caller handle.
  */
-export type DevtoolsDb = BunSQLiteDatabase<DevtoolsSchema>;
+export interface DbSession {
+  readonly path: string;
+  ensureReady(): void;
+  read<T>(fn: (db: DevtoolsDb) => T): T;
+  write<T>(fn: (tx: DevtoolsDb) => T): T;
+}
 
 /**
- * Configuration options for creating an isolated {@link DevtoolsDb} instance via {@link createDb}.
+ * Composition-root database handle that owns connection lifecycle and disposal.
  */
-export interface CreateDbOptions {
-  /** Optional filesystem path or `":memory:"` passed to {@link createSqliteConnection}. */
+export interface DbHandle extends DbSession {
+  close(): void;
+  [Symbol.dispose](): void;
+}
+
+/**
+ * Configuration options for {@link openDb}.
+ */
+export interface OpenDbOptions {
+  /** Explicit SQLite file path (or `":memory:"`). Overrides env and defaults. */
   path?: string;
-  /** Optional pre-configured `bun:sqlite` `Database` handle. */
-  connection?: Database;
-  /** Optional environment variable map overriding `process.env`. */
+  /** Open an isolated in-memory database instead of a file on disk. */
+  memory?: boolean;
+  /** Apply embedded schema migrations automatically on first physical open. */
+  autoInit?: boolean;
+  /** Optional environment map used for database path resolution. */
   env?: EnvMap;
+  /** Optional working-directory provider for relative paths. */
+  cwd?: () => string;
+  /** Mark invocation as standalone CLI/API mode when resolving database path. */
+  isStandalone?: boolean;
+  /** SQLite `PRAGMA busy_timeout` in milliseconds (default `5000`). */
+  busyTimeoutMs?: number;
+  /**
+   * Idle timeout in milliseconds before closing file-backed SQLite connections
+   * automatically (default `30000`; `0` disables idle-close; always `0` for `:memory:`).
+   */
+  idleTimeoutMs?: number;
+}
+
+interface PhysicalConnection {
+  sqlite: Database;
+  db: DevtoolsDb;
+  activeTx: DevtoolsDb | null;
+  writeDepth: number;
+}
+
+function assertNonNegativeInt(value: number, name: string): number {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new RangeError(`${name} must be a non-negative integer`);
+  }
+  return value;
+}
+
+function configureSqlitePragmas(
+  sqlite: Database,
+  isMemory: boolean,
+  busyTimeoutMs: number,
+): void {
+  sqlite.run(`PRAGMA busy_timeout = ${busyTimeoutMs};`);
+  sqlite.run("PRAGMA foreign_keys = ON;");
+  if (!isMemory) {
+    sqlite.run("PRAGMA journal_mode = WAL;");
+    sqlite.run("PRAGMA synchronous = NORMAL;");
+  }
+}
+
+function openPhysicalConnection(
+  targetPath: string,
+  isMemory: boolean,
+  autoInit: boolean,
+  busyTimeoutMs: number,
+): PhysicalConnection {
+  ensureParentDirectory(targetPath);
+
+  const sqlite = new Database(targetPath, { create: true });
+  try {
+    configureSqlitePragmas(sqlite, isMemory, busyTimeoutMs);
+    if (autoInit) {
+      initializeBaselineSchema(sqlite);
+    }
+    const db = drizzle(sqlite, { schema });
+    return {
+      sqlite,
+      db,
+      activeTx: null,
+      writeDepth: 0,
+    };
+  } catch (error) {
+    sqlite.close(true);
+    throw error;
+  }
 }
 
 /**
- * Instantiates a new Drizzle ORM database client bound to a `bun:sqlite` connection.
+ * Create a lazy SQLite database handle with explicit ownership and automatic idle-close.
  *
- * @param options - Connection path, environment seam, or pre-existing SQLite handle options.
- * @returns Fresh {@link DevtoolsDb} client instance.
+ * File-backed handles defer opening SQLite until first access, execute migrations
+ * idempotently when `autoInit` is enabled, idle-close cleanly via an unreffed
+ * timer (`PRAGMA busy_timeout = 0` -> `PRAGMA optimize` -> `sqlite.close(true)`),
+ * and reopen transparently on subsequent calls.
+ *
+ * @param options Database path, pragma, and lifecycle options.
+ * @returns An owner-scoped {@link DbHandle} supporting `using` disposal.
+ * @throws {RangeError} When `busyTimeoutMs` or `idleTimeoutMs` is negative or non-integer.
  */
-export function createDb(options: CreateDbOptions = {}): DevtoolsDb {
-  const sqlite =
-    options.connection ??
-    createSqliteConnection({ path: options.path, env: options.env });
-  return drizzle({ client: sqlite, schema });
-}
+export function openDb(options: OpenDbOptions = {}): DbHandle {
+  const targetPath = resolveDatabaseTargetPath({
+    customPath: options.path,
+    memory: options.memory,
+    env: options.env,
+    cwd: options.cwd,
+    isStandalone: options.isStandalone,
+  });
+  const isMemory = targetPath === ":memory:";
+  const autoInit = options.autoInit ?? true;
+  const busyTimeoutMs = assertNonNegativeInt(
+    options.busyTimeoutMs ?? DEFAULT_BUSY_TIMEOUT_MS,
+    "busyTimeoutMs",
+  );
+  const requestedIdleMs = assertNonNegativeInt(
+    options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS,
+    "idleTimeoutMs",
+  );
+  const idleTimeoutMs = isMemory ? 0 : requestedIdleMs;
 
-let devtoolsDbInstance: DevtoolsDb | null = null;
-let devtoolsSqliteConnection: Database | null = null;
-let devtoolsDbPath: string | null = null;
+  let conn: PhysicalConnection | null = null;
+  let idleTimer: ReturnType<typeof setTimeout> | null = null;
+  let handleClosed = false;
+  let savepointSeq = 0;
 
-/**
- * Returns the lazily initialized process-wide {@link DevtoolsDb} singleton.
- *
- * @remarks
- * Creates the underlying SQLite connection on first invocation. Call {@link closeDb}
- * or {@link resetDb} to release the singleton handle.
- *
- * @param options - Optional connection path or environment seam used if the singleton is initialized.
- * @returns Shared {@link DevtoolsDb} singleton instance.
- */
-export function getDb(options: CreateDbOptions = {}): DevtoolsDb {
-  if (
-    devtoolsDbInstance &&
-    (options.path !== undefined || options.env !== undefined) &&
-    options.connection === undefined
-  ) {
-    const requestedPath = resolveDatabasePath({
-      customPath: options.path,
-      env: options.env,
-    });
-    if (devtoolsDbPath !== null && requestedPath !== devtoolsDbPath) {
-      closeDb();
+  function clearIdleTimer(): void {
+    if (idleTimer !== null) {
+      clearTimeout(idleTimer);
+      idleTimer = null;
     }
   }
 
-  if (!devtoolsDbInstance) {
-    devtoolsSqliteConnection =
-      options.connection ??
-      createSqliteConnection({ path: options.path, env: options.env });
-    devtoolsDbInstance = drizzle({ client: devtoolsSqliteConnection, schema });
-    devtoolsDbPath = options.connection
-      ? null
-      : resolveDatabasePath({ customPath: options.path, env: options.env });
-  }
-  return devtoolsDbInstance;
-}
-
-/**
- * Closes the active singleton SQLite connection (checkpointing WAL journals) and clears the cached instance.
- *
- * @remarks
- * Safe to call multiple times or when no singleton connection has been opened.
- */
-export function closeDb(): void {
-  if (devtoolsSqliteConnection) {
-    try {
-      devtoolsSqliteConnection.close();
-    } catch {
-      // Ignore close errors on already-closed handles
+  function closePhysicalConnection(active: PhysicalConnection): void {
+    clearIdleTimer();
+    conn = null;
+    if (!isMemory) {
+      try {
+        // Zero busy_timeout first so PRAGMA optimize skips rather than stalls under external writers.
+        active.sqlite.run("PRAGMA busy_timeout = 0;");
+        active.sqlite.run("PRAGMA optimize;");
+      } catch {
+        // Ignore optimize failures on teardown or transient lock contention.
+      }
     }
-    devtoolsSqliteConnection = null;
+    // Drizzle creates uncached statements; force close(true) so -wal/-shm sidecars are cleaned up immediately.
+    active.sqlite.close(true);
   }
-  devtoolsDbInstance = null;
-  devtoolsDbPath = null;
-}
 
-/**
- * Resets the cached {@link DevtoolsDb} singleton and closes any active underlying SQLite handle.
- *
- * @remarks
- * Primarily used in test suites and daemon shutdown hooks to guarantee clean state between runs.
- */
-export function resetDb(): void {
-  closeDb();
-}
+  function scheduleIdleTimer(): void {
+    clearIdleTimer();
+    if (
+      handleClosed ||
+      idleTimeoutMs <= 0 ||
+      conn === null ||
+      conn.writeDepth > 0
+    ) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      idleTimer = null;
+      if (conn !== null && conn.writeDepth === 0) {
+        closePhysicalConnection(conn);
+      }
+    }, idleTimeoutMs);
+    timer.unref();
+    idleTimer = timer;
+  }
 
-/**
- * Lazy proxy forwarding all property accesses to the active {@link getDb} singleton.
- *
- * @remarks
- * Allows modules to import `db` at the top level without triggering filesystem I/O
- * or SQLite connection initialization until a query is actually executed.
- */
-export const db: DevtoolsDb = new Proxy({} as DevtoolsDb, {
-  get(_target, prop, receiver) {
-    return Reflect.get(getDb(), prop, receiver);
-  },
-});
+  function ensureConnection(): PhysicalConnection {
+    if (handleClosed) {
+      throw new Error("Database handle is closed");
+    }
+    clearIdleTimer();
+    if (conn === null) {
+      conn = openPhysicalConnection(
+        targetPath,
+        isMemory,
+        autoInit,
+        busyTimeoutMs,
+      );
+    }
+    return conn;
+  }
+
+  return {
+    path: targetPath,
+    ensureReady(): void {
+      ensureConnection();
+      scheduleIdleTimer();
+    },
+    read<T>(fn: (db: DevtoolsDb) => T): T {
+      const active = ensureConnection();
+      try {
+        return fn(active.activeTx ?? active.db);
+      } finally {
+        scheduleIdleTimer();
+      }
+    },
+    write<T>(fn: (tx: DevtoolsDb) => T): T {
+      const active = ensureConnection();
+      if (active.activeTx !== null) {
+        const spName = `devtools_sp_${++savepointSeq}`;
+        active.sqlite.run(`SAVEPOINT ${spName};`);
+        active.writeDepth += 1;
+        try {
+          const result = fn(active.activeTx);
+          active.sqlite.run(`RELEASE SAVEPOINT ${spName};`);
+          return result;
+        } catch (error) {
+          active.sqlite.run(
+            `ROLLBACK TO SAVEPOINT ${spName}; RELEASE SAVEPOINT ${spName};`,
+          );
+          throw error;
+        } finally {
+          active.writeDepth -= 1;
+        }
+      }
+
+      try {
+        return active.db.transaction(
+          (tx) => {
+            // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Drizzle SQLiteTransaction shares the full DevtoolsDb query API inside a transaction callback.
+            active.activeTx = tx as unknown as DevtoolsDb;
+            active.writeDepth = 1;
+            try {
+              return fn(active.activeTx);
+            } finally {
+              active.activeTx = null;
+              active.writeDepth = 0;
+            }
+          },
+          { behavior: "immediate" },
+        );
+      } finally {
+        scheduleIdleTimer();
+      }
+    },
+    close(): void {
+      handleClosed = true;
+      clearIdleTimer();
+      if (conn !== null) {
+        closePhysicalConnection(conn);
+      }
+    },
+    [Symbol.dispose](): void {
+      this.close();
+    },
+  };
+}
