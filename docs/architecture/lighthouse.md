@@ -4,29 +4,30 @@ Direct in-process Lighthouse execution with `AbortSignal` cancellation, Represen
 
 ## Module responsibilities
 
-| Path                                   | Responsibility                                                                                        | Entrypoint                                                                      |
-| :------------------------------------- | :---------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------ |
-| `packages/lighthouse/src/contracts/`   | Actionable errors (`AuditCancelledError`, `WorkerExecutionError`), models, and browser-safe Zod DTOs. | `packages/lighthouse/src/contracts/schemas.ts` (`@devtools/lighthouse/schemas`) |
-| `packages/lighthouse/src/domain/`      | Pure `AbortSignal` guard, pairwise `diff`, Euclidean `median`, and LHR `normalizer`.                  | `packages/lighthouse/src/domain/index.ts`                                       |
-| `packages/lighthouse/src/application/` | Pure multi-run batch orchestration (`execute-batch.ts`) over injected `ports.ts`.                     | `packages/lighthouse/src/application/index.ts`                                  |
-| `packages/lighthouse/src/config/`      | Artifact directory resolution and symlink confinement (`artifacts-config.ts`).                        | `packages/lighthouse/src/config/index.ts`                                       |
-| `packages/lighthouse/src/infra/`       | SQLite store (`persistence/`) and in-process Chrome iteration + virtual FS shim (`runtime/`).         | `packages/lighthouse/src/wiring.ts`                                             |
-| `packages/lighthouse/src/index.ts`     | Curated public package entrypoint (`openLighthouseStore`, `executeLighthouseBatch`, models).          | `packages/lighthouse/src/index.ts`                                              |
+| Path                                   | Responsibility                                                                                               | Entrypoint                                                                      |
+| :------------------------------------- | :----------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------ |
+| `packages/lighthouse/src/contracts/`   | Actionable errors (`AuditCancelledError`, `WorkerExecutionError`), models, and browser-safe Zod DTOs.        | `packages/lighthouse/src/contracts/schemas.ts` (`@devtools/lighthouse/schemas`) |
+| `packages/lighthouse/src/domain/`      | Pure `AbortSignal` guard, pairwise `diff`, Euclidean `median`, and LHR `normalizer`.                         | `packages/lighthouse/src/domain/index.ts`                                       |
+| `packages/lighthouse/src/application/` | Pure multi-run batch orchestration (`execute-batch.ts`) and single-flight `AuditJobManager` over ports.      | `packages/lighthouse/src/application/index.ts`                                  |
+| `packages/lighthouse/src/config/`      | Artifact directory resolution and symlink confinement (`artifacts-config.ts`).                               | `packages/lighthouse/src/config/index.ts`                                       |
+| `packages/lighthouse/src/infra/`       | SQLite store (`persistence/`) and in-process Chrome iteration + virtual FS shim (`runtime/`).                | `packages/lighthouse/src/wiring.ts`                                             |
+| `packages/lighthouse/src/index.ts`     | Public entrypoint (`createLighthouseStore`, `createAuditJobManager`, `executeLighthouseBatch`, serializers). | `packages/lighthouse/src/index.ts`                                              |
 
 ## Direct in-process iteration execution
 
 ```mermaid
 sequenceDiagram
     participant App as "Application (CLI / API)"
+    participant JobMgr as "AuditJobManager (application)"
     participant Store as "LighthouseStore (wiring.ts)"
     participant Batch as "execute-batch.ts"
     participant Browser as "@devtools/browser"
     participant Iter as "iteration.ts"
     participant Chrome as "Headless Chrome (port: 0)"
     participant Disk as "Report Artifacts"
-    participant DB as "SQLite (@devtools/db)"
+    participant DB as "DbSession (@devtools/db)"
 
-    App->>Store: store.runAudit(options)
+    App->>JobMgr: startJob(request) / store.runAudit(options)
     Store->>Batch: executeLighthouseBatch(options)
     Batch->>Browser: resolveBrowserPath(options) once
     loop Each iteration (1..N)
@@ -39,16 +40,17 @@ sequenceDiagram
         Iter-->>Batch: SingleIterationResult
     end
     Batch->>Batch: select Representative Run and normalize Audit Summary
-    Store->>Disk: write report.json and report.html
+    Store->>Disk: write report.json and report.html (inside rollback guard)
     Store->>DB: insert canonical row into lighthouse_runs
     Store-->>App: LighthouseAuditExecutionResult
 ```
 
 ### Execution lifecycle guarantees
 
-1. **In-process purity and store encapsulation (ADR 0005).** `executeIteration` (`packages/lighthouse/src/infra/runtime/iteration.ts`) runs inside the active runtime with no `Bun.spawn` worker scripts per [ADR 0005](../adr/0005-in-process-lighthouse-execution.md), activating `ensureLighthouseVirtualFs()` lazily only during real executions so compiled binaries (`dist/devtools`) work out of the box. `openLighthouseStore` (`packages/lighthouse/src/wiring.ts`) encapsulates `@devtools/db` `openDb`, CRUD, diffing, report path resolution, and rollback-safe `persistBatch` so `apps/cli` and `apps/api` stay decoupled from `@devtools/db`.
-2. **Batch-once browser resolution and ephemeral ports.** `executeLighthouseBatch` resolves Chromium once per batch and launches Chrome with `port: 0` and `ignoreDefaultFlags: true`.
-3. **Cooperative cancellation.** `signal?: AbortSignal` flows through browser discovery, Chrome launch (`handleSIGINT: false`), and iteration loops, with `session.kill()` always running in `finally`.
+1. **In-process purity and borrowed `DbSession` (ADR 0005 and ADR 0006).** `executeIteration` (`packages/lighthouse/src/infra/runtime/iteration.ts`) runs inside the active runtime with no `Bun.spawn` worker scripts per [ADR 0005](../adr/0005-in-process-lighthouse-execution.md), activating `ensureLighthouseVirtualFs()` lazily only during real executions so compiled binaries (`dist/devtools`) work out of the box. `createLighthouseStore({ db })` (`packages/lighthouse/src/wiring.ts`) operates over a caller-borrowed `DbSession` (never owning or closing the database handle), providing rollback-safe `persistBatch` (artifact directory creation and writes sit inside the `try/catch` alongside best-effort cleanup), read-only artifact path checks without `mkdirSync`, and `BEGIN DEFERRED` snapshot transactions for `listRunsWithTotal` and `diffRuns`.
+2. **Domain-owned single-flight jobs and serializers.** `createAuditJobManager` (`packages/lighthouse/src/application/job-manager.ts`, backed by `packages/lighthouse/src/serializers.ts`) coordinates single-flight active web audit state, progress replay, 5-minute terminal job retention, and `AbortSignal` shutdown so `apps/api` remains a thin HTTP/SSE adapter.
+3. **Batch-once browser resolution and ephemeral ports.** `executeLighthouseBatch` resolves Chromium once per batch and launches Chrome with `port: 0` and `ignoreDefaultFlags: true`.
+4. **Cooperative cancellation.** `signal?: AbortSignal` flows through browser discovery, Chrome launch (`handleSIGINT: false`), iteration loops, and post-batch persistence, with `session.kill()` always running in `finally`.
 
 ## Representative Run selection
 
@@ -69,7 +71,7 @@ Per [ADR 0003](../adr/0003-lighthouse-audit-isolation-and-tiered-storage.md), `L
 | **Warm** | `summary_json` SQLite column (~5 to 15 KB)  | Normalized Audit Summary: LCP/CLS attributions, prioritized Insight Audits, failed checks, distribution. |
 | **Cold** | `<artifactsDir>/<runId>/report.{json,html}` | Full Lighthouse JSON and standalone HTML Report Artifacts; removed automatically if DB insert fails.     |
 
-The `summary_json` column uses a tolerant JSON read boundary (`tolerantJsonText` in `packages/db/src/schema/lighthouse.ts` paired with `parseRunSummary` in `packages/lighthouse/src/infra/persistence/sqlite-runs.ts`). Unreadable or schema-invalid payloads load as `null` on `LighthouseRunRecord` so `computeRunDeltas` returns neutral insight diffs (`clsCulpritDelta: null`) instead of false improvements or regressions, while API and CLI display boundaries apply `EMPTY_LIGHTHOUSE_RUN_SUMMARY`.
+The `listLighthouseRuns` query omits `summary_json` to keep paginated responses light, `resolveLighthouseRun` uses a Unicode scalar indexed range scan (`id >= ? AND id < ? LIMIT 6`) for short-ID prefix matching, and serializers hoist `resolveCanonicalArtifactsDir(artifactsDir)` once per response before checking per-row report confinement. The `summary_json` column uses a tolerant JSON read boundary (`tolerantJsonText` in `packages/db/src/schema/lighthouse.ts` paired with `parseRunSummary` in `packages/lighthouse/src/infra/persistence/sqlite-runs.ts`). Unreadable or schema-invalid payloads load as `null` on `LighthouseRunRecord` so `computeRunDeltas` returns neutral insight diffs (`clsCulpritDelta: null`) instead of false improvements or regressions, while API and CLI display boundaries apply `EMPTY_LIGHTHOUSE_RUN_SUMMARY`.
 
 ## Artifact Configuration Seam (ADR 0002)
 

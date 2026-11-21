@@ -4,16 +4,16 @@ Route topology, loopback security boundaries, SSE streaming, and HTTP status and
 
 ## Module responsibilities
 
-| Path                    | Responsibility                                                                                  | Entrypoint                             |
-| :---------------------- | :---------------------------------------------------------------------------------------------- | :------------------------------------- |
-| `apps/api/src/app/`     | Hono app factory (`create-app.ts`), standalone server lifecycle (`server.ts`, `server-cli.ts`). | `apps/api/src/app/index.ts`            |
-| `apps/api/src/modules/` | Vertical route slices: `health/` probe and `lighthouse/` (`AuditJobManager`, SSE, reports).     | `apps/api/src/modules/*/index.ts`      |
-| `apps/api/src/shared/`  | Canonical error envelope helpers (`http/`) and all-verb loopback guard (`security/`).           | `apps/api/src/shared/{http,security}/` |
-| `apps/api/src/index.ts` | Curated public exports (`createApp`, `startServer`, `AppType`).                                 | `apps/api/src/index.ts`                |
+| Path                    | Responsibility                                                                                                    | Entrypoint                             |
+| :---------------------- | :---------------------------------------------------------------------------------------------------------------- | :------------------------------------- |
+| `apps/api/src/app/`     | Hono app factory (`create-app.ts`), shared `bindManagedServer`, standalone server (`server.ts`, `server-cli.ts`). | `apps/api/src/app/index.ts`            |
+| `apps/api/src/modules/` | Thin HTTP/SSE route adapters: `health/` probe and `lighthouse/` (`routes.ts`, `report-reader.ts`).                | `apps/api/src/modules/*/index.ts`      |
+| `apps/api/src/shared/`  | Canonical error envelope helpers (`http/`) and all-verb loopback guard (`security/`).                             | `apps/api/src/shared/{http,security}/` |
+| `apps/api/src/index.ts` | Curated public exports (`createApp`, `startServer`, `bindManagedServer`, `AppType`).                              | `apps/api/src/index.ts`                |
 
-`createApp(options?: CreateAppOptions)` in `apps/api/src/app/create-app.ts` returns a Hono app extended with `.shutdown()` rather than an ambient singleton. This decouples `apps/api` from `@devtools/db`, lets the Daemon mount `/api/*` in-process, and allows socketless testing via `app.request()` with injected `:memory:` `openLighthouseStore` instances and fake audit runners.
+`createApp(options?: CreateAppOptions)` in `apps/api/src/app/create-app.ts` returns a Hono app extended with `.shutdown()` rather than an ambient singleton. When neither `store` nor `db` is supplied, the `app/` composition root opens a lazy `DbHandle` via `openDb({ env })`, wires `createLighthouseStore({ db })`, and closes the owned handle inside `app.shutdown()` after `lighthouseRoutes.shutdown()` drains active audits. Route modules (`apps/api/src/modules/*`) remain DB-free, letting the Daemon mount `/api/*` in-process and allowing socketless tests via `app.request()` with injected `:memory:` `DbSession`/`LighthouseStore` instances and fake audit runners.
 
-Both `startServer` (`apps/api/src/app/server.ts`) and `startDaemon` (`apps/cli/src/commands/web/daemon.ts`) coordinate 3-phase shutdown via `createShutdownCoordinator()` (`ingress` -> `work` -> `persistence`).
+Both `startServer` (`apps/api/src/app/server.ts`) and `startDaemon` (`apps/cli/src/commands/web/daemon.ts`) share `bindManagedServer`, registering scoped LIFO cleanup via `createTeardown()` (`server.stop(true)` then `app.shutdown()` then `db.close()`). On bind failure, `bindManagedServer` triggers `teardown.run(error).catch(() => {})` before rethrowing so secondary cleanup errors never cause unhandled rejections.
 
 ## Request and SSE lifecycle
 
@@ -26,10 +26,12 @@ flowchart LR
   Router --> Trigger["POST /lighthouse/audits (202 / 409 / 503)"]
   Router --> Stream["GET /lighthouse/audits/:jobId/stream (SSE)"]
   Router --> Runs["GET /lighthouse/runs, :id, :id/report, /diff"]
-  Trigger --> JobMgr["AuditJobManager<br/>(Single-Flight + AbortSignal)"]
+  Trigger --> JobMgr["AuditJobManager (@devtools/lighthouse)<br/>(Single-Flight + AbortSignal)"]
   JobMgr --> Stream
-  Runs --> Store["LighthouseStore (lazy openDb)"]
+  Runs --> Store["LighthouseStore (borrowed DbSession)"]
 ```
+
+In `GET /api/lighthouse/audits/:jobId/stream` (`apps/api/src/modules/lighthouse/routes.ts`), if a retained terminal job expires or is cleared between `hasJob(jobId)` and `subscribe(jobId, ...)`, the stream handler calls `cleanup()` immediately instead of leaving the connection hanging.
 
 ## Mounted routes and SSE transport
 
