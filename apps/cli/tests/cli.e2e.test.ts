@@ -13,7 +13,8 @@ import {
   ApiErrorResponseSchema,
   HealthResponseSchema,
 } from "@devtools/core";
-import { openLighthouseStore } from "@devtools/lighthouse";
+import { openDb } from "@devtools/db";
+import { createLighthouseStore } from "@devtools/lighthouse";
 import {
   AuditSseErrorEventSchema,
   AuditSseProgressEventSchema,
@@ -714,6 +715,10 @@ describe("End-to-End Interconnected Stack Integration (CLI -> Daemon -> UI -> AP
       const port = await readDaemonPort(proc.stdout);
       const baseUrl = `http://127.0.0.1:${port}`;
 
+      // Open SQLite in WAL mode before starting the active SSE audit
+      expect((await fetch(`${baseUrl}/api/lighthouse/runs`)).status).toBe(200);
+      expect(existsSync(dbPath)).toBe(true);
+
       const postRes = await fetch(`${baseUrl}/api/lighthouse/audits`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -755,16 +760,35 @@ describe("End-to-End Interconnected Stack Integration (CLI -> Daemon -> UI -> AP
             pendingRead = reader.read();
           }
         }
+
+        expect(sseSoFar).toContain("event: progress");
+
+        // Keep SSE reader open (uncancelled) across SIGTERM to verify server.stop(true)
+        const streamClosed = (async () => {
+          try {
+            while (true) {
+              const { done } = await reader.read();
+              if (done) return true;
+            }
+          } catch {
+            return true;
+          }
+        })();
+
+        proc.kill("SIGTERM");
+        expect(await proc.exited).toBe(0);
+        await expect(
+          Promise.race([streamClosed, Bun.sleep(3000).then(() => false)]),
+        ).resolves.toBe(true);
+        expect(existsSync(`${dbPath}-wal`)).toBe(false);
+        expect(existsSync(`${dbPath}-shm`)).toBe(false);
       } finally {
         await reader.cancel().catch(() => {});
       }
 
-      expect(sseSoFar).toContain("event: progress");
-      proc.kill("SIGTERM");
-      expect(await proc.exited).toBe(0);
-
-      using store = openLighthouseStore({
-        dbPath,
+      using db = openDb({ path: dbPath });
+      const store = createLighthouseStore({
+        db,
         artifactsDir,
       });
       expect(
@@ -780,4 +804,73 @@ describe("End-to-End Interconnected Stack Integration (CLI -> Daemon -> UI -> AP
       }
     }
   }, 35000);
+
+  test("DB-free CLI commands and main.ts startup load zero @devtools/db or drizzle-orm modules", async () => {
+    const cliRoot = resolve(__dirname, "..");
+    const script = `
+      import { createBufferOutput } from "@devtools/core/node";
+      import { runCli } from "./src/app/main.ts";
+
+      const findMatches = (patterns) =>
+        Object.keys(require.cache)
+          .map((key) => key.replaceAll("\\\\", "/"))
+          .filter((key) => patterns.some((pattern) => key.includes(pattern)));
+
+      const dbAndEnginePatterns = [
+        "packages/db",
+        "@devtools/db",
+        "drizzle-orm",
+        "packages/lighthouse",
+        "@devtools/lighthouse",
+        "apps/api",
+        "@devtools/api",
+      ];
+      const metaPatterns = [...dbAndEnginePatterns, "packages/browser", "@devtools/browser"];
+
+      const onImportMain = findMatches(metaPatterns);
+      const out = createBufferOutput();
+      await runCli(["bun", "devtools", "--help"], { output: out, exit: () => {} });
+      await runCli(["bun", "devtools", "--version"], { output: out, exit: () => {} });
+      const afterMetaCommands = findMatches(metaPatterns);
+
+      const origLog = console.log;
+      const origErr = console.error;
+      console.log = () => {};
+      console.error = () => {};
+      try {
+        await runCli(
+          ["bun", "devtools", "browser", "status", "--json", "--chrome-path", "/nonexistent/devtools-chrome"],
+          { output: out, exit: () => {} },
+        );
+      } finally {
+        console.log = origLog;
+        console.error = origErr;
+      }
+      const afterBrowserStatus = findMatches(dbAndEnginePatterns);
+
+      console.log(JSON.stringify({ onImportMain, afterMetaCommands, afterBrowserStatus }));
+    `;
+
+    const proc = Bun.spawn(["bun", "-e", script], {
+      cwd: cliRoot,
+      env: createSanitizedEnv({ NO_COLOR: "1" }),
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    const exitCode = await proc.exited;
+    const stdout = await new Response(proc.stdout).text();
+    const stderr = await new Response(proc.stderr).text();
+
+    expect(exitCode).toBe(0);
+    expect(stderr).toBe("");
+    const parsed = JSON.parse(stdout.trim()) as {
+      onImportMain: string[];
+      afterMetaCommands: string[];
+      afterBrowserStatus: string[];
+    };
+    expect(parsed.onImportMain).toEqual([]);
+    expect(parsed.afterMetaCommands).toEqual([]);
+    expect(parsed.afterBrowserStatus).toEqual([]);
+  });
 });

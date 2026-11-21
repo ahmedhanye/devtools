@@ -1,31 +1,60 @@
+import type { EnvMap } from "@devtools/core";
+import type { LighthouseStore } from "@devtools/lighthouse";
 import { InvalidArgumentError, Option, type Command } from "commander";
 import type {
+  LighthouseAuditCommandDeps,
   LighthouseAuditCommandOptions,
+  LighthouseDiffCommandDeps,
   LighthouseDiffCommandOptions,
+  LighthouseListCommandDeps,
   LighthouseListCommandOptions,
+  LighthouseOpenCommandDeps,
   LighthouseOpenCommandOptions,
 } from "./types";
 
 export type * from "./types";
 
 /**
- * Injectable action handlers seam for testing Commander argument parsing and command dispatch.
+ * Injectable action handlers and composition-root host dependencies for testing
+ * Commander argument parsing and DB/signal wiring.
  */
 export interface LighthouseCommandHandlers {
+  openStore?: (options?: {
+    env?: EnvMap;
+  }) => Promise<LighthouseStore> | LighthouseStore;
+  closeStore?: () => void;
+  signal?: AbortSignal;
+  exit?: (code: number) => void;
   runAudit?: (
     url: string,
     options?: LighthouseAuditCommandOptions,
+    deps?: LighthouseAuditCommandDeps,
   ) => Promise<void>;
-  runList?: (options: LighthouseListCommandOptions) => Promise<void>;
+  runList?: (
+    options: LighthouseListCommandOptions,
+    deps?: LighthouseListCommandDeps,
+  ) => Promise<void>;
   runDiff?: (
     id1: string,
     id2: string,
     options: LighthouseDiffCommandOptions,
+    deps?: LighthouseDiffCommandDeps,
   ) => Promise<void>;
   runOpen?: (
     id?: string,
     options?: LighthouseOpenCommandOptions,
+    deps?: LighthouseOpenCommandDeps,
   ) => Promise<void>;
+}
+
+function buildActionDeps(
+  handlers: LighthouseCommandHandlers,
+): LighthouseAuditCommandDeps | undefined {
+  const { openStore, closeStore, signal, exit } = handlers;
+  if (!openStore && !closeStore && !signal && !exit) {
+    return undefined;
+  }
+  return { openStore, closeStore, signal, exit };
 }
 
 function collectRules(val: string, memo: string[] = []): string[] {
@@ -45,6 +74,8 @@ export function registerLighthouseCommands(
   program: Command,
   handlers: LighthouseCommandHandlers = {},
 ): Command {
+  const sharedDeps = buildActionDeps(handlers);
+
   const lighthouse = program
     .command("lighthouse")
     .description(
@@ -106,7 +137,9 @@ export function registerLighthouseCommands(
         const runAudit =
           handlers.runAudit ??
           (await import("./audit")).runLighthouseAuditCommand;
-        await runAudit(url, options);
+        await (sharedDeps
+          ? runAudit(url, options, sharedDeps)
+          : runAudit(url, options));
       },
     );
 
@@ -141,7 +174,9 @@ export function registerLighthouseCommands(
       };
       const runList =
         handlers.runList ?? (await import("./list")).runLighthouseListCommand;
-      await runList(mergedOptions);
+      await (sharedDeps
+        ? runList(mergedOptions, sharedDeps)
+        : runList(mergedOptions));
     });
 
   lighthouse
@@ -163,7 +198,9 @@ export function registerLighthouseCommands(
         };
         const runDiff =
           handlers.runDiff ?? (await import("./diff")).runLighthouseDiffCommand;
-        await runDiff(id1, id2, mergedOptions);
+        await (sharedDeps
+          ? runDiff(id1, id2, mergedOptions, sharedDeps)
+          : runDiff(id1, id2, mergedOptions));
       },
     );
 
@@ -184,7 +221,9 @@ export function registerLighthouseCommands(
         };
         const runOpen =
           handlers.runOpen ?? (await import("./open")).runLighthouseOpenCommand;
-        await runOpen(id, mergedOptions);
+        await (sharedDeps
+          ? runOpen(id, mergedOptions, sharedDeps)
+          : runOpen(id, mergedOptions));
       },
     );
 

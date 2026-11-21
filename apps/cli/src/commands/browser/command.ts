@@ -5,7 +5,19 @@ import type {
 } from "@devtools/browser";
 import type { EnvMap } from "@devtools/core";
 import type { Command } from "commander";
-import { getColors, isStreamTTY } from "../../shared/terminal";
+import { createStreamColors } from "../../shared/terminal";
+
+function createExitHandler(
+  exitFn?: (code: number) => void,
+): (code?: number) => void {
+  return (code = 1) => {
+    if (exitFn) {
+      exitFn(code);
+      return;
+    }
+    process.exit(code);
+  };
+}
 
 /**
  * CLI flag options for `devtools browser status`.
@@ -31,6 +43,8 @@ export interface BrowserInstallOptions {
   path?: string;
   /** Optional environment variable map seam for hermetic testing. */
   env?: EnvMap;
+  /** Optional cancellation signal forwarded to browser installation. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -44,19 +58,13 @@ export async function runBrowserStatusCommand(
   options: BrowserStatusOptions = {},
   deps?: {
     getBrowserStatus?: typeof GetBrowserStatusFn;
-    exit?: (code?: number) => void;
+    exit?: (code: number) => void;
     isStderrTTY?: boolean;
     isStdoutTTY?: boolean;
     isTTY?: boolean;
   },
 ): Promise<void> {
-  const exit = (code = 1) => {
-    if (deps?.exit) {
-      deps.exit(code);
-      return;
-    }
-    process.exit(code);
-  };
+  const exit = createExitHandler(deps?.exit);
 
   const doStatus =
     deps?.getBrowserStatus ??
@@ -68,18 +76,11 @@ export async function runBrowserStatusCommand(
     ...(options.signal ? { signal: options.signal } : {}),
   });
 
-  const isStderrTTY =
-    deps?.isStderrTTY ?? deps?.isTTY ?? isStreamTTY(process.stderr);
-  const isStdoutTTY =
-    deps?.isStdoutTTY ?? deps?.isTTY ?? isStreamTTY(process.stdout);
-  const pcStderr = getColors({
-    env: options.env,
-    isTTY: isStderrTTY,
-  });
-  const pcStdout = getColors({
-    env: options.env,
-    isTTY: isStdoutTTY,
-  });
+  if (options.signal?.aborted) {
+    return;
+  }
+
+  const { pcStderr, pcStdout } = createStreamColors(options.env, deps);
 
   if (options.json) {
     console.log(JSON.stringify(status, null, 2));
@@ -135,29 +136,14 @@ export async function runBrowserInstallCommand(
     isStderrTTY?: boolean;
     isStdoutTTY?: boolean;
     writeStderr?: (chunk: string) => void;
-    exit?: (code?: number) => void;
+    exit?: (code: number) => void;
   },
 ): Promise<void> {
-  const exit = (code = 1) => {
-    if (deps?.exit) {
-      deps.exit(code);
-      return;
-    }
-    process.exit(code);
-  };
-
-  const isStderrTTY =
-    deps?.isStderrTTY ?? deps?.isTTY ?? isStreamTTY(process.stderr);
-  const isStdoutTTY =
-    deps?.isStdoutTTY ?? deps?.isTTY ?? isStreamTTY(process.stdout);
-  const pcStderr = getColors({
-    env: options.env,
-    isTTY: isStderrTTY,
-  });
-  const pcStdout = getColors({
-    env: options.env,
-    isTTY: isStdoutTTY,
-  });
+  const exit = createExitHandler(deps?.exit);
+  const { pcStderr, pcStdout, isStderrTTY } = createStreamColors(
+    options.env,
+    deps,
+  );
   const writeStderr =
     deps?.writeStderr ?? ((chunk: string) => process.stderr.write(chunk));
   const doInstall =
@@ -173,6 +159,7 @@ export async function runBrowserInstallCommand(
     const installed = await doInstall({
       cacheDir: options.path,
       env: options.env,
+      ...(options.signal ? { signal: options.signal } : {}),
       onProgress: createDownloadProgressReporter(isStderrTTY, writeStderr),
     });
 
@@ -191,7 +178,9 @@ export async function runBrowserInstallCommand(
     }
     const message = err instanceof Error ? err.message : String(err);
     console.error(pcStderr.red(`Failed to install browser: ${message}`));
-    exit(1);
+    if (!options.signal?.aborted) {
+      exit(1);
+    }
   }
 }
 
@@ -207,6 +196,8 @@ export function registerBrowserCommands(
   deps?: {
     runBrowserStatusCommand?: typeof runBrowserStatusCommand;
     runBrowserInstallCommand?: typeof runBrowserInstallCommand;
+    signal?: AbortSignal;
+    exit?: (code: number) => void;
   },
 ): Command {
   const browser = program
@@ -217,6 +208,19 @@ export function registerBrowserCommands(
 
   const doStatus = deps?.runBrowserStatusCommand ?? runBrowserStatusCommand;
   const doInstall = deps?.runBrowserInstallCommand ?? runBrowserInstallCommand;
+  const hostDeps = deps?.exit ? { exit: deps.exit } : undefined;
+  const dispatchAction = async <TOpts extends { signal?: AbortSignal }>(
+    options: TOpts,
+    run: (
+      opts: TOpts,
+      actionDeps?: { exit?: (code: number) => void },
+    ) => Promise<void>,
+  ) => {
+    const mergedOptions = deps?.signal
+      ? { ...options, signal: deps.signal }
+      : options;
+    await (hostDeps ? run(mergedOptions, hostDeps) : run(mergedOptions));
+  };
 
   browser
     .command("status")
@@ -228,7 +232,7 @@ export function registerBrowserCommands(
     )
     .option("--path <dir>", "Custom directory to probe managed cache in")
     .action(async (options: BrowserStatusOptions) => {
-      await doStatus(options);
+      await dispatchAction(options, doStatus);
     });
 
   browser
@@ -241,7 +245,7 @@ export function registerBrowserCommands(
       "Custom directory to download and unpack browser into",
     )
     .action(async (options: BrowserInstallOptions) => {
-      await doInstall(options);
+      await dispatchAction(options, doInstall);
     });
 
   return browser;

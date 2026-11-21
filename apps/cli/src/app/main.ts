@@ -1,13 +1,13 @@
 import {
   attachHostSignals,
-  hostShutdown,
+  createTeardown,
   type ExitPort,
   type OutputPort,
   type SignalSourcePort,
 } from "@devtools/core/node";
 import { CommanderError } from "commander";
 import { getColors } from "../shared/terminal";
-import { createProgram } from "./program";
+import { createLazyLighthouseStore, createProgram } from "./program";
 
 const pc = getColors();
 
@@ -25,15 +25,33 @@ export async function runCli(
     exit?: ExitPort;
   },
 ): Promise<void> {
+  const teardown = createTeardown();
+  const lazyStore = createLazyLighthouseStore();
+  teardown.defer(() => lazyStore.closeStore());
+
+  let resolveCommandSettled: (() => void) | undefined;
+  const commandSettled = new Promise<void>((resolve) => {
+    resolveCommandSettled = resolve;
+  });
+  teardown.defer(() => commandSettled);
+
   const signalHandle = attachHostSignals({
-    coordinator: hostShutdown,
+    onShutdown: (signal) => teardown.run(new Error(`Received ${signal}`)),
     signals: deps?.signals,
     output: deps?.output,
     exit: deps?.exit,
   });
 
   try {
-    const program = createProgram();
+    const program = createProgram({
+      openStore: lazyStore.openStore,
+      closeStore: lazyStore.closeStore,
+      signal: teardown.signal,
+      signals: deps?.signals,
+      output: deps?.output,
+      exit: deps?.exit,
+      onDaemonStarted: () => signalHandle.detach(),
+    });
     if (deps?.output) {
       const out = deps.output;
       program.configureOutput({
@@ -57,7 +75,9 @@ export async function runCli(
       throw err;
     }
   } finally {
+    resolveCommandSettled?.();
     signalHandle.detach();
+    lazyStore.closeStore();
   }
 }
 

@@ -3,10 +3,9 @@ import { Command } from "commander";
 import {
   createBufferOutput,
   createMemorySignalSource,
-  createShutdownCoordinator,
-  hostShutdown,
 } from "@devtools/core/node";
 import { createProgram, executeCliMain, runCli } from "../src/app";
+import { createLazyLighthouseStore } from "../src/app/program";
 import { registerWebCommand, runWebCommand } from "../src/commands/web";
 import pkg from "../../../package.json";
 
@@ -166,13 +165,9 @@ describe("CLI Program Configuration & Seam Tests (Unit)", () => {
     }
   });
 
-  test("runWebCommand logs formatted error and exits 1 when shutdown coordinator rejects", async () => {
+  test("runWebCommand logs formatted error and exits 1 when daemon teardown rejects", async () => {
     const signals = createMemorySignalSource();
     const output = createBufferOutput();
-    const shutdown = createShutdownCoordinator();
-    shutdown.register("work", () => {
-      throw new Error("boom-work");
-    });
     const exitCodes: Array<number | undefined> = [];
 
     const instance = await runWebCommand(
@@ -180,7 +175,15 @@ describe("CLI Program Configuration & Seam Tests (Unit)", () => {
       {
         signals,
         output,
-        shutdown,
+        startDaemon: () => ({
+          server: {} as never,
+          port: 4000,
+          hostname: "127.0.0.1",
+          staticDir: "/tmp/static",
+          stop: () => {
+            throw new Error("boom-work");
+          },
+        }),
         exit: (code) => {
           exitCodes.push(code);
         },
@@ -195,11 +198,6 @@ describe("CLI Program Configuration & Seam Tests (Unit)", () => {
     );
     expect(exitCodes).toEqual([1]);
 
-    const shutdownNonErr = createShutdownCoordinator();
-    shutdownNonErr.register("work", () => {
-      // oxlint-disable-next-line typescript/only-throw-error -- intentional non-Error throw test
-      throw "raw-shutdown-err";
-    });
     const signals2 = createMemorySignalSource();
     const output2 = createBufferOutput();
     const exitCodes2: Array<number | undefined> = [];
@@ -208,7 +206,16 @@ describe("CLI Program Configuration & Seam Tests (Unit)", () => {
       {
         signals: signals2,
         output: output2,
-        shutdown: shutdownNonErr,
+        startDaemon: () => ({
+          server: {} as never,
+          port: 4000,
+          hostname: "127.0.0.1",
+          staticDir: "/tmp/static",
+          stop: () => {
+            // oxlint-disable-next-line typescript/only-throw-error -- intentional non-Error throw test
+            throw "raw-shutdown-err";
+          },
+        }),
         exit: (code) => {
           exitCodes2.push(code);
         },
@@ -336,6 +343,66 @@ describe("CLI Program Configuration & Seam Tests (Unit)", () => {
       expect(output.stderr.join("\n")).toContain(
         "Error: Interactive port conflict prompt failed: terminal aborted",
       );
+    } finally {
+      await blocker.stop(true);
+    }
+  });
+
+  test("runWebCommand treats ExitPromptError and aborted signal during port prompt as clean Ctrl+C cancel", async () => {
+    const blocker = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch() {
+        return new Response("busy");
+      },
+    });
+    const occupiedPort = blocker.port ?? 0;
+
+    try {
+      // Case A: ExitPromptError without aborted host signal exits 130 cleanly
+      let exitCodeA: number | undefined;
+      const outputA = createBufferOutput();
+      const resultA = await runWebCommand(
+        { port: occupiedPort, host: "127.0.0.1" },
+        {
+          isInteractive: () => true,
+          confirm: async () => {
+            throw Object.assign(new Error("User force closed the prompt"), {
+              name: "ExitPromptError",
+            });
+          },
+          output: outputA,
+          exit: (code) => {
+            exitCodeA = code;
+          },
+        },
+      );
+      expect(resultA).toBeUndefined();
+      expect(outputA.stderr).toEqual([]);
+      expect(exitCodeA).toBe(130);
+
+      // Case B: Already-aborted signal suppresses exit() so main.ts owns exit 130
+      let exitCodeB: number | undefined;
+      const outputB = createBufferOutput();
+      const controller = new AbortController();
+      const resultB = await runWebCommand(
+        { port: occupiedPort, host: "127.0.0.1" },
+        {
+          isInteractive: () => true,
+          signal: controller.signal,
+          confirm: async () => {
+            controller.abort(new Error("Received SIGINT"));
+            throw new Error("prompt closed");
+          },
+          output: outputB,
+          exit: (code) => {
+            exitCodeB = code;
+          },
+        },
+      );
+      expect(resultB).toBeUndefined();
+      expect(outputB.stderr).toEqual([]);
+      expect(exitCodeB).toBeUndefined();
     } finally {
       await blocker.stop(true);
     }
@@ -488,24 +555,73 @@ describe("CLI Program Configuration & Seam Tests (Unit)", () => {
     const subSignals = createMemorySignalSource();
     const subOutput = createBufferOutput();
     const subExitCodes: number[] = [];
-    hostShutdown.resetForTesting();
     try {
+      let resolveSubExited!: () => void;
+      const subExited = new Promise<void>((resolve) => {
+        resolveSubExited = resolve;
+      });
       const cliPromise = runCli(["bun", "devtools", "lighthouse", "list"], {
         signals: subSignals,
         output: subOutput,
         exit: (code) => {
           subExitCodes.push(code);
+          resolveSubExited();
         },
       });
       subSignals.emit("SIGINT");
-      await Promise.all([cliPromise, Bun.sleep(10)]);
+      await Promise.all([cliPromise, subExited]);
       expect(listStdout.join("\n")).not.toContain("Usage: devtools [options]");
-      expect(hostShutdown.isShuttingDown).toBe(true);
       expect(subExitCodes).toEqual([130]);
+      expect(subSignals.listenerCount("SIGINT")).toBe(0);
     } finally {
       console.log = origConsoleLog;
-      hostShutdown.resetForTesting();
     }
+
+    const webSignals = createMemorySignalSource();
+    const webOutput = createBufferOutput();
+    const webExitCodes: number[] = [];
+    let resolveWebExited!: () => void;
+    const webExited = new Promise<void>((resolve) => {
+      resolveWebExited = resolve;
+    });
+    await runCli(
+      ["bun", "devtools", "web", "--port", "0", "--host", "127.0.0.1"],
+      {
+        signals: webSignals,
+        output: webOutput,
+        exit: (code) => {
+          webExitCodes.push(code);
+          resolveWebExited();
+        },
+      },
+    );
+    // Outer CLI listener was detached onDaemonStarted; only daemon's listener remains
+    expect(webSignals.listenerCount("SIGINT")).toBe(1);
+    expect(webSignals.listenerCount("SIGTERM")).toBe(1);
+    webSignals.emit("SIGTERM");
+    await webExited;
+    expect(webExitCodes).toEqual([0]);
+    expect(webSignals.listenerCount("SIGTERM")).toBe(0);
+  });
+
+  test("createLazyLighthouseStore dynamically opens, replaces, and closes SQLite handles", async () => {
+    const controller = createLazyLighthouseStore();
+    controller.closeStore();
+    const store1 = await controller.openStore({
+      env: { DEVTOOLS_DB_PATH: ":memory:" },
+    });
+    expect(store1.listRuns()).toEqual([]);
+
+    const store2 = await controller.openStore({
+      env: { DEVTOOLS_DB_PATH: ":memory:" },
+    });
+    expect(store2.listRuns()).toEqual([]);
+    // Prior DB handle was closed when opening the second one
+    expect(() => store1.listRuns()).toThrow("Database handle is closed");
+
+    controller.closeStore();
+    expect(() => store2.listRuns()).toThrow("Database handle is closed");
+    controller.closeStore();
   });
 
   test("executeCliMain and bin/devtools.js respect import.meta.main guard and fatal catch seam", async () => {

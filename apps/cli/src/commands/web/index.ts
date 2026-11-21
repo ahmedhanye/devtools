@@ -1,6 +1,2 @@
 export { registerWebCommand, runWebCommand } from "./command";
-export {
-  startDaemon,
-  type DaemonInstance,
-  type StartDaemonOptions,
-} from "./daemon";
+export type { DaemonInstance, StartDaemonOptions } from "./daemon";

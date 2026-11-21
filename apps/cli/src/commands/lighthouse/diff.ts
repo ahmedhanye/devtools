@@ -33,16 +33,14 @@ export async function runLighthouseDiffCommand(
     return;
   }
 
-  try {
+  const executeDiff = (): number | undefined => {
     let diffResult: ReturnType<LighthouseStore["diffRuns"]>;
-
     try {
       diffResult = store.diffRuns(id1, id2);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       error(pc.red(`Error resolving audit runs: ${message}`));
-      exit(1);
-      return;
+      return 1;
     }
 
     const { baseline: run1, comparison: run2, deltas } = diffResult;
@@ -52,7 +50,17 @@ export async function runLighthouseDiffCommand(
     } else {
       log(formatTerminalDiff(run1, run2, deltas.insights));
     }
+    return undefined;
+  };
+
+  let exitCode: number | undefined;
+  try {
+    exitCode = executeDiff();
   } finally {
     ctx.closeStore();
+  }
+
+  if (exitCode !== undefined) {
+    exit(exitCode);
   }
 }

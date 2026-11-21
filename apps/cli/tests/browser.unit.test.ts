@@ -626,4 +626,128 @@ describe("CLI Browser Command Surface (Unit)", () => {
     ]);
     expect(installCalledWithOptions?.path).toBe("/custom/cache");
   });
+
+  test("registerBrowserCommands forwards AbortSignal and exit seams to status and install", async () => {
+    const program = new Command();
+    program.name("devtools");
+    const controller = new AbortController();
+    let statusSignal: AbortSignal | undefined;
+    let installSignal: AbortSignal | undefined;
+    let statusExit: ((code: number) => void) | undefined;
+    let installExit: ((code: number) => void) | undefined;
+    const exit = () => {};
+
+    registerBrowserCommands(program, {
+      signal: controller.signal,
+      exit,
+      runBrowserStatusCommand: async (opts, deps) => {
+        statusSignal = opts?.signal;
+        statusExit = deps?.exit;
+      },
+      runBrowserInstallCommand: async (opts, deps) => {
+        installSignal = opts?.signal;
+        installExit = deps?.exit;
+      },
+    });
+
+    await program.parseAsync(["node", "devtools", "browser", "status"]);
+    expect(statusSignal).toBe(controller.signal);
+    expect(statusExit).toBe(exit);
+
+    await program.parseAsync(["node", "devtools", "browser", "install"]);
+    expect(installSignal).toBe(controller.signal);
+    expect(installExit).toBe(exit);
+  });
+
+  test("runBrowserInstallCommand forwards AbortSignal and skips exit(1) when aborted", async () => {
+    const controller = new AbortController();
+    let capturedSignal: AbortSignal | undefined;
+    const exitCodes: Array<number | undefined> = [];
+    const origErr = console.error;
+    console.error = () => {};
+
+    try {
+      await runBrowserInstallCommand(
+        { signal: controller.signal },
+        {
+          exit: (code) => {
+            exitCodes.push(code);
+          },
+          installBrowser: async (opts) => {
+            capturedSignal = opts?.signal;
+            controller.abort(new Error("SIGINT"));
+            throw new Error("Browser installation was aborted");
+          },
+        },
+      );
+      expect(capturedSignal).toBe(controller.signal);
+      expect(exitCodes).toEqual([]);
+    } finally {
+      console.error = origErr;
+    }
+  });
+
+  test("runBrowserStatusCommand skips error output and exit(1) when aborted in human and --json modes", async () => {
+    const origLog = console.log;
+    const origErr = console.error;
+    const stdoutLogs: string[] = [];
+    const stderrLogs: string[] = [];
+    console.log = (...args: unknown[]) =>
+      stdoutLogs.push(args.map(String).join(" "));
+    console.error = (...args: unknown[]) =>
+      stderrLogs.push(args.map(String).join(" "));
+
+    try {
+      const humanController = new AbortController();
+      const humanExitCodes: number[] = [];
+      let humanCapturedSignal: AbortSignal | undefined;
+      await runBrowserStatusCommand(
+        { signal: humanController.signal },
+        {
+          exit: (code) => {
+            humanExitCodes.push(code);
+          },
+          getBrowserStatus: async (opts) => {
+            humanCapturedSignal = opts?.signal;
+            humanController.abort(new Error("SIGINT"));
+            return {
+              found: false,
+              error: "Browser resolution was aborted",
+            };
+          },
+        },
+      );
+      expect(humanCapturedSignal).toBe(humanController.signal);
+      expect(humanExitCodes).toEqual([]);
+      expect(stdoutLogs).toEqual([]);
+      expect(stderrLogs).toEqual([]);
+
+      const jsonController = new AbortController();
+      const jsonExitCodes: number[] = [];
+      let jsonCapturedSignal: AbortSignal | undefined;
+      await runBrowserStatusCommand(
+        { json: true, signal: jsonController.signal },
+        {
+          exit: (code) => {
+            jsonExitCodes.push(code);
+          },
+          getBrowserStatus: async (opts) => {
+            jsonCapturedSignal = opts?.signal;
+            jsonController.abort(new Error("SIGTERM"));
+            return {
+              found: false,
+              error: "Browser resolution was aborted",
+            };
+          },
+        },
+      );
+      expect(jsonCapturedSignal).toBe(jsonController.signal);
+      expect(jsonExitCodes).toEqual([]);
+      expect(stdoutLogs).toEqual([]);
+      expect(stderrLogs).toEqual([]);
+    } finally {
+      console.log = origLog;
+      console.error = origErr;
+    }
+  });
 });

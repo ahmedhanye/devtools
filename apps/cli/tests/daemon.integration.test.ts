@@ -9,15 +9,67 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ApiErrorResponseSchema, HealthResponseSchema } from "@devtools/core";
+import { createTeardown } from "@devtools/core/node";
+import { openDb } from "@devtools/db";
+import {
+  AuditCancelledError,
+  createLighthouseStore,
+} from "@devtools/lighthouse";
 import {
   ListLighthouseRunsResponseSchema,
   TriggerLighthouseAuditResponseSchema,
 } from "@devtools/lighthouse/schemas";
 import {
   type DaemonInstance,
+  type StartDaemonOptions,
   serveStaticAsset,
   startDaemon,
 } from "../src/commands/web/daemon";
+
+interface GatedAuditControl {
+  started: Promise<void>;
+  release: () => void;
+  isAborted: () => boolean;
+  isFinished: () => boolean;
+  runner: NonNullable<StartDaemonOptions["auditRunner"]>;
+}
+
+function createGatedAuditControl(): GatedAuditControl {
+  let notifyStarted!: () => void;
+  const started = new Promise<void>((resolve) => {
+    notifyStarted = resolve;
+  });
+  let release!: () => void;
+  const cleanupGate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let aborted = false;
+  let finished = false;
+
+  const runner: NonNullable<StartDaemonOptions["auditRunner"]> = async ({
+    url,
+    signal,
+  }) => {
+    signal?.addEventListener("abort", () => {
+      aborted = true;
+    });
+    notifyStarted();
+    await cleanupGate;
+    finished = true;
+    if (signal?.aborted) {
+      throw new AuditCancelledError("Audit cancelled during daemon shutdown");
+    }
+    throw new Error(`Expected abort signal for ${url} before gate release`);
+  };
+
+  return {
+    started,
+    release,
+    isAborted: () => aborted,
+    isFinished: () => finished,
+    runner,
+  };
+}
 
 describe("Unified Loopback Daemon Lifecycle and Routing", () => {
   let activeDaemon: DaemonInstance | null = null;
@@ -126,15 +178,17 @@ describe("Unified Loopback Daemon Lifecycle and Routing", () => {
     const artifactsDir = mkdtempSync(
       join(tmpdir(), "devtools-daemon-lh-stop-"),
     );
+    const audit = createGatedAuditControl();
+
     try {
       activeDaemon = startDaemon({
         port: 0,
         host: "127.0.0.1",
         env: {
           DEVTOOLS_DB_PATH: ":memory:",
-          DEVTOOLS_CHROME_PATH: "/nonexistent/devtools-daemon-chrome",
           DEVTOOLS_LIGHTHOUSE_ARTIFACTS_DIR: artifactsDir,
         },
+        auditRunner: audit.runner,
       });
 
       const baseUrl = `http://127.0.0.1:${activeDaemon.port}`;
@@ -145,13 +199,29 @@ describe("Unified Loopback Daemon Lifecycle and Routing", () => {
       });
       expect(triggerRes.status).toBe(202);
       TriggerLighthouseAuditResponseSchema.parse(await triggerRes.json());
+      await audit.started;
 
       const daemonToStop = activeDaemon;
       activeDaemon = null;
-      await daemonToStop.stop();
+      let stopResolved = false;
+      const stopPromise = (async () => {
+        await daemonToStop.stop();
+        stopResolved = true;
+      })();
 
+      await Bun.sleep(15);
+      expect(audit.isAborted()).toBe(true);
+      expect(audit.isFinished()).toBe(false);
+      expect(stopResolved).toBe(false);
+
+      audit.release();
+      await stopPromise;
+
+      expect(stopResolved).toBe(true);
+      expect(audit.isFinished()).toBe(true);
       expect(readdirSync(artifactsDir)).toHaveLength(0);
     } finally {
+      audit.release();
       try {
         if (activeDaemon) {
           const daemonToStop = activeDaemon;
@@ -161,6 +231,125 @@ describe("Unified Loopback Daemon Lifecycle and Routing", () => {
       } finally {
         rmSync(artifactsDir, { recursive: true, force: true });
       }
+    }
+  });
+
+  test("teardown.run() stops both HTTP listeners and cancels active audits when two startDaemon instances share one Teardown", async () => {
+    const artifactsDir1 = mkdtempSync(
+      join(tmpdir(), "devtools-daemon-shared-1-"),
+    );
+    const artifactsDir2 = mkdtempSync(
+      join(tmpdir(), "devtools-daemon-shared-2-"),
+    );
+    const audit1 = createGatedAuditControl();
+    const audit2 = createGatedAuditControl();
+    let daemon1: DaemonInstance | null = null;
+    let daemon2: DaemonInstance | null = null;
+
+    try {
+      using db1 = openDb({ memory: true });
+      using db2 = openDb({ memory: true });
+      const store1 = createLighthouseStore({
+        db: db1,
+        artifactsDir: artifactsDir1,
+      });
+      const store2 = createLighthouseStore({
+        db: db2,
+        artifactsDir: artifactsDir2,
+      });
+      const teardown = createTeardown();
+
+      daemon1 = startDaemon({
+        port: 0,
+        host: "127.0.0.1",
+        store: store1,
+        signal: teardown.signal,
+        env: {
+          DEVTOOLS_LIGHTHOUSE_ARTIFACTS_DIR: artifactsDir1,
+        },
+        auditRunner: audit1.runner,
+      });
+      teardown.defer(() => daemon1?.stop());
+      daemon2 = startDaemon({
+        port: 0,
+        host: "127.0.0.1",
+        store: store2,
+        signal: teardown.signal,
+        env: {
+          DEVTOOLS_LIGHTHOUSE_ARTIFACTS_DIR: artifactsDir2,
+        },
+        auditRunner: audit2.runner,
+      });
+      teardown.defer(() => daemon2?.stop());
+
+      const port1 = daemon1.port;
+      const port2 = daemon2.port;
+
+      const [health1, health2] = await Promise.all([
+        fetch(`http://127.0.0.1:${port1}/api/health`),
+        fetch(`http://127.0.0.1:${port2}/api/health`),
+      ]);
+      expect(health1.status).toBe(200);
+      expect(health2.status).toBe(200);
+
+      const [triggerRes1, triggerRes2] = await Promise.all([
+        fetch(`http://127.0.0.1:${port1}/api/lighthouse/audits`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: "https://example.com/daemon-1" }),
+        }),
+        fetch(`http://127.0.0.1:${port2}/api/lighthouse/audits`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: "https://example.com/daemon-2" }),
+        }),
+      ]);
+      expect(triggerRes1.status).toBe(202);
+      expect(triggerRes2.status).toBe(202);
+      TriggerLighthouseAuditResponseSchema.parse(await triggerRes1.json());
+      TriggerLighthouseAuditResponseSchema.parse(await triggerRes2.json());
+      await Promise.all([audit1.started, audit2.started]);
+
+      let shutdownResolved = false;
+      const shutdownPromise = (async () => {
+        await teardown.run("SIGTERM");
+        shutdownResolved = true;
+      })();
+
+      await Bun.sleep(15);
+      expect(audit1.isAborted()).toBe(true);
+      expect(audit2.isAborted()).toBe(true);
+      expect(shutdownResolved).toBe(false);
+
+      audit2.release();
+      await Bun.sleep(15);
+      expect(audit2.isFinished()).toBe(true);
+      expect(audit1.isFinished()).toBe(false);
+      expect(shutdownResolved).toBe(false);
+
+      audit1.release();
+      await shutdownPromise;
+
+      expect(shutdownResolved).toBe(true);
+      expect(audit1.isFinished()).toBe(true);
+      expect(store1.listRuns()).toHaveLength(0);
+      expect(store2.listRuns()).toHaveLength(0);
+      expect(readdirSync(artifactsDir1)).toHaveLength(0);
+      expect(readdirSync(artifactsDir2)).toHaveLength(0);
+
+      await expect(
+        fetch(`http://127.0.0.1:${port1}/api/health`),
+      ).rejects.toThrow();
+      await expect(
+        fetch(`http://127.0.0.1:${port2}/api/health`),
+      ).rejects.toThrow();
+    } finally {
+      audit1.release();
+      audit2.release();
+      await daemon1?.server.stop(true);
+      await daemon2?.server.stop(true);
+      rmSync(artifactsDir1, { recursive: true, force: true });
+      rmSync(artifactsDir2, { recursive: true, force: true });
     }
   });
 

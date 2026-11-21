@@ -1,4 +1,5 @@
 export {
+  createStreamColors,
   getColors,
   isStreamTTY,
   shouldEnableColor,

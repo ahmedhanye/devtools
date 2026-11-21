@@ -106,15 +106,14 @@ export async function runLighthouseOpenCommand(
     return;
   }
 
-  let run: LighthouseRunRecord;
-  try {
+  const executeOpen = async (): Promise<number | undefined> => {
+    let run: LighthouseRunRecord;
     try {
       run = store.getRun(id);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       error(pc.red(message));
-      exit(1);
-      return;
+      return 1;
     }
 
     if (!fileExists(run.htmlReportPath)) {
@@ -123,14 +122,12 @@ export async function runLighthouseOpenCommand(
           `Report artifact file not found at: ${run.htmlReportPath}. The file may have been moved or cleaned up.`,
         ),
       );
-      exit(1);
-      return;
+      return 1;
     }
 
     if (isHeadless(options.env)) {
       log(`file://${run.htmlReportPath}`);
-      exit(0);
-      return;
+      return 0;
     }
 
     try {
@@ -140,6 +137,7 @@ export async function runLighthouseOpenCommand(
           `Opening Lighthouse HTML report at:\n  ${run.htmlReportPath}`,
         ),
       );
+      return undefined;
     } catch (err: unknown) {
       const cause = err instanceof Error ? err : undefined;
       const openerErr = new LighthouseOpenerError(
@@ -147,9 +145,18 @@ export async function runLighthouseOpenCommand(
         cause ? { cause } : undefined,
       );
       error(pc.red(openerErr.message));
-      exit(openerErr.exitCode);
+      return openerErr.exitCode;
     }
+  };
+
+  let exitCode: number | undefined;
+  try {
+    exitCode = await executeOpen();
   } finally {
     ctx.closeStore();
+  }
+
+  if (exitCode !== undefined) {
+    exit(exitCode);
   }
 }

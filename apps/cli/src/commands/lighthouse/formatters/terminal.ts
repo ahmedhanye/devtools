@@ -1,4 +1,5 @@
 import type {
+  LighthouseRunListRecord,
   LighthouseRunRecord,
   NormalizedLighthouseRun,
 } from "@devtools/lighthouse";
@@ -293,7 +294,7 @@ export function formatTerminalSummary(
  * @returns Formatted table or empty notice.
  */
 export function formatTerminalList(
-  runs: LighthouseRunRecord[],
+  runs: LighthouseRunListRecord[],
   options: ColorOptions = {},
 ): string {
   const c = getColors(options);

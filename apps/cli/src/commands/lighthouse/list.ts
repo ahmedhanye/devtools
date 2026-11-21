@@ -55,16 +55,18 @@ export async function runLighthouseListCommand(
   deps?: LighthouseListCommandDeps,
 ): Promise<void> {
   const ctx = createLighthouseCliContext(options, deps);
+
+  if (!validateListOptions(options, ctx)) {
+    return;
+  }
+
   const store = await connectRequiredLighthouseStore(ctx);
   if (!store) {
     return;
   }
 
+  let exitCode: number | undefined;
   try {
-    if (!validateListOptions(options, ctx)) {
-      return;
-    }
-
     const runs = store.listRuns({
       url: options.url,
       formFactor: options.formFactor,
@@ -75,8 +77,12 @@ export async function runLighthouseListCommand(
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     ctx.error(ctx.pc.red(`Error retrieving audit runs: ${message}`));
-    ctx.exit(1);
+    exitCode = 1;
   } finally {
     ctx.closeStore();
+  }
+
+  if (exitCode !== undefined) {
+    ctx.exit(exitCode);
   }
 }

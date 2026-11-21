@@ -1,16 +1,18 @@
 import { existsSync, statSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
-import { createApp } from "@devtools/api";
+import {
+  bindManagedServer,
+  type CreateAppOptions,
+  createApp,
+} from "@devtools/api";
 import {
   type EnvMap,
   RuntimeConfigSchema,
   formatRuntimeConfigError,
   parsePortFromEnv,
 } from "@devtools/core";
-import {
-  createShutdownCoordinator,
-  type ShutdownCoordinator,
-} from "@devtools/core/node";
+import { createTeardown } from "@devtools/core/node";
+import type { DbSession } from "@devtools/db";
 import type { LighthouseStore } from "@devtools/lighthouse";
 import type { Server } from "bun";
 
@@ -24,12 +26,16 @@ export interface StartDaemonOptions {
   host?: string;
   /** Explicit filesystem path to the pre-rendered frontend static asset directory. */
   staticDir?: string;
+  /** Optional borrowed SQLite session forwarded to `@devtools/api` when `store` is omitted. */
+  db?: DbSession;
   /** Optional injected {@link LighthouseStore} forwarded to `@devtools/api`. */
   store?: LighthouseStore;
-  /** Optional 3-phase {@link ShutdownCoordinator} orchestrating daemon shutdown. */
-  shutdown?: ShutdownCoordinator;
+  /** Optional cancellation signal linking outer teardown into active audit jobs and 503 guards. */
+  signal?: AbortSignal;
   /** Optional environment variable map overriding `process.env`. */
   env?: EnvMap;
+  /** Optional audit runner seam passed through to {@link createApp}. */
+  auditRunner?: CreateAppOptions["auditRunner"];
 }
 
 /**
@@ -248,7 +254,7 @@ export async function serveStaticAsset(
  * Starts the unified single-process loopback daemon co-locating lazy SQLite persistence,
  * in-process `@devtools/api` routing (`/api/*`), and frontend static asset serving (`/*`).
  *
- * @param options - Optional port, host, static directory, store, shutdown, and env overrides.
+ * @param options - Optional port, host, static directory, store, shutdown, env, and audit runner overrides.
  * @returns Running {@link DaemonInstance} handle.
  * @throws {@link Error} When configuration validation fails or the static asset directory is missing.
  */
@@ -262,55 +268,40 @@ export function startDaemon(options: StartDaemonOptions = {}): DaemonInstance {
     );
   }
 
-  const coordinator = options.shutdown ?? createShutdownCoordinator();
+  const teardown = createTeardown();
+  const routeSignal = options.signal
+    ? AbortSignal.any([options.signal, teardown.signal])
+    : teardown.signal;
+
   const api = createApp({
     basePath: "/api",
+    db: options.db,
     store: options.store,
-    shutdown: coordinator,
+    signal: routeSignal,
     env: options.env,
+    auditRunner: options.auditRunner,
   });
+  teardown.defer(() => api.shutdown());
 
-  let server: Server<unknown>;
-  try {
-    server = Bun.serve({
-      port: config.port,
-      hostname: config.host,
-      fetch(req, bunServer) {
-        const url = new URL(req.url);
-        if (url.pathname === "/api" || url.pathname.startsWith("/api/")) {
-          return api.fetch(req, { server: bunServer });
-        }
-        return serveStaticAsset(staticDir, url.pathname, req.method);
-      },
-    });
-  } catch (error) {
-    void api.shutdown();
-    throw error;
-  }
-
-  const disposeIngress = coordinator.register(
-    "ingress",
-    () => server.stop(true),
-    { id: "daemon-http-ingress" },
-  );
-  const disposeWork = coordinator.register("work", () => api.shutdown(), {
-    id: "daemon-api-work",
-  });
-
-  const stop = async () => {
-    try {
-      await coordinator.shutdown("stop");
-    } finally {
-      disposeIngress();
-      disposeWork();
-    }
+  const handleRequest = (req: Request, bunServer: Server<unknown>) => {
+    const { pathname } = new URL(req.url);
+    return pathname === "/api" || pathname.startsWith("/api/")
+      ? api.fetch(req, { server: bunServer })
+      : serveStaticAsset(staticDir, pathname, req.method);
   };
+
+  const server = bindManagedServer({
+    port: config.port,
+    hostname: config.host,
+    teardown,
+    fetch: handleRequest,
+  });
 
   return {
     server,
     port: server.port ?? config.port,
     hostname: server.hostname ?? config.host,
     staticDir,
-    stop,
+    stop: () => teardown.run(),
   };
 }

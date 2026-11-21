@@ -1,22 +1,7 @@
 import type { EnvMap } from "@devtools/core";
 import type { LighthouseStore } from "@devtools/lighthouse";
 import { getColors, isStreamTTY } from "../../shared/terminal";
-
-/**
- * Shared dependency injection seams across Lighthouse CLI commands (`audit`, `diff`, `list`, `open`).
- */
-export interface LighthouseCliContextDeps {
-  openStore?: (options?: {
-    env?: EnvMap;
-  }) => Promise<LighthouseStore> | LighthouseStore;
-  log?: (chunk: string) => void;
-  error?: (chunk: string) => void;
-  writeStderr?: (chunk: string) => void;
-  exit?: (code?: number) => void;
-  isStderrTTY?: boolean;
-  isStdoutTTY?: boolean;
-  isTTY?: boolean;
-}
+import type { LighthouseCliContextDeps } from "./types";
 
 /**
  * Resolved I/O, colorization, exit, and lazy store helpers for a Lighthouse CLI command.
@@ -64,8 +49,6 @@ export function createLighthouseCliContext(
     process.exit(code);
   };
 
-  let ownedStore: LighthouseStore | null = null;
-
   return {
     pc,
     pcStdout,
@@ -75,20 +58,15 @@ export function createLighthouseCliContext(
       deps?.writeStderr ?? ((chunk: string) => process.stderr.write(chunk)),
     exit,
     openStore: async () => {
-      if (deps?.openStore) {
-        return await deps.openStore({ env: options.env });
+      if (!deps?.openStore) {
+        throw new Error(
+          "openStore dependency is required in Lighthouse CLI context",
+        );
       }
-      if (!ownedStore) {
-        const { openLighthouseStore } = await import("@devtools/lighthouse");
-        ownedStore = openLighthouseStore({ env: options.env });
-      }
-      return ownedStore;
+      return await deps.openStore({ env: options.env });
     },
     closeStore: () => {
-      if (ownedStore) {
-        ownedStore.close();
-        ownedStore = null;
-      }
+      deps?.closeStore?.();
     },
   };
 }

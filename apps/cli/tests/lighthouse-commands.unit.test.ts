@@ -3,15 +3,16 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { createShutdownCoordinator, hostShutdown } from "@devtools/core/node";
+import { openDb, type DbHandle } from "@devtools/db";
 import {
-  openLighthouseStore,
+  createLighthouseStore,
   type LighthouseRunRecord,
   type LighthouseStore,
   type NewLighthouseRunRecord,
   type NormalizedLighthouseRun,
 } from "@devtools/lighthouse";
 import { createProgram } from "../src/app";
+import { createLazyLighthouseStore } from "../src/app/program";
 import { runLighthouseAuditCommand } from "../src/commands/lighthouse/audit";
 import { createLighthouseCliContext } from "../src/commands/lighthouse/context";
 import { runLighthouseDiffCommand } from "../src/commands/lighthouse/diff";
@@ -95,14 +96,16 @@ const mockNormalizedRun: NormalizedLighthouseRun = {
 };
 
 describe("CLI Lighthouse Command Surface (Unit)", () => {
+  let db: DbHandle;
   let store: LighthouseStore;
 
   beforeEach(() => {
-    store = openLighthouseStore({ memory: true });
+    db = openDb({ memory: true });
+    store = createLighthouseStore({ db });
   });
 
   afterEach(() => {
-    store.close();
+    db.close();
   });
 
   describe("Commander Tree Registration", () => {
@@ -526,73 +529,159 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
       );
     });
 
-    test("defaults signal to hostShutdown and awaits Phase 2 work cleanup before exit on shutdown", async () => {
-      const shutdown = createShutdownCoordinator();
-      let capturedDefaultSignal: AbortSignal | undefined;
+    test("forwards deps.signal, closes store before exit, and skips exit(1) when aborted", async () => {
+      const controller = new AbortController();
+      const events: string[] = [];
+
       await runLighthouseAuditCommand(
-        "https://example.com/",
-        { json: true },
-        {
-          runAudit: async (opts) => {
-            capturedDefaultSignal = opts.signal;
-            return {
-              normalized: mockNormalizedRun,
-              run: makeSampleRow() as LighthouseRunRecord,
-              previousRun: null,
-              representativeRunIndex: 0,
-            };
-          },
-          log: () => {},
-        },
-      );
-      expect(capturedDefaultSignal).toBe(hostShutdown.signal);
-
-      let releaseCleanup!: () => void;
-      const cleanupGate = new Promise<void>((res) => {
-        releaseCleanup = res;
-      });
-      let notifyStarted!: () => void;
-      const started = new Promise<void>((res) => {
-        notifyStarted = res;
-      });
-      let cleanupFinished = false;
-      const exitCalls: Array<number | undefined> = [];
-
-      const commandPromise = runLighthouseAuditCommand(
         "https://example.com/",
         {},
         {
-          shutdown,
+          signal: controller.signal,
           runAudit: async (opts) => {
-            notifyStarted();
-            expect(opts.signal).toBe(shutdown.signal);
-            await cleanupGate;
-            cleanupFinished = true;
+            expect(opts.signal).toBe(controller.signal);
+            controller.abort(new Error("SIGTERM"));
             throw new Error("aborted during cleanup");
+          },
+          closeStore: () => {
+            events.push("closeStore");
           },
           writeStderr: () => {},
           exit: (code) => {
-            exitCalls.push(code);
+            events.push(`exit:${code}`);
           },
         },
       );
+      expect(events).toEqual(["closeStore"]);
 
-      await started;
-      let shutdownResolved = false;
-      const shutdownPromise = (async () => {
-        await shutdown.shutdown("SIGTERM");
-        shutdownResolved = true;
-      })();
+      const failureEvents: string[] = [];
+      await runLighthouseAuditCommand(
+        "https://example.com/",
+        { failUnder: "perf:99" },
+        {
+          runAudit: async () => ({
+            normalized: mockNormalizedRun,
+            run: makeSampleRow() as LighthouseRunRecord,
+            previousRun: null,
+            representativeRunIndex: 0,
+          }),
+          closeStore: () => {
+            failureEvents.push("closeStore");
+          },
+          log: () => {},
+          exit: (code) => {
+            failureEvents.push(`exit:${code}`);
+          },
+        },
+      );
+      expect(failureEvents).toEqual(["closeStore", "exit:1"]);
+    });
 
-      await Bun.sleep(10);
-      expect(shutdownResolved).toBe(false);
-      expect(cleanupFinished).toBe(false);
+    test("validates list options before opening DB and closes store before exit on query error", async () => {
+      let openStoreCalls = 0;
+      const errors: string[] = [];
+      const exitCodes: Array<number | undefined> = [];
 
-      releaseCleanup();
-      await Promise.all([shutdownPromise, commandPromise]);
-      expect(shutdownResolved).toBe(true);
-      expect(cleanupFinished).toBe(true);
-      expect(exitCalls).toEqual([]);
+      await runLighthouseListCommand(
+        { limit: -1 },
+        {
+          openStore: () => {
+            openStoreCalls += 1;
+            return store;
+          },
+          error: (msg) => errors.push(msg),
+          exit: (code) => {
+            exitCodes.push(code);
+          },
+        },
+      );
+      expect(openStoreCalls).toBe(0);
+      expect(exitCodes).toEqual([1]);
+
+      const events: string[] = [];
+      await runLighthouseListCommand(
+        {},
+        {
+          openStore: () => ({
+            ...store,
+            listRuns: () => {
+              throw new Error("boom");
+            },
+          }),
+          closeStore: () => {
+            events.push("closeStore");
+          },
+          error: () => {},
+          exit: (code) => {
+            events.push(`exit:${code}`);
+          },
+        },
+      );
+      expect(events).toEqual(["closeStore", "exit:1"]);
+    });
+
+    test("closes store before exit across runLighthouseDiffCommand and runLighthouseOpenCommand", async () => {
+      store.insertRun(
+        makeSampleRow({
+          id: "order-open-1",
+          htmlReportPath: "/tmp/order-open-report.html",
+        }),
+      );
+
+      const diffFailEvents: string[] = [];
+      await runLighthouseDiffCommand(
+        "missing-1",
+        "missing-2",
+        {},
+        {
+          openStore: () => store,
+          closeStore: () => {
+            diffFailEvents.push("closeStore");
+          },
+          error: () => {},
+          exit: (code) => {
+            diffFailEvents.push(`exit:${code}`);
+          },
+        },
+      );
+      expect(diffFailEvents).toEqual(["closeStore", "exit:1"]);
+
+      const openSuccessEvents: string[] = [];
+      await runLighthouseOpenCommand(
+        "order-open-1",
+        {},
+        {
+          openStore: () => store,
+          closeStore: () => {
+            openSuccessEvents.push("closeStore");
+          },
+          fileExists: () => true,
+          isHeadless: () => true,
+          log: () => {},
+          exit: (code) => {
+            openSuccessEvents.push(`exit:${code}`);
+          },
+        },
+      );
+      expect(openSuccessEvents).toEqual(["closeStore", "exit:0"]);
+
+      const openFailEvents: string[] = [];
+      await runLighthouseOpenCommand(
+        "order-open-1",
+        {},
+        {
+          openStore: () => store,
+          closeStore: () => {
+            openFailEvents.push("closeStore");
+          },
+          fileExists: () => false,
+          error: () => {},
+          exit: (code) => {
+            openFailEvents.push(`exit:${code}`);
+          },
+        },
+      );
+      expect(openFailEvents).toEqual(["closeStore", "exit:1"]);
     });
 
     test("forwards --no-sandbox, explicit disableSandbox precedence, and audit options to runAudit", async () => {
@@ -770,34 +859,78 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
     });
 
     test("exits with 1 when limit is negative or invalid in list command", async () => {
-      let exitCode: number | undefined;
-      const errors: string[] = [];
+      for (const badLimit of [-5, 1.5, Number.NaN]) {
+        let openStoreCalls = 0;
+        let exitCode: number | undefined;
+        const errors: string[] = [];
+
+        await runLighthouseListCommand(
+          { limit: badLimit },
+          {
+            openStore: () => {
+              openStoreCalls += 1;
+              return store;
+            },
+            error: (msg) => errors.push(msg),
+            exit: (code) => {
+              exitCode = code;
+            },
+          },
+        );
+
+        expect(openStoreCalls).toBe(0);
+        expect(exitCode).toBe(1);
+        expect(errors.join("\n")).toContain(
+          `Invalid limit "${badLimit}": must be a non-negative integer`,
+        );
+      }
+    });
+
+    test("forwards limit: 0 cleanly without fallback to default limit 10", async () => {
+      store.insertRun(makeSampleRow({ id: "run-zero-limit-1" }));
+      let capturedLimit: number | undefined;
+      let openStoreCalls = 0;
+      const stdout: string[] = [];
+      const exitCodes: number[] = [];
 
       await runLighthouseListCommand(
-        { limit: -5 },
+        { limit: 0, json: true },
         {
-          openStore: () => store,
-          error: (msg) => errors.push(msg),
+          openStore: () => {
+            openStoreCalls += 1;
+            return {
+              ...store,
+              listRuns: (opts) => {
+                capturedLimit = opts?.limit;
+                return store.listRuns(opts);
+              },
+            };
+          },
+          log: (msg) => stdout.push(msg),
           exit: (code) => {
-            exitCode = code;
+            exitCodes.push(code);
           },
         },
       );
 
-      expect(exitCode).toBe(1);
-      expect(errors.join("\n")).toContain(
-        'Invalid limit "-5": must be a non-negative integer',
-      );
+      expect(openStoreCalls).toBe(1);
+      expect(capturedLimit).toBe(0);
+      expect(exitCodes).toEqual([]);
+      expect(JSON.parse(stdout.join("\n"))).toEqual([]);
     });
 
     test("exits with 1 when form-factor is invalid in list command", async () => {
+      let openStoreCalls = 0;
       let exitCode: number | undefined;
       const errors: string[] = [];
 
       await runLighthouseListCommand(
         { formFactor: "tablet" as never },
         {
-          openStore: () => store,
+          openStore: () => {
+            openStoreCalls += 1;
+            return store;
+          },
           error: (msg) => errors.push(msg),
           exit: (code) => {
             exitCode = code;
@@ -805,6 +938,7 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         },
       );
 
+      expect(openStoreCalls).toBe(0);
       expect(exitCode).toBe(1);
       expect(errors.join("\n")).toContain(
         'Invalid form-factor "tablet": must be "mobile" or "desktop"',
@@ -1668,24 +1802,36 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
       );
       expect(openCapturedEnv).toEqual(customEnv);
 
-      // Default @devtools/lighthouse openLighthouseStore path honors options.env without deps.openStore
+      // Missing openStore rejects with explicit composition-root requirement error
+      const missingCtx = createLighthouseCliContext({});
+      await expect(missingCtx.openStore()).rejects.toThrow(
+        "openStore dependency is required in Lighthouse CLI context",
+      );
+
+      // Composition-root lazy store path honors options.env
       const tempDir = mkdtempSync(join(tmpdir(), "devtools-cli-env-db-"));
       const customDbPath = join(tempDir, "isolated.db");
       try {
-        using seededStore = openLighthouseStore({ dbPath: customDbPath });
-        seededStore.insertRun(
-          makeSampleRow({
-            id: "env-seed-111",
-            htmlReportPath: "/tmp/env-seeded-report.html",
-          }),
-        );
+        {
+          using seededDb = openDb({ path: customDbPath });
+          const seededStore = createLighthouseStore({ db: seededDb });
+          seededStore.insertRun(
+            makeSampleRow({
+              id: "env-seed-111",
+              htmlReportPath: "/tmp/env-seeded-report.html",
+            }),
+          );
+        }
         const stdout: string[] = [];
         let openExitCode: number | undefined;
+        const lazyStore = createLazyLighthouseStore();
 
         await runLighthouseOpenCommand(
           "env-seed-111",
           { env: { DEVTOOLS_DB_PATH: customDbPath, CI: "true" } },
           {
+            openStore: lazyStore.openStore,
+            closeStore: lazyStore.closeStore,
             fileExists: () => true,
             log: (msg) => stdout.push(msg),
             exit: (code) => {

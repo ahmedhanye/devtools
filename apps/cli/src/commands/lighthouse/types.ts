@@ -1,5 +1,4 @@
 import type { EnvMap } from "@devtools/core";
-import type { ShutdownRegistry } from "@devtools/core/node";
 import type {
   LighthouseAuditExecutionResult,
   LighthouseFormFactor,
@@ -80,22 +79,30 @@ export interface LighthouseAuditCommandOptions {
 }
 
 /**
- * Dependency injection seam for `devtools lighthouse <url>`.
+ * Shared dependency injection seams across Lighthouse CLI commands (`audit`, `diff`, `list`, `open`).
  */
-export interface LighthouseAuditCommandDeps {
-  runAudit?: (
-    options: RunLighthouseAuditOptions,
-  ) => Promise<LighthouseAuditExecutionResult>;
+export interface LighthouseCliContextDeps {
   openStore?: (options?: {
     env?: EnvMap;
   }) => Promise<LighthouseStore> | LighthouseStore;
-  shutdown?: ShutdownRegistry;
+  closeStore?: () => void;
   log?: (chunk: string) => void;
   error?: (chunk: string) => void;
   writeStderr?: (chunk: string) => void;
-  exit?: (code?: number) => void;
+  exit?: (code: number) => void;
   isStderrTTY?: boolean;
+  isStdoutTTY?: boolean;
   isTTY?: boolean;
+}
+
+/**
+ * Dependency injection seam for `devtools lighthouse <url>`.
+ */
+export interface LighthouseAuditCommandDeps extends LighthouseCliContextDeps {
+  runAudit?: (
+    options: RunLighthouseAuditOptions,
+  ) => Promise<LighthouseAuditExecutionResult>;
+  signal?: AbortSignal;
   executor?: LighthouseIterationExecutor;
 }
 
@@ -113,16 +120,7 @@ export interface LighthouseListCommandOptions {
 /**
  * Dependency injection seam for `devtools lighthouse list`.
  */
-export interface LighthouseListCommandDeps {
-  openStore?: (options?: {
-    env?: EnvMap;
-  }) => Promise<LighthouseStore> | LighthouseStore;
-  log?: (chunk: string) => void;
-  error?: (chunk: string) => void;
-  exit?: (code?: number) => void;
-  isStderrTTY?: boolean;
-  isTTY?: boolean;
-}
+export type LighthouseListCommandDeps = LighthouseCliContextDeps;
 
 /**
  * Options for `devtools lighthouse diff <id1> <id2>`.
@@ -135,16 +133,7 @@ export interface LighthouseDiffCommandOptions {
 /**
  * Dependency injection seam for `devtools lighthouse diff`.
  */
-export interface LighthouseDiffCommandDeps {
-  openStore?: (options?: {
-    env?: EnvMap;
-  }) => Promise<LighthouseStore> | LighthouseStore;
-  log?: (chunk: string) => void;
-  error?: (chunk: string) => void;
-  exit?: (code?: number) => void;
-  isStderrTTY?: boolean;
-  isTTY?: boolean;
-}
+export type LighthouseDiffCommandDeps = LighthouseCliContextDeps;
 
 /**
  * Options for `devtools lighthouse open [id]`.
@@ -156,16 +145,7 @@ export interface LighthouseOpenCommandOptions {
 /**
  * Dependency injection seam for `devtools lighthouse open`.
  */
-export interface LighthouseOpenCommandDeps {
-  openStore?: (options?: {
-    env?: EnvMap;
-  }) => Promise<LighthouseStore> | LighthouseStore;
-  log?: (chunk: string) => void;
-  error?: (chunk: string) => void;
-  exit?: (code?: number) => void;
-  isStderrTTY?: boolean;
-  isStdoutTTY?: boolean;
-  isTTY?: boolean;
+export interface LighthouseOpenCommandDeps extends LighthouseCliContextDeps {
   spawnOpener?: (path: string) => void | Promise<void>;
   fileExists?: (path: string) => boolean;
   isHeadless?: (

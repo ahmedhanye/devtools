@@ -326,4 +326,50 @@ describe("CLI Lighthouse Command Integration", () => {
     expect(openCalled).toBe(true);
     expect(capturedId).toBe("run-333");
   });
+
+  test("forwards composition-root openStore, closeStore, signal, and exit seams to lighthouse handlers", async () => {
+    const controller = new AbortController();
+    const openStore = () => ({}) as never;
+    const closeStore = () => {};
+    const exit = () => {};
+    const seenDeps: Array<Record<string, unknown> | undefined> = [];
+
+    const program = new Command();
+    program.name("devtools");
+    registerLighthouseCommands(program, {
+      openStore,
+      closeStore,
+      signal: controller.signal,
+      exit,
+      runAudit: async (_url, _opts, deps) => {
+        seenDeps.push(deps as Record<string, unknown>);
+      },
+      runList: async (_opts, deps) => {
+        seenDeps.push(deps as Record<string, unknown>);
+      },
+      runDiff: async (_id1, _id2, _opts, deps) => {
+        seenDeps.push(deps as Record<string, unknown>);
+      },
+      runOpen: async (_id, _opts, deps) => {
+        seenDeps.push(deps as Record<string, unknown>);
+      },
+    });
+
+    await program.parseAsync(["lighthouse", "https://example.com/"], {
+      from: "user",
+    });
+    await program.parseAsync(["lighthouse", "list"], { from: "user" });
+    await program.parseAsync(["lighthouse", "diff", "a", "b"], {
+      from: "user",
+    });
+    await program.parseAsync(["lighthouse", "open", "a"], { from: "user" });
+
+    expect(seenDeps).toHaveLength(4);
+    for (const deps of seenDeps) {
+      expect(deps?.openStore).toBe(openStore);
+      expect(deps?.closeStore).toBe(closeStore);
+      expect(deps?.signal).toBe(controller.signal);
+      expect(deps?.exit).toBe(exit);
+    }
+  });
 });

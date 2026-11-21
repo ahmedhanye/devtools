@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -156,5 +162,149 @@ describe("CLI Browser Command Subprocess Execution (E2E)", () => {
     expect(stdout).toContain("--path <dir>");
     expect(stdout).toContain("--chrome-path <path>");
     expect(stdout).toContain("--json");
+  });
+
+  test("install command cancels cooperatively on SIGINT (130) and SIGTERM (143) without network access", async () => {
+    for (const { signal, expectedExitCode } of [
+      { signal: "SIGINT" as const, expectedExitCode: 130 },
+      { signal: "SIGTERM" as const, expectedExitCode: 143 },
+    ]) {
+      const sockets = new Set<{ terminate: () => void }>();
+      const hangingProxy = Bun.listen({
+        hostname: "127.0.0.1",
+        port: 0,
+        socket: {
+          open(socket) {
+            sockets.add(socket);
+          },
+          data() {},
+          close(socket) {
+            sockets.delete(socket);
+          },
+          error(socket) {
+            sockets.delete(socket);
+          },
+        },
+      });
+
+      const cacheDir = join(testDir, `cache-${signal.toLowerCase()}`);
+      const proxyUrl = `http://127.0.0.1:${hangingProxy.port}`;
+      const proc = Bun.spawn(
+        ["bun", binPath, "browser", "install", "--path", cacheDir],
+        {
+          env: {
+            ...process.env,
+            NO_COLOR: "1",
+            HTTPS_PROXY: proxyUrl,
+            HTTP_PROXY: proxyUrl,
+            https_proxy: proxyUrl,
+            http_proxy: proxyUrl,
+            NO_PROXY: "",
+            no_proxy: "",
+          },
+          stdout: "pipe",
+          stderr: "pipe",
+        },
+      );
+
+      try {
+        const reader = proc.stderr.getReader();
+        const decoder = new TextDecoder();
+        let stderr = "";
+        let signaled = false;
+        const deadline = Date.now() + 10000;
+
+        try {
+          while (Date.now() < deadline) {
+            const remaining = Math.max(10, deadline - Date.now());
+            const raced = await Promise.race([
+              reader.read().then((res) => ({ kind: "read" as const, res })),
+              Bun.sleep(remaining).then(() => ({ kind: "timeout" as const })),
+            ]);
+            if (raced.kind === "timeout") {
+              throw new Error(
+                `Timed out waiting for browser install ${signal} shutdown: ${stderr}`,
+              );
+            }
+            if (raced.res.done) {
+              stderr += decoder.decode();
+              break;
+            }
+            stderr += decoder.decode(raced.res.value, { stream: true });
+            if (!signaled && stderr.includes("Installing Chrome for Testing")) {
+              signaled = true;
+              proc.kill(signal);
+            }
+          }
+        } finally {
+          await reader.cancel().catch(() => {});
+        }
+
+        const exitCode = await proc.exited;
+        const stdout = await new Response(proc.stdout).text();
+
+        expect(signaled).toBe(true);
+        expect(exitCode).toBe(expectedExitCode);
+        expect(stdout).toBe("");
+        expect(stderr).toContain(`Received ${signal}. Shutting down...`);
+        expect(stderr).toContain(
+          "Failed to install browser: Browser installation was aborted",
+        );
+      } finally {
+        if (proc.exitCode === null) {
+          proc.kill("SIGKILL");
+          await proc.exited;
+        }
+        for (const socket of sockets) {
+          socket.terminate();
+        }
+        hangingProxy.stop(true);
+      }
+    }
+  }, 20000);
+
+  test("status command exits 130 cleanly on SIGINT while probing a slow binary", async () => {
+    const markerPath = join(testDir, "probe-started");
+    const slowBrowser = join(testDir, "slow-browser.sh");
+    writeFileSync(
+      slowBrowser,
+      `#!/bin/sh\nprintf "started" > "${markerPath}"\nexec sleep 10\n`,
+    );
+    chmodSync(slowBrowser, 0o755);
+
+    const proc = Bun.spawn(
+      ["bun", binPath, "browser", "status", "--chrome-path", slowBrowser],
+      {
+        env: {
+          ...process.env,
+          NO_COLOR: "1",
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+
+    try {
+      const deadline = Date.now() + 8000;
+      while (!existsSync(markerPath) && Date.now() < deadline) {
+        await Bun.sleep(10);
+      }
+      expect(existsSync(markerPath)).toBe(true);
+
+      proc.kill("SIGINT");
+      const exitCode = await proc.exited;
+      const stdout = await new Response(proc.stdout).text();
+      const stderr = await new Response(proc.stderr).text();
+
+      expect(exitCode).toBe(130);
+      expect(stdout).toBe("");
+      expect(stderr).toContain("Received SIGINT. Shutting down...");
+      expect(stderr).not.toContain("Browser resolution was aborted");
+    } finally {
+      if (proc.exitCode === null) {
+        proc.kill("SIGKILL");
+        await proc.exited;
+      }
+    }
   });
 });

@@ -2,14 +2,13 @@ import type { EnvMap } from "@devtools/core";
 import {
   attachHostSignals,
   createConsoleOutput,
-  createShutdownCoordinator,
+  createTeardown,
   type OutputPort,
-  type ShutdownCoordinator,
   type SignalSourcePort,
 } from "@devtools/core/node";
 import { InvalidArgumentError, type Command } from "commander";
 import { getColors, isStreamTTY } from "../../shared/terminal";
-import type { DaemonInstance } from "./daemon";
+import type { DaemonInstance, StartDaemonOptions } from "./daemon";
 import { findNextAvailablePort, isPortAvailable } from "./port";
 
 const pc = getColors();
@@ -39,13 +38,17 @@ export interface WebCommandDeps {
   /** Override next available port discovery. */
   findNextAvailablePort?: typeof findNextAvailablePort;
   /** Override process exit handler for programmatic and hermetic testing. */
-  exit?: (code?: number) => void;
+  exit?: (code: number) => void;
   /** Override signal source port (`process` by default). */
   signals?: SignalSourcePort;
   /** Override stdout/stderr output port (`createConsoleOutput()` by default). */
   output?: OutputPort;
-  /** Override 3-phase daemon shutdown coordinator. */
-  shutdown?: ShutdownCoordinator;
+  /** Override daemon starter seam for hermetic shutdown failure testing. */
+  startDaemon?: (options?: StartDaemonOptions) => DaemonInstance;
+  /** Callback invoked right before daemon signal handlers attach (e.g., to detach outer CLI listeners). */
+  onDaemonStarted?: () => void;
+  /** Optional cancellation signal forwarded from the CLI composition root. */
+  signal?: AbortSignal;
 }
 
 function exitProcess(code = 1, deps?: WebCommandDeps): void {
@@ -82,6 +85,15 @@ async function promptPortChange(
     }
     return nextPort;
   } catch (error) {
+    const isPromptCancel =
+      deps?.signal?.aborted === true ||
+      (error instanceof Error && error.name === "ExitPromptError");
+    if (isPromptCancel) {
+      if (!deps?.signal?.aborted) {
+        exitProcess(130, deps);
+      }
+      return null;
+    }
     output.writeStderr(
       pc.red(
         `Error: Interactive port conflict prompt failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -169,16 +181,17 @@ export async function runWebCommand(
     targetPort = resolvedPort;
   }
 
-  const coordinator = deps?.shutdown ?? createShutdownCoordinator();
+  const teardown = createTeardown();
+  const doStartDaemon = deps?.startDaemon ?? startDaemon;
 
   let instance: DaemonInstance;
   try {
-    instance = startDaemon({
+    instance = doStartDaemon({
       ...options,
       port: targetPort,
       host: targetHost,
       staticDir,
-      shutdown: coordinator,
+      signal: teardown.signal,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
@@ -186,6 +199,8 @@ export async function runWebCommand(
     exitProcess(1, deps);
     return undefined;
   }
+
+  teardown.defer(() => instance.stop());
 
   output.writeStdout(
     pc.green(
@@ -201,8 +216,10 @@ export async function runWebCommand(
     ),
   );
 
+  deps?.onDaemonStarted?.();
+
   const signalHandle = attachHostSignals({
-    coordinator,
+    onShutdown: () => teardown.run(),
     signals: deps?.signals,
     output,
     exit: deps?.exit,
@@ -220,7 +237,7 @@ export async function runWebCommand(
     ...instance,
     stop: async () => {
       signalHandle.detach();
-      await instance.stop();
+      await teardown.run();
     },
   };
 }
@@ -229,14 +246,38 @@ export async function runWebCommand(
  * Registers the `devtools web` subcommand on a root Commander program.
  *
  * @param program - Root Commander `Command` instance.
- * @param deps - Optional action handler overrides for hermetic testing.
+ * @param deps - Optional action handler and host-seam overrides for hermetic testing.
  * @returns Configured `web` subcommand instance.
  */
 export function registerWebCommand(
   program: Command,
-  deps?: { runWebCommand?: typeof runWebCommand },
+  deps?: {
+    runWebCommand?: typeof runWebCommand;
+    signals?: SignalSourcePort;
+    output?: OutputPort;
+    exit?: (code: number) => void;
+    onDaemonStarted?: () => void;
+    signal?: AbortSignal;
+  },
 ): Command {
   const doWeb = deps?.runWebCommand ?? runWebCommand;
+  const hasHostDeps = Boolean(
+    deps?.signals ||
+    deps?.output ||
+    deps?.exit ||
+    deps?.onDaemonStarted ||
+    deps?.signal,
+  );
+  const webDeps: WebCommandDeps | undefined = hasHostDeps
+    ? {
+        signals: deps?.signals,
+        output: deps?.output,
+        exit: deps?.exit,
+        onDaemonStarted: deps?.onDaemonStarted,
+        signal: deps?.signal,
+      }
+    : undefined;
+
   return program
     .command("web")
     .description("Start the unified local loopback daemon")
@@ -250,6 +291,6 @@ export function registerWebCommand(
     .option("-H, --host <string>", "Host to bind (default: 127.0.0.1)")
     .option("-s, --static-dir <path>", "Static asset directory")
     .action(async (options: WebCommandOptions) => {
-      await doWeb(options);
+      await (webDeps ? doWeb(options, webDeps) : doWeb(options));
     });
 }
