@@ -1,5 +1,3 @@
-import type { ShutdownCoordinator } from "./shutdown";
-
 /**
  * Operating system termination signals handled at the Host Process Boundary.
  */
@@ -111,8 +109,8 @@ export type ExitPort = (code: number) => void;
  * Configuration options for binding process termination signals via {@link attachHostSignals}.
  */
 export interface AttachHostSignalsOptions {
-  /** Coordinator invoked when the first termination signal arrives. */
-  coordinator: ShutdownCoordinator;
+  /** Callback invoked when the first termination signal arrives. */
+  onShutdown: (signal: HostSignal) => void | Promise<void>;
   /** Signal source port. Defaults to `process`. */
   signals?: SignalSourcePort;
   /** Output port for shutdown diagnostics. Defaults to {@link createConsoleOutput}. */
@@ -144,9 +142,9 @@ function defaultSignalExitCode(signal: HostSignal): number {
 
 /**
  * Attaches `SIGINT` and `SIGTERM` listeners at the Host Process Boundary to drive
- * 3-phase graceful shutdown, with second-signal force exit and test-safe detachment.
+ * graceful shutdown, with second-signal force exit and test-safe detachment.
  *
- * @param options - Coordinator and injectable host boundary ports.
+ * @param options - Shutdown handler and injectable host boundary ports.
  * @returns Handle with an idempotent `detach()` method removing registered listeners.
  */
 export function attachHostSignals(options: AttachHostSignalsOptions): {
@@ -191,7 +189,7 @@ export function attachHostSignals(options: AttachHostSignalsOptions): {
 
     void (async () => {
       try {
-        await options.coordinator.shutdown(signal);
+        await options.onShutdown(signal);
         detach();
         exit(resolvedExitCode);
       } catch (err: unknown) {

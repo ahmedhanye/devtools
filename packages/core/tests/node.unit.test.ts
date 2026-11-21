@@ -3,14 +3,12 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
-  SHUTDOWN_PHASES,
   attachHostSignals,
   createBufferOutput,
   createConsoleOutput,
   createMemorySignalSource,
-  createShutdownCoordinator,
+  createTeardown,
   findWorkspaceRoot,
-  hostShutdown,
   isStandaloneRuntime,
 } from "../src/node";
 
@@ -53,120 +51,110 @@ describe("@devtools/core/node workspace utilities", () => {
   });
 });
 
-describe("ShutdownCoordinator & ShutdownRegistry", () => {
-  it("executes phases strictly in ingress -> work -> persistence order including lazy Phase 3 hooks", async () => {
-    const coordinator = createShutdownCoordinator();
+describe("createTeardown (Scoped LIFO Teardown)", () => {
+  it("aborts signal, executes deferred steps in strict LIFO order, and is idempotent", async () => {
+    const teardown = createTeardown();
     const order: string[] = [];
 
-    expect(SHUTDOWN_PHASES).toEqual(["ingress", "work", "persistence"]);
-    expect(coordinator.isShuttingDown).toBe(false);
-    expect(coordinator.signal.aborted).toBe(false);
+    expect(teardown.isShuttingDown).toBe(false);
+    expect(teardown.signal.aborted).toBe(false);
 
-    coordinator.register("ingress", async (sig) => {
-      expect(sig.aborted).toBe(true);
-      order.push("ingress-1");
-      // Lazy Phase 3 registration during Phase 1 must run in Phase 3
-      coordinator.register("persistence", () => {
-        order.push("persistence-lazy");
-      });
+    teardown.defer(() => {
+      order.push("db-close");
     });
-
-    coordinator.register("work", async () => {
+    teardown.defer(async () => {
       await Bun.sleep(5);
-      order.push("work-1");
-      coordinator.register("persistence", () => {
-        order.push("persistence-from-work");
-      });
+      order.push("work-abort");
+    });
+    teardown.defer(() => {
+      expect(teardown.signal.aborted).toBe(true);
+      order.push("http-stop");
     });
 
-    coordinator.register("persistence", () => {
-      order.push("persistence-initial");
-    });
-
-    const p1 = coordinator.shutdown("SIGINT");
-    const p2 = coordinator.shutdown("SIGTERM");
+    const p1 = teardown.run("SIGINT");
+    const p2 = teardown.run("SIGTERM");
     expect(p1).toBe(p2);
-    expect(coordinator.isShuttingDown).toBe(true);
-    expect(coordinator.signal.aborted).toBe(true);
-    expect(coordinator.signal.reason).toBe("SIGINT");
+    expect(teardown.isShuttingDown).toBe(true);
+    expect(teardown.signal.aborted).toBe(true);
+    expect(teardown.signal.reason).toBe("SIGINT");
 
     await p1;
-    expect(order).toEqual([
-      "ingress-1",
-      "work-1",
-      "persistence-initial",
-      "persistence-lazy",
-      "persistence-from-work",
-    ]);
-
-    coordinator.resetForTesting();
-    expect(coordinator.isShuttingDown).toBe(false);
-    expect(coordinator.signal.aborted).toBe(false);
+    expect(order).toEqual(["http-stop", "work-abort", "db-close"]);
   });
 
-  it("deduplicates hooks by id and keeps unregister idempotent and safe after replacement", async () => {
-    const coordinator = createShutdownCoordinator();
+  it("returns an idempotent unregister function scoped to the exact registration", async () => {
+    const teardown = createTeardown();
     const calls: string[] = [];
 
-    const unregFirst = coordinator.register(
-      "work",
-      () => {
-        calls.push("first");
-      },
-      { id: "shared-id" },
-    );
-    const unregSecond = coordinator.register(
-      "work",
-      () => {
-        calls.push("second");
-      },
-      { id: "shared-id" },
-    );
-
-    // Calling stale unregister must not remove the replacement hook
-    unregFirst();
-    unregFirst();
-
-    const unregRemoved = coordinator.register("ingress", () => {
-      calls.push("removed");
+    const sharedFn = () => {
+      calls.push("shared");
+    };
+    const removeFirst = teardown.defer(sharedFn);
+    teardown.defer(sharedFn);
+    const removeSkipped = teardown.defer(() => {
+      calls.push("skipped");
     });
-    unregRemoved();
 
-    await coordinator.shutdown();
-    expect(calls).toEqual(["second"]);
+    removeSkipped();
+    removeSkipped();
+    removeFirst();
+    removeFirst();
 
-    // Subsequent unregister of replacement hook clears cleanly on reset
-    unregSecond();
-    coordinator.resetForTesting();
-    await coordinator.shutdown();
-    expect(calls).toEqual(["second"]);
+    await teardown.run();
+    expect(calls).toEqual(["shared"]);
   });
 
-  it("runs all three phases even when earlier phases reject and rethrows the first error", async () => {
-    const coordinator = createShutdownCoordinator();
+  it("executes all remaining LIFO steps when earlier steps reject and rethrows the first error", async () => {
+    const teardown = createTeardown();
     const order: string[] = [];
 
-    coordinator.register("ingress", () => {
-      order.push("ingress");
-      throw new Error("ingress failure");
+    teardown.defer(() => {
+      order.push("db-close");
     });
-    coordinator.register("work", async () => {
-      order.push("work");
+    teardown.defer(async () => {
+      order.push("work-abort");
       throw new Error("work failure");
     });
-    coordinator.register("persistence", () => {
-      order.push("persistence");
+    teardown.defer(() => {
+      order.push("http-stop");
+      throw new Error("http failure");
     });
 
-    await expect(coordinator.shutdown()).rejects.toThrow("ingress failure");
-    expect(order).toEqual(["ingress", "work", "persistence"]);
-    expect(coordinator.signal.reason).toBeInstanceOf(Error);
-    expect((coordinator.signal.reason as Error).message).toBe(
-      "Process shutdown requested",
+    await expect(teardown.run()).rejects.toThrow("http failure");
+    expect(order).toEqual(["http-stop", "work-abort", "db-close"]);
+    expect(teardown.signal.reason).toBeInstanceOf(Error);
+    expect((teardown.signal.reason as Error).message).toBe(
+      "Shutdown requested",
     );
+  });
 
-    // Exposes process-default hostShutdown coordinator
-    expect(hostShutdown.signal.aborted).toBe(false);
+  it("ignores unregister() called inside an executing step while earlier steps remain queued, supports re-entrant defer(), and ignores defer() after run() settles", async () => {
+    const teardown = createTeardown();
+    const order: string[] = [];
+
+    teardown.defer(() => {
+      order.push("step-1");
+    });
+
+    let removeStep2!: () => void;
+    removeStep2 = teardown.defer(() => {
+      // step-2 has already been popped; calling removeStep2() must NOT splice step-1
+      removeStep2();
+      teardown.defer(() => {
+        order.push("reentrant-step-3");
+      });
+      order.push("step-2");
+    });
+
+    await teardown.run();
+    expect(order).toEqual(["step-2", "reentrant-step-3", "step-1"]);
+
+    let lateRan = false;
+    teardown.defer(() => {
+      lateRan = true;
+    });
+    await teardown.run();
+    expect(lateRan).toBe(false);
   });
 });
 
@@ -174,19 +162,19 @@ describe("Host Process Boundary Signal & Output Ports", () => {
   it("handles 1st signal gracefully, forces exit on 2nd signal, and detaches listeners cleanly", async () => {
     const signals = createMemorySignalSource();
     const output = createBufferOutput();
-    const coordinator = createShutdownCoordinator();
+    const teardown = createTeardown();
     const exitCodes: number[] = [];
 
     let releaseWork!: () => void;
     const workGate = new Promise<void>((res) => {
       releaseWork = res;
     });
-    coordinator.register("work", async () => {
+    teardown.defer(async () => {
       await workGate;
     });
 
     const handle = attachHostSignals({
-      coordinator,
+      onShutdown: (sig) => teardown.run(sig),
       signals,
       output,
       exit: (code) => {
@@ -204,7 +192,7 @@ describe("Host Process Boundary Signal & Output Ports", () => {
     output.writeStdout("shutdown-started");
     expect(output.stdout).toEqual(["shutdown-started"]);
     expect(output.stderr).toEqual(["Graceful SIGINT"]);
-    expect(coordinator.isShuttingDown).toBe(true);
+    expect(teardown.isShuttingDown).toBe(true);
     expect(exitCodes).toEqual([]);
 
     // 2nd SIGINT forces immediate exit 130
@@ -229,20 +217,20 @@ describe("Host Process Boundary Signal & Output Ports", () => {
   it("supports suppressed second-signal force exit, null message suppression, and shutdown error exit 1", async () => {
     const signals = createMemorySignalSource();
     const output = createBufferOutput();
-    const coordinator = createShutdownCoordinator();
+    const teardown = createTeardown();
     const exitCodes: number[] = [];
 
     let releaseWork!: () => void;
     const workGate = new Promise<void>((res) => {
       releaseWork = res;
     });
-    coordinator.register("work", async () => {
+    teardown.defer(async () => {
       await workGate;
       throw new Error("cleanup boom");
     });
 
     attachHostSignals({
-      coordinator,
+      onShutdown: (sig) => teardown.run(sig),
       signals,
       output,
       exit: (code) => {
@@ -267,7 +255,6 @@ describe("Host Process Boundary Signal & Output Ports", () => {
 
   it("uses default signal exit codes, default messages, and exercises default process/console seams", async () => {
     const signals = createMemorySignalSource();
-    const coordinator = createShutdownCoordinator();
     const logSpy = spyOn(console, "log").mockImplementation(() => {});
     const errSpy = spyOn(console, "error").mockImplementation(() => {});
     const exitSpy = spyOn(process, "exit").mockImplementation(
@@ -283,7 +270,7 @@ describe("Host Process Boundary Signal & Output Ports", () => {
 
       // Default message + default exitCodeOnSignal (SIGTERM -> 143) + default output/exit
       attachHostSignals({
-        coordinator,
+        onShutdown: () => {},
         signals,
       });
       signals.emit("SIGTERM");
@@ -292,12 +279,10 @@ describe("Host Process Boundary Signal & Output Ports", () => {
       expect(exitSpy).toHaveBeenCalledWith(143);
 
       // Default error formatting with Error instance & function exitCodeOnSignal
-      coordinator.resetForTesting();
-      coordinator.register("work", () => Promise.reject(new Error("boom")));
       const fnExitCodes: number[] = [];
       const errSignals = createMemorySignalSource();
       attachHostSignals({
-        coordinator,
+        onShutdown: () => Promise.reject(new Error("boom")),
         signals: errSignals,
         exitCodeOnSignal: (sig) => (sig === "SIGTERM" ? 2 : 3),
       });
@@ -306,10 +291,9 @@ describe("Host Process Boundary Signal & Output Ports", () => {
       expect(errSpy).toHaveBeenCalledWith("Failed to shut down cleanly: boom");
       expect(exitSpy).toHaveBeenCalledWith(1);
 
-      coordinator.resetForTesting();
       const fnSignals = createMemorySignalSource();
       attachHostSignals({
-        coordinator,
+        onShutdown: () => {},
         signals: fnSignals,
         exit: (code) => {
           fnExitCodes.push(code);
@@ -321,11 +305,9 @@ describe("Host Process Boundary Signal & Output Ports", () => {
       expect(fnExitCodes).toEqual([2]);
 
       // Default error formatting with non-Error rejection
-      coordinator.resetForTesting();
-      coordinator.register("work", () => Promise.reject("raw failure"));
       const sigintSignals = createMemorySignalSource();
       attachHostSignals({
-        coordinator,
+        onShutdown: () => Promise.reject("raw failure"),
         signals: sigintSignals,
       });
       sigintSignals.emit("SIGINT");
@@ -339,7 +321,7 @@ describe("Host Process Boundary Signal & Output Ports", () => {
       const beforeInt = process.listenerCount("SIGINT");
       const beforeTerm = process.listenerCount("SIGTERM");
       const procHandle = attachHostSignals({
-        coordinator: createShutdownCoordinator(),
+        onShutdown: () => {},
       });
       expect(process.listenerCount("SIGINT")).toBe(beforeInt + 1);
       expect(process.listenerCount("SIGTERM")).toBe(beforeTerm + 1);
