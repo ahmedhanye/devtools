@@ -28,9 +28,9 @@ afterEach(async () => {
 
 - **Reference suites:** `apps/cli/tests/daemon.integration.test.ts`, `apps/cli/tests/lighthouse.integration.test.ts`.
 
-## 3. In-memory SQLite Database Handle Pool (`packages/db`)
+## 3. In-memory SQLite Database Handles (`packages/db`)
 
-Use `using handle = openDb({ memory: true })` to verify Lazy Schema Initialization, rollback on throwing `handle.write()` transactions, WAL retry handling, and handle disposal with zero disk side effects:
+Use `using handle = openDb({ memory: true })` to verify Lazy Schema Initialization, rollback on throwing `handle.write()` transactions, nested savepoints, and handle disposal with zero disk side effects:
 
 ```ts
 using handle = openDb({ memory: true });
@@ -49,5 +49,5 @@ expect(() =>
 ## 4. Cross-package adapter and store seams (`packages/browser`, `packages/lighthouse`)
 
 - **Injectable external seams.** Inject fake probes, HTTP fetchers, or Chrome launch/iteration ports at adapter boundaries (`packages/browser/src/detector.ts`, `packages/browser/src/installer.ts`, `packages/lighthouse/src/application/execute-batch.ts`, `packages/lighthouse/src/infra/runtime/iteration.ts`) rather than downloading browser archives or launching real Chrome during integration runs.
-- **Store round-trips.** Exercise `openLighthouseStore({ memory: true, artifactsDir })` (`insertRun`, `getRun`, `listRunsWithTotal`, `diffRuns`, `resolveReportHtmlPath`, `persistBatch`) against an isolated `:memory:` database and temporary `artifactsDir` to verify short-ID lookups, warm Audit Summaries, and cold Report Artifact rollback on failure.
+- **Store round-trips.** Exercise `createLighthouseStore({ db, artifactsDir })` over `using db = openDb({ memory: true })` (`insertRun`, `getRun`, `listRunsWithTotal`, `diffRuns`, `resolveReportHtmlPath`, `persistBatch`) against an isolated `:memory:` database and temporary `artifactsDir` to verify short-ID prefix range lookups, warm Audit Summaries, and cold Report Artifact rollback on failure.
 - **Reference suites:** `packages/browser/tests/detector.integration.test.ts`, `packages/browser/tests/installer.integration.test.ts`, `packages/lighthouse/tests/runner.integration.test.ts`, `packages/lighthouse/tests/runs.integration.test.ts`.

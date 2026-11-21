@@ -43,11 +43,11 @@ Apply these repository false-positive guards during review:
 
 Automated tests are partitioned into three non-overlapping levels by visibility and execution cost:
 
-| Test level                    | Target file pattern              | Package script     | Visibility                       | Scope and methodology focus                                                                                                                                   |
-| :---------------------------- | :------------------------------- | :----------------- | :------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **White-box (Unit)**          | `*.unit.test.ts`                 | `test:unit`        | Code internals, AST, branches    | Pure functions, Zod schemas, error classes, React hooks (`renderHook` without JSX), `scripts/`, static complexity, and diff coverage                          |
-| **Gray-box (Integration)**    | `*.integration.test.ts`          | `test:integration` | Module seams, contracts, schemas | Socketless Hono routes (`app.request()`), ephemeral Daemons (`port: 0`), `:memory:` SQLite stores (`openDb`, `openLighthouseStore`), adapters, `site` loaders |
-| **Black-box (E2E & Stories)** | `*.e2e.test.ts`, `*.stories.tsx` | `test:e2e`         | External observable behavior     | Subprocess CLI binaries (`Bun.spawn`), Portable Stories (`play()`), exploratory external probes, and binary smoke checks                                      |
+| Test level                    | Target file pattern              | Package script     | Visibility                       | Scope and methodology focus                                                                                                                                     |
+| :---------------------------- | :------------------------------- | :----------------- | :------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **White-box (Unit)**          | `*.unit.test.ts`                 | `test:unit`        | Code internals, AST, branches    | Pure functions, Zod schemas, error classes, React hooks (`renderHook` without JSX), `scripts/`, static complexity, and diff coverage                            |
+| **Gray-box (Integration)**    | `*.integration.test.ts`          | `test:integration` | Module seams, contracts, schemas | Socketless Hono routes (`app.request()`), ephemeral Daemons (`port: 0`), `:memory:` SQLite stores (`openDb`, `createLighthouseStore`), adapters, `site` loaders |
+| **Black-box (E2E & Stories)** | `*.e2e.test.ts`, `*.stories.tsx` | `test:e2e`         | External observable behavior     | Subprocess CLI binaries (`Bun.spawn`), Portable Stories (`play()`), exploratory external probes, and binary smoke checks                                        |
 
 **Single-level file rule.** Place one test level per file using its matching suffix (`*.unit.test.ts`, `*.integration.test.ts`, `*.e2e.test.ts`, or `*.stories.tsx`). Keep unit, integration, and end-to-end `describe` blocks in separate files.
 
