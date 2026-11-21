@@ -3,7 +3,13 @@
  *
  * @packageDocumentation
  */
-export { openDb, closeAllDbs, type DbHandle, type DevtoolsDb } from "./client";
+export {
+  openDb,
+  type DbHandle,
+  type DbSession,
+  type DevtoolsDb,
+  type OpenDbOptions,
+} from "./client";
 export { resolveDatabasePath, resolveDatabaseTargetPath } from "./config";
 
 // Schema exports
@@ -17,4 +23,4 @@ export {
 // Re-exported Drizzle primitives & helpers
 export { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
 
-export { eq, ne, and, sql, desc, asc } from "drizzle-orm";
+export { eq, ne, and, sql, desc, asc, gte, lt } from "drizzle-orm";

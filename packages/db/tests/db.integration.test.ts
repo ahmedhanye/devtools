@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { afterEach, describe, expect, it } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import { createHash } from "node:crypto";
 import {
   existsSync,
@@ -11,33 +11,30 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
-  createShutdownCoordinator,
-  type ShutdownRegistry,
-} from "@devtools/core/node";
-import {
   asc,
-  closeAllDbs,
   eq,
   lighthouseRuns,
   openDb,
   sql,
   systemMetadata,
+  type DbSession,
 } from "../src";
+import {
+  initializeBaselineSchema,
+  resolveEmbeddedMigrations,
+} from "../src/migrator";
 
 const PACKAGE_ROOT = resolve(import.meta.dir, "..");
 
-describe("Unified openDb Lifecycle, PRAGMAs, Pooling & Concurrency", () => {
-  afterEach(() => {
-    closeAllDbs();
-  });
-
+describe("openDb Lifecycle, DbSession/DbHandle Split, Idle-Close, Migrations & Concurrency", () => {
   it("is strictly lazy until first access and leaves zero disk artifacts if closed unused", () => {
     const tmpDir = mkdtempSync(join(tmpdir(), "devtools-db-lazy-"));
     const dbPath = join(tmpDir, "nested", "lazy.db");
 
     try {
       const handle = openDb({ path: dbPath });
-      expect(handle.path).toBe(dbPath);
+      const session: DbSession = handle;
+      expect(session.path).toBe(dbPath);
       expect(existsSync(join(tmpDir, "nested"))).toBe(false);
       expect(existsSync(dbPath)).toBe(false);
 
@@ -49,14 +46,30 @@ describe("Unified openDb Lifecycle, PRAGMAs, Pooling & Concurrency", () => {
     }
   });
 
-  it("configures SQLite WAL & integrity PRAGMAs and applies embedded baseline schema matching drizzle artifacts", () => {
+  it("validates busyTimeoutMs and idleTimeoutMs options", () => {
+    expect(() => openDb({ memory: true, busyTimeoutMs: -1 })).toThrow(
+      RangeError,
+    );
+    expect(() => openDb({ memory: true, busyTimeoutMs: 1.5 })).toThrow(
+      RangeError,
+    );
+    expect(() => openDb({ memory: true, idleTimeoutMs: -10 })).toThrow(
+      RangeError,
+    );
+    expect(() => openDb({ memory: true, idleTimeoutMs: 2.5 })).toThrow(
+      RangeError,
+    );
+  });
+
+  it("configures SQLite WAL & integrity PRAGMAs, populates non-null autoincrement IDs, and cleans up WAL files on close", () => {
     const drizzleDir = resolve(PACKAGE_ROOT, "drizzle");
     const diskJournal = JSON.parse(
       readFileSync(join(drizzleDir, "meta/_journal.json"), "utf8"),
     ) as { entries: Array<{ tag: string; when: number }> };
-    const expectedApplied = diskJournal.entries.map((entry) => {
+    const expectedApplied = diskJournal.entries.map((entry, idx) => {
       const rawSql = readFileSync(join(drizzleDir, `${entry.tag}.sql`), "utf8");
       return {
+        id: idx + 1,
         hash: createHash("sha256").update(rawSql).digest("hex"),
         created_at: entry.when,
       };
@@ -67,14 +80,16 @@ describe("Unified openDb Lifecycle, PRAGMAs, Pooling & Concurrency", () => {
     const memChecks = mem.read((db) => ({
       busy: db.all<{ timeout: number }>(sql`PRAGMA busy_timeout;`)[0],
       fk: db.all<{ foreign_keys: number }>(sql`PRAGMA foreign_keys;`)[0],
-      sync: db.all<{ synchronous: number }>(sql`PRAGMA synchronous;`)[0],
-      migrations: db.all<{ hash: string; created_at: number }>(
-        sql`SELECT hash, created_at FROM __devtools_migrations ORDER BY created_at ASC`,
+      migrations: db.all<{
+        id: number | null;
+        hash: string;
+        created_at: number;
+      }>(
+        sql`SELECT id, hash, created_at FROM __devtools_migrations ORDER BY id ASC`,
       ),
     }));
     expect(memChecks.busy?.timeout).toBe(5000);
     expect(memChecks.fk?.foreign_keys).toBe(1);
-    expect(memChecks.sync?.synchronous).toBe(1);
     expect(memChecks.migrations).toEqual(expectedApplied);
     mem.close();
 
@@ -82,18 +97,26 @@ describe("Unified openDb Lifecycle, PRAGMAs, Pooling & Concurrency", () => {
     const fileDbPath = join(tmpDir, "wal.db");
     try {
       {
-        using fileDb = openDb({ path: fileDbPath });
+        using fileDb = openDb({ path: fileDbPath, idleTimeoutMs: 0 });
         fileDb.ensureReady();
-        // Idempotent second ensureReady()
         fileDb.ensureReady();
-        const mode = fileDb.read(
-          (db) =>
-            db.all<{ journal_mode: string }>(sql`PRAGMA journal_mode;`)[0],
-        );
-        expect(mode?.journal_mode.toLowerCase()).toBe("wal");
+        fileDb.write((tx) => {
+          tx.insert(systemMetadata)
+            .values({ key: "wal_key", value: "v1", updatedAt: new Date() })
+            .run();
+        });
+        const filePragmas = fileDb.read((db) => ({
+          mode: db.all<{ journal_mode: string }>(sql`PRAGMA journal_mode;`)[0],
+          sync: db.all<{ synchronous: number }>(sql`PRAGMA synchronous;`)[0],
+        }));
+        expect(filePragmas.mode?.journal_mode.toLowerCase()).toBe("wal");
+        expect(filePragmas.sync?.synchronous).toBe(1);
       }
 
-      // Re-opening an already-initialized file DB keeps existing schema & data
+      // Native sqlite.close(true) checkpoints and unlinks -wal and -shm on last close
+      expect(existsSync(`${fileDbPath}-wal`)).toBe(false);
+      expect(existsSync(`${fileDbPath}-shm`)).toBe(false);
+
       using reopened = openDb({ path: fileDbPath });
       const tables = reopened.read((db) =>
         db.all<{ name: string }>(
@@ -104,13 +127,20 @@ describe("Unified openDb Lifecycle, PRAGMAs, Pooling & Concurrency", () => {
         { name: "lighthouse_runs" },
         { name: "system_metadata" },
       ]);
+      const row = reopened.read((db) =>
+        db
+          .select()
+          .from(systemMetadata)
+          .where(eq(systemMetadata.key, "wal_key"))
+          .get(),
+      );
+      expect(row?.value).toBe("v1");
     } finally {
-      closeAllDbs();
       rmSync(tmpDir, { recursive: true, force: true });
     }
   });
 
-  it("upgrades an existing tracked DB with pending migrations, skips up-to-date DBs without write locks, and leaves foreign DBs untouched", () => {
+  it("upgrades pending and out-of-order migrations by applied hash, skips up-to-date DBs without write locks, and ignores foreign DBs", () => {
     const drizzleDir = resolve(PACKAGE_ROOT, "drizzle");
     const diskJournal = JSON.parse(
       readFileSync(join(drizzleDir, "meta/_journal.json"), "utf8"),
@@ -152,8 +182,7 @@ describe("Unified openDb Lifecycle, PRAGMAs, Pooling & Concurrency", () => {
         rawUpgrade.close(true);
       }
 
-      // Opening via openDb lazily applies pending 0001_brave_lilandra without touching legacy data
-      const upgraded = openDb({ path: upgradeDbPath });
+      using upgraded = openDb({ path: upgradeDbPath });
       const legacyRow = upgraded.read((db) =>
         db
           .select()
@@ -163,7 +192,6 @@ describe("Unified openDb Lifecycle, PRAGMAs, Pooling & Concurrency", () => {
       );
       expect(legacyRow?.value).toBe("preserved");
 
-      // Newly applied lighthouse_runs table works for reads and writes
       upgraded.write((tx) => {
         tx.insert(lighthouseRuns)
           .values({
@@ -189,11 +217,6 @@ describe("Unified openDb Lifecycle, PRAGMAs, Pooling & Concurrency", () => {
           })
           .run();
       });
-      const runs = upgraded.read((db) =>
-        db.select().from(lighthouseRuns).all(),
-      );
-      expect(runs).toHaveLength(1);
-      expect(runs[0]?.id).toBe("upgrade-run-1");
 
       // Tolerant summary_json read seam returns null for raw syntactically corrupt or non-object JSON
       upgraded.write((tx) => {
@@ -245,14 +268,13 @@ describe("Unified openDb Lifecycle, PRAGMAs, Pooling & Concurrency", () => {
       );
       upgraded.close();
 
-      // 2. Re-opening an already up-to-date DB succeeds via read-only watermark check without taking a write lock
+      // 2. Re-opening an already up-to-date DB succeeds via read-only hash check without taking a write lock
       const externalWriter = new Database(upgradeDbPath);
       externalWriter.run("BEGIN IMMEDIATE;");
       try {
-        const upToDate = openDb({
+        using upToDate = openDb({
           path: upgradeDbPath,
           busyTimeoutMs: 5,
-          maxBusyRetries: 0,
         });
         const rechecked = upToDate.read((db) =>
           db.all<{ count: number }>(
@@ -260,13 +282,12 @@ describe("Unified openDb Lifecycle, PRAGMAs, Pooling & Concurrency", () => {
           ),
         );
         expect(rechecked[0]?.count).toBe(diskJournal.entries.length);
-        upToDate.close();
       } finally {
         externalWriter.run("ROLLBACK;");
         externalWriter.close(true);
       }
 
-      // 3. Foreign DB with user tables and no __devtools_migrations table is left completely untouched
+      // 3. Foreign DB with user tables and no __devtools_migrations table is left untouched
       const rawForeign = new Database(foreignDbPath, { create: true });
       try {
         rawForeign.run(
@@ -279,7 +300,7 @@ describe("Unified openDb Lifecycle, PRAGMAs, Pooling & Concurrency", () => {
         rawForeign.close(true);
       }
 
-      const foreignHandle = openDb({ path: foreignDbPath });
+      using foreignHandle = openDb({ path: foreignDbPath });
       const foreignTables = foreignHandle.read((db) =>
         db
           .all<{ name: string }>(
@@ -288,15 +309,47 @@ describe("Unified openDb Lifecycle, PRAGMAs, Pooling & Concurrency", () => {
           .map((t) => t.name),
       );
       expect(foreignTables).toEqual(["unrelated_items"]);
-      foreignHandle.close();
+
+      // 4. Out-of-order branch merge migration (earlier `when` timestamp than already-applied migration)
+      const outOfOrderDb = new Database(":memory:", { create: true });
+      try {
+        const laterOnly = resolveEmbeddedMigrations(
+          [{ tag: "m_later", when: 2000 }],
+          {
+            m_later: "CREATE TABLE t_later (id INTEGER PRIMARY KEY);",
+          },
+        );
+        initializeBaselineSchema(outOfOrderDb, laterOnly);
+
+        const bothMigrations = resolveEmbeddedMigrations(
+          [
+            { tag: "m_earlier", when: 1000 },
+            { tag: "m_later", when: 2000 },
+          ],
+          {
+            m_earlier: "CREATE TABLE t_earlier (id INTEGER PRIMARY KEY);",
+            m_later: "CREATE TABLE t_later (id INTEGER PRIMARY KEY);",
+          },
+        );
+        initializeBaselineSchema(outOfOrderDb, bothMigrations);
+
+        const tablesInMem = outOfOrderDb
+          .query<{ name: string }, []>(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('t_earlier', 't_later') ORDER BY name ASC",
+          )
+          .all()
+          .map((row) => row.name);
+        expect(tablesInMem).toEqual(["t_earlier", "t_later"]);
+      } finally {
+        outOfOrderDb.close(true);
+      }
     } finally {
-      closeAllDbs();
       rmSync(tmpDir, { recursive: true, force: true });
     }
   });
 
-  it("keeps :memory: handles isolated across concurrent openDb calls", () => {
-    using dbA = openDb({ memory: true });
+  it("keeps :memory: handles isolated and disables idle-close for :memory:", async () => {
+    using dbA = openDb({ memory: true, idleTimeoutMs: 10 });
     using dbB = openDb({ memory: true });
 
     dbA.write((tx) => {
@@ -304,6 +357,8 @@ describe("Unified openDb Lifecycle, PRAGMAs, Pooling & Concurrency", () => {
         .values({ key: "isolation", value: "alpha", updatedAt: new Date() })
         .run();
     });
+
+    await Bun.sleep(35);
 
     const fromA = dbA.read((db) =>
       db
@@ -325,65 +380,41 @@ describe("Unified openDb Lifecycle, PRAGMAs, Pooling & Concurrency", () => {
     expect(fromB).toHaveLength(0);
   });
 
-  it("supports autoInit: false error boundary and later upgrades via pooled autoInit: true handle", () => {
-    const mem = openDb({ memory: true, autoInit: false });
+  it("supports autoInit: false error boundary and independent concurrent handles to the same WAL file", () => {
+    using mem = openDb({ memory: true, autoInit: false });
     mem.ensureReady();
     expect(() =>
       mem.read((db) => db.select().from(lighthouseRuns).all()),
     ).toThrow();
-    mem.close();
 
     const tmpDir = mkdtempSync(join(tmpdir(), "devtools-db-autoinit-"));
-    const dbPath = join(tmpDir, "uninit.db");
+    const dbPath = join(tmpDir, "shared.db");
     try {
-      const noInitHandle = openDb({ path: dbPath, autoInit: false });
+      using noInitHandle = openDb({ path: dbPath, autoInit: false });
       noInitHandle.ensureReady();
       expect(() =>
         noInitHandle.read((db) => db.select().from(systemMetadata).all()),
       ).toThrow();
 
-      // Re-calling ensureReady on same handle with autoInit: false still does not initialize
-      noInitHandle.ensureReady();
-
-      const initHandle = openDb({ path: dbPath, autoInit: true });
-      initHandle.ensureReady();
-      expect(
-        noInitHandle.read((db) => db.select().from(systemMetadata).all()),
-      ).toEqual([]);
-
-      noInitHandle.close();
-      initHandle.close();
-    } finally {
-      closeAllDbs();
-      rmSync(tmpDir, { recursive: true, force: true });
-    }
-  });
-
-  it("pools file-backed connections by canonical path with lease ref-counting and rejects use-after-close", () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), "devtools-db-pool-"));
-    const dbPath = join(tmpDir, "pooled.db");
-
-    try {
-      const h1 = openDb({ path: dbPath });
-      const h2 = openDb({ path: dbPath });
+      using h1 = openDb({ path: dbPath, autoInit: true });
+      using h2 = openDb({ path: dbPath, autoInit: true });
 
       h1.write((tx) => {
         tx.insert(systemMetadata)
-          .values({ key: "pool_key", value: "shared", updatedAt: new Date() })
+          .values({ key: "shared_key", value: "shared", updatedAt: new Date() })
           .run();
       });
 
-      // h2 joins the open pool and sees committed data immediately
       const row = h2.read((db) =>
         db
           .select()
           .from(systemMetadata)
-          .where(eq(systemMetadata.key, "pool_key"))
+          .where(eq(systemMetadata.key, "shared_key"))
           .get(),
       );
       expect(row?.value).toBe("shared");
 
-      // Closing h1 decrements lease refCount while h2 stays open
+      // Closing h1 leaves h2 unaffected
       h1.close();
       h1.close(); // idempotent
       expect(() => h1.read(() => 1)).toThrow("Database handle is closed");
@@ -394,24 +425,21 @@ describe("Unified openDb Lifecycle, PRAGMAs, Pooling & Concurrency", () => {
         db
           .select()
           .from(systemMetadata)
-          .where(eq(systemMetadata.key, "pool_key"))
+          .where(eq(systemMetadata.key, "shared_key"))
           .get(),
       );
       expect(stillReadable?.value).toBe("shared");
 
-      // Closing final lease closes underlying SQLite and checkpoints WAL
       h2.close();
       expect(() => h2.read(() => 1)).toThrow("Database handle is closed");
     } finally {
-      closeAllDbs();
       rmSync(tmpDir, { recursive: true, force: true });
     }
   });
 
-  it("rolls back write() transactions atomically and supports nested SAVEPOINTs", () => {
+  it("rolls back write() transactions atomically, shares tx for nested read(), and supports nested SAVEPOINTs", () => {
     using handle = openDb({ memory: true });
 
-    // Outer rollback
     expect(() =>
       handle.write((tx) => {
         tx.insert(systemMetadata)
@@ -431,11 +459,19 @@ describe("Unified openDb Lifecycle, PRAGMAs, Pooling & Concurrency", () => {
       ),
     ).toHaveLength(0);
 
-    // Nested SAVEPOINT rollback caught inside outer write() preserves outer insert
     handle.write((tx) => {
       tx.insert(systemMetadata)
         .values({ key: "outer_keep", value: "kept", updatedAt: new Date() })
         .run();
+
+      const seenInsideTx = handle.read((db) =>
+        db
+          .select()
+          .from(systemMetadata)
+          .where(eq(systemMetadata.key, "outer_keep"))
+          .get(),
+      );
+      expect(seenInsideTx?.value).toBe("kept");
 
       expect(() =>
         handle.write((nestedTx) => {
@@ -451,7 +487,6 @@ describe("Unified openDb Lifecycle, PRAGMAs, Pooling & Concurrency", () => {
         }),
       ).toThrow("Inner savepoint abort");
 
-      // Successful nested write commits cleanly
       handle.write((nestedTx) => {
         nestedTx
           .insert(systemMetadata)
@@ -485,339 +520,74 @@ describe("Unified openDb Lifecycle, PRAGMAs, Pooling & Concurrency", () => {
       expect(() => handle.ensureReady()).toThrow();
       handle.close();
     } finally {
-      closeAllDbs();
       rmSync(tmpDir, { recursive: true, force: true });
     }
   });
 
-  it("self-registers Phase 3 persistence cleanup onto ShutdownCoordinator and executes last", async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), "devtools-db-shutdown-"));
-    const dbPath = join(tmpDir, "shutdown.db");
-    const coordinator = createShutdownCoordinator();
-    const order: string[] = [];
+  it("idle-closes file-backed handles cleanly, deletes WAL sidecars, self-heals on DB deletion, and ignores close when already idle-closed", async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "devtools-db-idle-"));
+    const dbPath = join(tmpDir, "idle.db");
 
     try {
-      const dbHandle = openDb({ path: dbPath, shutdown: coordinator });
-      const memHandle = openDb({ memory: true, shutdown: coordinator });
-      dbHandle.ensureReady();
-      memHandle.ensureReady();
-
-      // Calling ensureReady again re-uses the existing shutdown hook registration
-      dbHandle.ensureReady();
-
-      coordinator.register("ingress", () => {
-        order.push("ingress");
-      });
-      coordinator.register("work", () => {
-        // DB must still be usable during ingress and work phases
-        dbHandle.write((tx) => {
-          tx.insert(systemMetadata)
-            .values({ key: "during_work", value: "ok", updatedAt: new Date() })
-            .run();
-        });
-        order.push("work");
-      });
-
-      await coordinator.shutdown("SIGTERM");
-      order.push("after-shutdown");
-
-      expect(order).toEqual(["ingress", "work", "after-shutdown"]);
-      expect(() => dbHandle.read(() => 1)).toThrow("Database handle is closed");
-      expect(() => memHandle.read(() => 1)).toThrow(
-        "Database handle is closed",
-      );
-
-      // Closing handle after Phase 3 already closed it is a safe no-op
-      dbHandle.close();
-      memHandle.close();
-    } finally {
-      closeAllDbs();
-      rmSync(tmpDir, { recursive: true, force: true });
-    }
-  });
-
-  it("scopes Phase 3 persistence leases per ShutdownCoordinator on a shared file-backed DB", async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), "devtools-db-multi-coord-"));
-    const dbPath = join(tmpDir, "shared.db");
-
-    try {
-      // Case 1: Handle A left open for Phase 3 persistence on coordinatorA while coordinatorB stays active
-      const coordA = createShutdownCoordinator();
-      const coordB = createShutdownCoordinator();
-      const handleA = openDb({ path: dbPath, shutdown: coordA });
-      const handleB = openDb({ path: dbPath, shutdown: coordB });
-
-      handleA.write((tx) => {
+      const handle = openDb({ path: dbPath, idleTimeoutMs: 25 });
+      handle.write((tx) => {
         tx.insert(systemMetadata)
-          .values({ key: "from_a", value: "alive", updatedAt: new Date() })
+          .values({ key: "idle_1", value: "saved", updatedAt: new Date() })
           .run();
       });
-      handleB.ensureReady();
+      expect(existsSync(`${dbPath}-wal`)).toBe(true);
+      expect(existsSync(`${dbPath}-shm`)).toBe(true);
 
-      await coordA.shutdown("SIGTERM");
+      // Wait for idle-close to fire
+      await Bun.sleep(75);
+      expect(existsSync(`${dbPath}-wal`)).toBe(false);
+      expect(existsSync(`${dbPath}-shm`)).toBe(false);
 
-      expect(() => handleA.read(() => 1)).toThrow("Database handle is closed");
-
-      // Coordinator B's handle remains fully usable for reads and writes
-      const fromA = handleB.read((db) =>
+      // Transparently reopens and sees persisted data
+      const row = handle.read((db) =>
         db
           .select()
           .from(systemMetadata)
-          .where(eq(systemMetadata.key, "from_a"))
+          .where(eq(systemMetadata.key, "idle_1"))
           .get(),
       );
-      expect(fromA?.value).toBe("alive");
+      expect(row?.value).toBe("saved");
 
-      handleB.write((tx) => {
+      // Wait for idle-close again, delete DB files on disk, and verify self-healing reopen
+      await Bun.sleep(75);
+      rmSync(dbPath, { force: true });
+      expect(existsSync(dbPath)).toBe(false);
+
+      handle.write((tx) => {
         tx.insert(systemMetadata)
-          .values({
-            key: "from_b_after_a",
-            value: "still-open",
-            updatedAt: new Date(),
-          })
+          .values({ key: "healed", value: "ok", updatedAt: new Date() })
           .run();
       });
-
-      await coordB.shutdown("SIGTERM");
-      expect(() => handleB.read(() => 1)).toThrow("Database handle is closed");
-
-      // Case 2: Handle C closed manually during work phase before coordC shuts down while handleD stays active
-      const coordC = createShutdownCoordinator();
-      const coordD = createShutdownCoordinator();
-      const handleC = openDb({ path: dbPath, shutdown: coordC });
-      const handleD = openDb({ path: dbPath, shutdown: coordD });
-
-      handleC.ensureReady();
-      handleD.ensureReady();
-
-      coordC.register("work", () => {
-        handleC.close();
-      });
-
-      await coordC.shutdown("SIGTERM");
-      expect(() => handleC.read(() => 1)).toThrow("Database handle is closed");
-
-      const persisted = handleD.read((db) =>
-        db
-          .select()
-          .from(systemMetadata)
-          .where(eq(systemMetadata.key, "from_b_after_a"))
-          .get(),
-      );
-      expect(persisted?.value).toBe("still-open");
-
-      handleD.write((tx) => {
-        tx.insert(systemMetadata)
-          .values({
-            key: "from_d_after_c",
-            value: "ok",
-            updatedAt: new Date(),
-          })
-          .run();
-      });
-
-      await coordD.shutdown("SIGTERM");
-      expect(() => handleD.read(() => 1)).toThrow("Database handle is closed");
-
-      // Case 3: Two handles under the SAME coordinator — closing one manually keeps the other active until shutdown
-      const sharedCoord = createShutdownCoordinator();
-      const h1 = openDb({ path: dbPath, shutdown: sharedCoord });
-      const h2 = openDb({ path: dbPath, shutdown: sharedCoord });
-
-      h1.ensureReady();
-      h2.ensureReady();
-      h1.close();
-      expect(() => h1.read(() => 1)).toThrow("Database handle is closed");
-
-      const stillUp = h2.read((db) =>
-        db
-          .select()
-          .from(systemMetadata)
-          .where(eq(systemMetadata.key, "from_d_after_c"))
-          .get(),
-      );
-      expect(stillUp?.value).toBe("ok");
-
-      await sharedCoord.shutdown("SIGTERM");
-      expect(() => h2.read(() => 1)).toThrow("Database handle is closed");
-
-      // Case 4: Manually closing a registry's last lease unregisters its hook while a sibling keeps the DB open,
-      // and opening a second handle on that same coordinator re-registers cleanly before shutdown
-      const coordE = createShutdownCoordinator();
-      const coordF = createShutdownCoordinator();
-      let registerCalls = 0;
-      let unregisterCalls = 0;
-      const spyRegistry: ShutdownRegistry = {
-        get signal() {
-          return coordE.signal;
-        },
-        get isShuttingDown() {
-          return coordE.isShuttingDown;
-        },
-        register(phase, hook, options) {
-          registerCalls += 1;
-          const unregister = coordE.register(phase, hook, options);
-          return () => {
-            unregisterCalls += 1;
-            unregister();
-          };
-        },
-      };
-
-      const handleE1 = openDb({ path: dbPath, shutdown: spyRegistry });
-      const handleF = openDb({ path: dbPath, shutdown: coordF });
-
-      handleE1.ensureReady();
-      handleF.ensureReady();
-      expect(registerCalls).toBe(1);
-      expect(unregisterCalls).toBe(0);
-
-      handleE1.close();
-      expect(() => handleE1.read(() => 1)).toThrow("Database handle is closed");
-      expect(unregisterCalls).toBe(1);
-
-      const handleE2 = openDb({ path: dbPath, shutdown: spyRegistry });
-      handleE2.ensureReady();
-      expect(registerCalls).toBe(2);
-
-      await coordE.shutdown("SIGTERM");
-      expect(() => handleE2.read(() => 1)).toThrow("Database handle is closed");
-      expect(unregisterCalls).toBe(2);
-
-      const fAfterE = handleF.read((db) =>
-        db
-          .select()
-          .from(systemMetadata)
-          .where(eq(systemMetadata.key, "from_d_after_c"))
-          .get(),
-      );
-      expect(fAfterE?.value).toBe("ok");
-
-      await coordF.shutdown("SIGTERM");
-      expect(() => handleF.read(() => 1)).toThrow("Database handle is closed");
-    } finally {
-      closeAllDbs();
-      rmSync(tmpDir, { recursive: true, force: true });
-    }
-  });
-
-  it("avoids leaking refCount or skipping shutdown hook registration when pooled autoInit upgrade fails with SQLITE_BUSY", async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), "devtools-db-pooled-busy-"));
-    const retryPath = join(tmpDir, "retry.db");
-    const abandonPath = join(tmpDir, "abandon.db");
-
-    try {
-      // Retry path: pooled autoInit: true upgrade fails under BEGIN EXCLUSIVE, then retries cleanly and honors shutdown
-      const retryCoord1 = createShutdownCoordinator();
-      const retryCoord2 = createShutdownCoordinator();
-      const h1 = openDb({
-        path: retryPath,
-        autoInit: false,
-        shutdown: retryCoord1,
-        busyTimeoutMs: 5,
-        maxBusyRetries: 0,
-      });
-      h1.ensureReady();
-
-      const retryLocker = new Database(retryPath);
-      retryLocker.run("BEGIN EXCLUSIVE;");
-      const h2 = openDb({
-        path: retryPath,
-        autoInit: true,
-        shutdown: retryCoord2,
-        busyTimeoutMs: 5,
-        maxBusyRetries: 0,
-      });
-      try {
-        expect(() => h2.ensureReady()).toThrow(
-          /database is locked|SQLITE_BUSY/i,
-        );
-      } finally {
-        retryLocker.run("COMMIT;");
-        retryLocker.close();
-      }
-
-      // Retrying after lock release applies migrations and registers h2's shutdown lease
-      h2.ensureReady();
-      h2.write((tx) => {
-        tx.insert(systemMetadata)
-          .values({ key: "retry_ok", value: "yes", updatedAt: new Date() })
-          .run();
-      });
-
-      await retryCoord1.shutdown("SIGTERM");
-      expect(() => h1.read(() => 1)).toThrow("Database handle is closed");
+      expect(existsSync(dbPath)).toBe(true);
       expect(
-        h2.read((db) =>
+        handle.read((db) =>
           db
             .select()
             .from(systemMetadata)
-            .where(eq(systemMetadata.key, "retry_ok"))
+            .where(eq(systemMetadata.key, "healed"))
             .get(),
         )?.value,
-      ).toBe("yes");
+      ).toBe("ok");
 
-      await retryCoord2.shutdown("SIGTERM");
-      expect(() => h2.read(() => 1)).toThrow("Database handle is closed");
-
-      // Abandon path: failed pooled autoInit: true upgrade leaves zero leaked refCount on the pooled connection
-      const abandonCoord1 = createShutdownCoordinator();
-      const abandonCoord2 = createShutdownCoordinator();
-      const a1 = openDb({
-        path: abandonPath,
-        autoInit: false,
-        shutdown: abandonCoord1,
-        busyTimeoutMs: 5,
-        maxBusyRetries: 0,
-      });
-      a1.ensureReady();
-
-      const abandonLocker = new Database(abandonPath);
-      abandonLocker.run("BEGIN EXCLUSIVE;");
-      const a2 = openDb({
-        path: abandonPath,
-        autoInit: true,
-        shutdown: abandonCoord2,
-        busyTimeoutMs: 5,
-        maxBusyRetries: 0,
-      });
-      try {
-        expect(() => a2.ensureReady()).toThrow(
-          /database is locked|SQLITE_BUSY/i,
-        );
-      } finally {
-        abandonLocker.run("COMMIT;");
-        abandonLocker.close();
-      }
-
-      // Abandon a2 without calling close(); shutting down both coordinators must close SQLite completely
-      await abandonCoord1.shutdown("SIGTERM");
-      await abandonCoord2.shutdown("SIGTERM");
-      expect(() => a1.read(() => 1)).toThrow("Database handle is closed");
-
-      // SQLite can only switch out of WAL mode when zero other connections hold the database open
-      const verifyClosed = new Database(abandonPath);
-      try {
-        verifyClosed.run("PRAGMA busy_timeout = 5;");
-        const mode = verifyClosed
-          .query("PRAGMA journal_mode = DELETE;")
-          .get() as { journal_mode: string } | null;
-        expect(mode?.journal_mode.toLowerCase()).toBe("delete");
-      } finally {
-        verifyClosed.close();
-      }
+      // Wait for idle-close, then explicit close() is a terminal 0ms no-op
+      await Bun.sleep(75);
+      handle.close();
+      expect(() => handle.read(() => 1)).toThrow("Database handle is closed");
     } finally {
-      closeAllDbs();
       rmSync(tmpDir, { recursive: true, force: true });
     }
   });
 
-  it("retries transient SQLITE_BUSY locks, exhausts maxBusyRetries on persistent locks, and ignores checkpoint BUSY on close", async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), "devtools-db-busy-"));
-    const dbPath = join(tmpDir, "busy.db");
+  it("does not stall idle-close or close() under external BEGIN EXCLUSIVE (busy_timeout=0 before optimize) and unrefs idle timer", async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "devtools-db-nolockstall-"));
+    const dbPath = join(tmpDir, "stall-check.db");
 
-    // Pre-initialize DB cleanly so a child process can hold BEGIN EXCLUSIVE on it
-    const init = openDb({ path: dbPath });
+    const init = openDb({ path: dbPath, idleTimeoutMs: 0 });
     init.ensureReady();
     init.close();
 
@@ -832,15 +602,12 @@ describe("Unified openDb Lifecycle, PRAGMAs, Pooling & Concurrency", () => {
       db.close();
     `;
 
-    async function spawnLocker(holdMs: number) {
-      const proc = Bun.spawn(
-        ["bun", "-e", lockerScript, dbPath, String(holdMs)],
-        {
-          cwd: PACKAGE_ROOT,
-          stdout: "pipe",
-          stderr: "pipe",
-        },
-      );
+    try {
+      const proc = Bun.spawn(["bun", "-e", lockerScript, dbPath, "600"], {
+        cwd: PACKAGE_ROOT,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
       const reader = proc.stdout.getReader();
       let text = "";
       while (!text.includes("LOCKED")) {
@@ -848,73 +615,40 @@ describe("Unified openDb Lifecycle, PRAGMAs, Pooling & Concurrency", () => {
         if (chunk.done) break;
         text += new TextDecoder().decode(chunk.value);
       }
-      return proc;
-    }
 
-    try {
-      // 1. Transient lock released after 80ms -> openDb retries cold-start/write and succeeds
-      const transientProc = await spawnLocker(80);
       try {
+        // With busyTimeoutMs = 5000, closing must NOT block for 5,000 ms (or 600 ms)
         const handle = openDb({
           path: dbPath,
-          busyTimeoutMs: 5,
-          maxBusyRetries: 15,
+          busyTimeoutMs: 5000,
+          idleTimeoutMs: 0,
         });
-        handle.write((tx) => {
-          tx.insert(systemMetadata)
-            .values({ key: "after_busy", value: "ok", updatedAt: new Date() })
-            .run();
-        });
+        handle.ensureReady();
+        const start = performance.now();
         handle.close();
+        const elapsedMs = performance.now() - start;
+        expect(elapsedMs).toBeLessThan(200);
       } finally {
-        await transientProc.exited;
+        await proc.exited;
       }
 
-      // 2. Persistent lock exceeding maxBusyRetries throws SQLITE_BUSY on write()
-      const longProc = await spawnLocker(350);
-      try {
-        const failingHandle = openDb({
-          path: dbPath,
-          busyTimeoutMs: 5,
-          maxBusyRetries: 1,
-        });
-        expect(() =>
-          failingHandle.write((tx) => {
-            tx.insert(systemMetadata)
-              .values({
-                key: "should_fail_busy",
-                value: "no",
-                updatedAt: new Date(),
-              })
-              .run();
-          }),
-        ).toThrow();
-        failingHandle.close();
-      } finally {
-        await longProc.exited;
-      }
-
-      // 3. Closing while another connection holds a write lock ignores wal_checkpoint SQLITE_BUSY
-      const handleForClose = openDb({ path: dbPath, busyTimeoutMs: 5 });
-      handleForClose.ensureReady();
-      const rawReader = new Database(dbPath);
-      rawReader.run("BEGIN IMMEDIATE;");
-      try {
-        expect(() => handleForClose.close()).not.toThrow();
-      } finally {
-        rawReader.run("COMMIT;");
-        rawReader.close();
-      }
-
-      // 4. closeAllDbs() closes unclosed active handles cleanly
-      const unclosedMem = openDb({ memory: true });
-      unclosedMem.ensureReady();
-      closeAllDbs();
-      expect(() => unclosedMem.read(() => 1)).toThrow(
-        "Database handle is closed",
-      );
+      // Verify default 30s idle timer is .unref()'d and does not hang process exit
+      const unrefScript = `
+        import { openDb } from "./src/index.ts";
+        const h = openDb({ path: process.argv[1] });
+        h.ensureReady();
+      `;
+      const unrefStart = performance.now();
+      const unrefProc = Bun.spawn(["bun", "-e", unrefScript, dbPath], {
+        cwd: PACKAGE_ROOT,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const exitCode = await unrefProc.exited;
+      const unrefElapsed = performance.now() - unrefStart;
+      expect(exitCode).toBe(0);
+      expect(unrefElapsed).toBeLessThan(2000);
     } finally {
-      closeAllDbs();
       rmSync(tmpDir, { recursive: true, force: true });
     }
   });
@@ -969,7 +703,6 @@ describe("Unified openDb Lifecycle, PRAGMAs, Pooling & Concurrency", () => {
       );
       expect(rows).toHaveLength(workerCount);
     } finally {
-      closeAllDbs();
       rmSync(tmpDir, { recursive: true, force: true });
     }
   });

@@ -94,26 +94,27 @@ function hasMigrationsTable(sqlite: Database): boolean {
   return row !== null;
 }
 
-function getLastAppliedMigrationMillis(sqlite: Database): number {
-  const row = sqlite
-    .query<{ last_created_at: number | string | null }, []>(
-      `SELECT COALESCE(MAX(created_at), -1) AS last_created_at FROM "${DEFAULT_MIGRATIONS_TABLE}"`,
+function getAppliedMigrationHashes(sqlite: Database): ReadonlySet<string> {
+  const rows = sqlite
+    .query<{ hash: string }, []>(
+      `SELECT hash FROM "${DEFAULT_MIGRATIONS_TABLE}"`,
     )
-    .get();
-  return Number(row?.last_created_at ?? -1);
+    .all();
+  return new Set(rows.map((row) => row.hash));
 }
 
-function getPendingMigrations(sqlite: Database): readonly EmbeddedMigration[] {
+function getPendingMigrations(
+  sqlite: Database,
+  migrations: readonly EmbeddedMigration[],
+): readonly EmbeddedMigration[] {
   if (!hasUserTables(sqlite)) {
-    return EMBEDDED_MIGRATIONS;
+    return migrations;
   }
   if (!hasMigrationsTable(sqlite)) {
     return [];
   }
-  const lastAppliedMillis = getLastAppliedMigrationMillis(sqlite);
-  return EMBEDDED_MIGRATIONS.filter(
-    (migration) => migration.folderMillis > lastAppliedMillis,
-  );
+  const appliedHashes = getAppliedMigrationHashes(sqlite);
+  return migrations.filter((migration) => !appliedHashes.has(migration.hash));
 }
 
 /**
@@ -121,24 +122,27 @@ function getPendingMigrations(sqlite: Database): readonly EmbeddedMigration[] {
  *
  * @remarks
  * - Empty databases (zero user tables) receive all embedded migrations and create `__devtools_migrations`.
- * - Tracked databases with `__devtools_migrations` check their latest applied `created_at` watermark
- *   via a fast read-only query before opening a write lock, then re-check inside `BEGIN IMMEDIATE`
- *   and apply only newer migrations (`folderMillis > lastAppliedMillis`).
+ * - Tracked databases with `__devtools_migrations` check applied migration SHA-256 hashes via a fast
+ *   read-only query before opening a write lock, then re-check inside `BEGIN IMMEDIATE` and apply only
+ *   migrations whose hash is not yet recorded.
  * - Foreign databases containing unrelated user tables without `__devtools_migrations` are left untouched.
  *
  * @param sqlite - Open `bun:sqlite` database connection.
  */
-export function initializeBaselineSchema(sqlite: Database): void {
-  if (getPendingMigrations(sqlite).length === 0) {
+export function initializeBaselineSchema(
+  sqlite: Database,
+  migrations: readonly EmbeddedMigration[] = EMBEDDED_MIGRATIONS,
+): void {
+  if (getPendingMigrations(sqlite, migrations).length === 0) {
     return;
   }
 
   const applyImmediate = sqlite.transaction(() => {
-    const pending = getPendingMigrations(sqlite);
+    const pending = getPendingMigrations(sqlite, migrations);
     if (pending.length > 0) {
       sqlite.run(`
         CREATE TABLE IF NOT EXISTS "${DEFAULT_MIGRATIONS_TABLE}" (
-          id SERIAL PRIMARY KEY,
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
           hash text NOT NULL,
           created_at numeric
         )
