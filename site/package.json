@@ -16,8 +16,8 @@
     "test:coverage": "fumadocs-mdx && bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage"
   },
   "dependencies": {
-    "fumadocs-core": "^16.19.0",
-    "fumadocs-ui": "^16.19.0",
+    "fumadocs-core": "^16.19.3",
+    "fumadocs-ui": "^16.19.3",
     "lucide-react": "^1.73.0",
     "mermaid": "^12.3.0",
     "next": "^16.4.6",
@@ -30,7 +30,7 @@
     "@types/mdx": "^2.0.13",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "fumadocs-mdx": "^15.6.1",
+    "fumadocs-mdx": "^15.6.2",
     "happy-dom": "^21.0.1",
     "postcss": "^8.5.33",
     "tailwindcss": "^4.3.3"
