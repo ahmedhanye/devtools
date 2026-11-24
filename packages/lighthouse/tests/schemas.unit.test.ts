@@ -138,7 +138,7 @@ describe("@devtools/lighthouse/schemas", () => {
           url: "https://example.com",
           categories: [],
         }),
-      ).toThrow();
+      ).toThrow(/Select at least one audit category/);
       expect(() =>
         TriggerLighthouseAuditRequestSchema.parse({
           url: "https://example.com",
@@ -162,6 +162,7 @@ describe("@devtools/lighthouse/schemas", () => {
           url: "https://example.com/",
           search: "example",
           formFactor: "desktop",
+          throttlingMethod: "devtools",
           limit: " 25 ",
           offset: "10",
         }),
@@ -169,6 +170,7 @@ describe("@devtools/lighthouse/schemas", () => {
         url: "https://example.com/",
         search: "example",
         formFactor: "desktop",
+        throttlingMethod: "devtools",
         limit: 25,
         offset: 10,
       });
@@ -210,6 +212,9 @@ describe("@devtools/lighthouse/schemas", () => {
       ).toThrow();
       expect(() =>
         ListLighthouseRunsQuerySchema.parse({ search: "   " }),
+      ).toThrow();
+      expect(() =>
+        ListLighthouseRunsQuerySchema.parse({ throttlingMethod: "invalid" }),
       ).toThrow();
       expect(() =>
         ListLighthouseRunsQuerySchema.parse({ unknown: "1" }),

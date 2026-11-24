@@ -79,7 +79,10 @@ function escapeLikePattern(value: string): string {
 }
 
 function buildListRunsCondition(
-  options: Pick<ListLighthouseRunsOptions, "url" | "search" | "formFactor">,
+  options: Pick<
+    ListLighthouseRunsOptions,
+    "url" | "search" | "formFactor" | "throttlingMethod"
+  >,
 ) {
   const conditions = [];
   if (options.url) {
@@ -93,6 +96,11 @@ function buildListRunsCondition(
   }
   if (options.formFactor) {
     conditions.push(eq(lighthouseRuns.formFactor, options.formFactor));
+  }
+  if (options.throttlingMethod) {
+    conditions.push(
+      eq(lighthouseRuns.throttlingMethod, options.throttlingMethod),
+    );
   }
   return conditions.length > 0 ? and(...conditions) : undefined;
 }
@@ -152,7 +160,7 @@ function countLighthouseRuns(
   db: DevtoolsDb,
   options: Pick<
     ListLighthouseRunsOptions,
-    "url" | "search" | "formFactor"
+    "url" | "search" | "formFactor" | "throttlingMethod"
   > = {},
 ): number {
   const result = db

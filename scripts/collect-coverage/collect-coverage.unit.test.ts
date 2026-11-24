@@ -4,6 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "bun:test";
 import {
   collectCoverage,
+  formatCoverageFailureMessage,
   mergeLcovContents,
   normalizeCoverageTarget,
   normalizeLcovPaths,
@@ -592,6 +593,24 @@ end_of_record
       } finally {
         fs.rmSync(nonGitTmpDir, { recursive: true, force: true });
       }
+    });
+  });
+
+  describe("formatCoverageFailureMessage", () => {
+    it("formats Error instances and string values with a trailing summary hint", () => {
+      expect(
+        formatCoverageFailureMessage(
+          new Error(
+            "Vitest coverage failed for apps/frontend with exit code 1",
+          ),
+        ),
+      ).toBe(
+        "[collect-coverage] FAILED: Vitest coverage failed for apps/frontend with exit code 1 (inspect test/error summary above the coverage table)",
+      );
+
+      expect(formatCoverageFailureMessage("unexpected failure")).toBe(
+        "[collect-coverage] FAILED: unexpected failure (inspect test/error summary above the coverage table)",
+      );
     });
   });
 });

@@ -64,6 +64,8 @@ export interface ListLighthouseRunsOptions {
   search?: string;
   /** Optional form factor filter (`"mobile"` or `"desktop"`). */
   formFactor?: LighthouseFormFactor;
+  /** Optional throttling method filter (`"simulate"`, `"devtools"`, or `"provided"`). */
+  throttlingMethod?: LighthouseThrottlingMethod;
   /** Maximum number of rows to return. Defaults to `50`. */
   limit?: number;
   /** Zero-based row offset for pagination. Defaults to `0`. */
@@ -158,8 +160,8 @@ export interface SingleIterationResult {
   lhr: RawLighthouseResult;
   /** Raw serialized JSON report string. */
   reportJson: string;
-  /** Raw standalone HTML report string. */
-  reportHtml: string;
+  /** Raw standalone HTML report string (omitted when generated at the batch level). */
+  reportHtml?: string;
 }
 
 /**

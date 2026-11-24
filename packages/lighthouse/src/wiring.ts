@@ -16,7 +16,10 @@ import {
   createSqliteLighthouseStore,
   type LighthouseStoreOptions,
 } from "./infra/persistence/store-factory";
-import { executeIteration } from "./infra/runtime/iteration";
+import {
+  executeIteration,
+  generateLighthouseHtmlReport,
+} from "./infra/runtime/iteration";
 
 /**
  * Executes a multi-run Lighthouse batch (`--runs <N>`), selects the Representative Run,
@@ -33,6 +36,7 @@ export async function executeLighthouseBatch(
   return executeBatchWithPorts(options, {
     executeIteration,
     resolveBrowser: resolveBrowserPath,
+    generateHtmlReport: generateLighthouseHtmlReport,
   });
 }
 

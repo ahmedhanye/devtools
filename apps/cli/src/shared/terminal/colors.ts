@@ -47,18 +47,16 @@ export function getColors(options: ColorOptions = {}): TerminalColors {
   return pc.createColors(shouldEnableColor(options));
 }
 
-interface StreamColorDeps {
-  isTTY?: boolean;
-  isStderrTTY?: boolean;
-  isStdoutTTY?: boolean;
-}
-
 /**
  * Resolves independent stderr and stdout color formatters from TTY overrides and environment seams.
  */
 export function createStreamColors(
   env?: EnvMap,
-  deps?: StreamColorDeps,
+  deps?: {
+    isTTY?: boolean;
+    isStderrTTY?: boolean;
+    isStdoutTTY?: boolean;
+  },
 ): {
   pcStderr: TerminalColors;
   pcStdout: TerminalColors;

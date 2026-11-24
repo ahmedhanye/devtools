@@ -30,7 +30,7 @@ function makeMockIterationResult(
   lcpMs: number,
   perfScore: number,
   tag: string,
-): SingleIterationResult {
+): SingleIterationResult & { reportHtml: string } {
   const lhr = {
     requestedUrl: url,
     finalDisplayedUrl: url,
@@ -176,7 +176,11 @@ describe("LighthouseStore.runAudit & Isolated Worker Orchestration", () => {
     expect(persisted.run.url).toBe("https://example.com/split");
     expect(persisted.previousRun).toBeNull();
     expect(existsSync(persisted.run.htmlReportPath)).toBe(true);
-    expect(progress.map((e) => e.stage)).toEqual(["navigating", "complete"]);
+    expect(progress.map((e) => e.stage)).toEqual([
+      "navigating",
+      "generating_report",
+      "complete",
+    ]);
 
     // Subsequent persistBatch returns the prior run as previousRun
     const secondPersisted = store.persistBatch(batch);
@@ -501,7 +505,6 @@ describe("LighthouseStore.runAudit & Isolated Worker Orchestration", () => {
       "launching_browser",
       "navigating",
       "analyzing",
-      "generating_report",
     ]);
   });
 
@@ -612,7 +615,6 @@ describe("LighthouseStore.runAudit & Isolated Worker Orchestration", () => {
       "launching_browser",
       "navigating",
       "analyzing",
-      "generating_report",
     ]);
     expect(capturedChromeFlags).toContain("--no-sandbox");
     expect(capturedChromeFlags).toContain("--headless=new");
@@ -1072,12 +1074,7 @@ describe("LighthouseStore.runAudit & Isolated Worker Orchestration", () => {
     );
 
     expect(output.reportHtml).toBe(mockResult.reportHtml);
-    expect(stages).toEqual([
-      "launching_browser",
-      "navigating",
-      "analyzing",
-      "generating_report",
-    ]);
+    expect(stages).toEqual(["launching_browser", "navigating", "analyzing"]);
 
     await expect(
       executeIteration(
