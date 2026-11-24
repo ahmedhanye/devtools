@@ -46,6 +46,7 @@ export const lighthouseQueries = {
       queryKey: [...lighthouseQueries.all(), "active-job"] as const,
       queryFn: ({ signal }) => getActiveAuditJob(signal),
       staleTime: 1_000,
+      refetchOnWindowFocus: "always",
       refetchInterval: (query) => (query.state.data?.active ? 4_000 : false),
     }),
 };

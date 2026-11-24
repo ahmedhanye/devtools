@@ -155,4 +155,101 @@ describe("useTriggerAuditForm", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onJobStarted.mock.calls[0]?.[0]?.id).toBe("job-new-1");
   });
+
+  it("clears 409 conflict blocker once post-conflict active-job poll confirms no job is active", async () => {
+    let activeJobPayload: {
+      active: boolean;
+      job: Record<string, unknown> | null;
+    } = { active: false, job: null };
+    const fetchSpy = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === "string"
+            ? input
+            : input instanceof URL
+              ? input.href
+              : input.url;
+        if (url.includes("/api/lighthouse/audits/active")) {
+          return new Response(JSON.stringify(activeJobPayload), {
+            status: 200,
+          });
+        }
+        if (url.includes("/api/lighthouse/runs")) {
+          return new Response(JSON.stringify({ runs: [], total: 0 }), {
+            status: 200,
+          });
+        }
+        if (url.includes("/api/lighthouse/audits") && init?.method === "POST") {
+          activeJobPayload = {
+            active: true,
+            job: {
+              id: "job-409",
+              url: "https://example.com/",
+              formFactor: "mobile",
+              throttlingMethod: "simulate",
+              runs: 1,
+              categories: ["performance"],
+              status: "running",
+              startedAt: "2026-11-22T02:00:00.000Z",
+              completedAt: null,
+              latestProgress: null,
+              runId: null,
+              error: null,
+            },
+          };
+          return new Response(
+            JSON.stringify({
+              error: {
+                code: "CONFLICT",
+                message: "Audit already running",
+                details: { activeJobId: "job-409" },
+              },
+            }),
+            { status: 409 },
+          );
+        }
+        return new Response("{}", { status: 404 });
+      },
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+
+    const { result } = renderHook(
+      () =>
+        useTriggerAuditForm({
+          initialUrl: "https://example.com/",
+          onClose: vi.fn(),
+        }),
+      { wrapper: createWrapper(client) },
+    );
+
+    await waitFor(() => expect(result.current.effectiveActiveJobId).toBeNull());
+
+    act(() => {
+      result.current.handleSubmit({
+        preventDefault: vi.fn(),
+      } as unknown as React.FormEvent<HTMLFormElement>);
+    });
+
+    await waitFor(() => expect(result.current.activeJob?.id).toBe("job-409"));
+    expect(result.current.effectiveActiveJobId).toBe("job-409");
+    expect(result.current.submissionErrorMessage).toBeNull();
+
+    activeJobPayload = { active: false, job: null };
+    await act(async () => {
+      await client.invalidateQueries({
+        queryKey: ["lighthouse", "active-job"],
+      });
+    });
+
+    await waitFor(() => expect(result.current.activeJob).toBeNull());
+    await waitFor(() => expect(result.current.effectiveActiveJobId).toBeNull());
+    expect(result.current.submissionErrorMessage).toBeNull();
+  });
 });

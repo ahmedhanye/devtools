@@ -622,3 +622,92 @@ export const RunErrorRetryAndRerun: Story = {
     await expect(window.location.search).toBe("?job=job-rerun-1");
   },
 };
+
+const switchJobHandler: FetchHandler = async (rawUrl: string) => {
+  if (rawUrl === "/api/lighthouse/audits/active") {
+    const isSecondJob = window.location.search.includes("job-next-2");
+    const activeId = isSecondJob ? "job-next-2" : "job-fail-1";
+    return new Response(
+      JSON.stringify({
+        active: true,
+        job: {
+          id: activeId,
+          url: "https://shop.example.com/",
+          formFactor: "mobile",
+          throttlingMethod: "simulate",
+          runs: 1,
+          categories: ["performance"],
+          status: "running",
+          startedAt: "2026-11-22T02:00:00.000Z",
+          completedAt: null,
+          latestProgress: null,
+          runId: null,
+          error: null,
+        },
+      }),
+      { status: 200 },
+    );
+  }
+  return detailHandler(rawUrl);
+};
+
+export const SwitchJobResetsPreviousError: Story = {
+  render: () => (
+    <RunProviders handler={switchJobHandler} initialSearch="?job=job-fail-1">
+      <RunPage />
+    </RunProviders>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const firstSource = await waitFor(() => {
+      const src = MockEventSource.instances[0];
+      if (!src) throw new Error("Expected first MockEventSource");
+      return src;
+    });
+
+    firstSource.emit(
+      "error",
+      new MessageEvent("error", {
+        data: JSON.stringify({
+          jobId: "job-fail-1",
+          status: "failed",
+          error: {
+            code: "NAVIGATION_FAILED",
+            message: "Old job navigation failed",
+          },
+        }),
+      }),
+    );
+
+    await expect(
+      await canvas.findByText("Old job navigation failed"),
+    ).toBeInTheDocument();
+
+    updateNativeSearchParams("?job=job-next-2", { replace: true });
+
+    const secondSource = await waitFor(() => {
+      const src = MockEventSource.instances[1];
+      if (!src) throw new Error("Expected second MockEventSource");
+      return src;
+    });
+
+    secondSource.emit(
+      "progress",
+      new MessageEvent("progress", {
+        data: JSON.stringify({
+          jobId: "job-next-2",
+          stage: "navigating",
+          message: "Navigating new target URL",
+          runIndex: 0,
+          totalRuns: 1,
+        }),
+      }),
+    );
+
+    await waitFor(async () => {
+      await expect(
+        canvas.queryByText("Old job navigation failed"),
+      ).not.toBeInTheDocument();
+    });
+  },
+};

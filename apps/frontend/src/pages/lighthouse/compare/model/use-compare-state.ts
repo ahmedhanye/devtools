@@ -65,6 +65,53 @@ function syncCompareSearchParams(
   );
 }
 
+function buildCompareRunsMap(
+  availableRuns: readonly LighthouseRunListItem[],
+  missingRunQueries: readonly { data?: LighthouseRunListItem }[],
+): Map<string, LighthouseRunListItem> {
+  const map = new Map<string, LighthouseRunListItem>();
+  for (const run of availableRuns) {
+    map.set(run.id, run);
+  }
+  for (const query of missingRunQueries) {
+    if (query.data) {
+      map.set(query.data.id, query.data);
+    }
+  }
+  return map;
+}
+
+function buildMissingDetailQueryOptions(
+  explicitRunIds: readonly string[],
+  availableRuns: readonly LighthouseRunListItem[],
+  skip: boolean,
+) {
+  if (skip) {
+    return [];
+  }
+  const availableIds = new Set(availableRuns.map((run) => run.id));
+  return explicitRunIds
+    .filter((id) => !availableIds.has(id))
+    .map((id) => lighthouseQueries.detail(id));
+}
+
+function summarizeMissingQueries(
+  missingRunQueries: readonly {
+    isPending: boolean;
+    error: Error | null;
+    refetch: () => Promise<unknown>;
+  }[],
+) {
+  const failedQueries = missingRunQueries.filter(
+    (query) => query.error !== null,
+  );
+  return {
+    isMissingRunsPending: missingRunQueries.some((query) => query.isPending),
+    failedMissingQueries: failedQueries,
+    missingRunError: failedQueries[0]?.error ?? null,
+  };
+}
+
 function useCompareRunQueries(runsParam: string | null) {
   const {
     data: listData,
@@ -80,33 +127,36 @@ function useCompareRunQueries(runsParam: string | null) {
   );
 
   const missingRunQueries = useQueries({
-    queries: explicitRunIds
-      .filter((id) => !availableRuns.some((run) => run.id === id))
-      .map((id) => lighthouseQueries.detail(id)),
+    queries: buildMissingDetailQueryOptions(
+      explicitRunIds,
+      availableRuns,
+      isListPending || listError !== null,
+    ),
   });
 
-  const runsById = useMemo(() => {
-    const map = new Map<string, LighthouseRunListItem>();
-    for (const run of availableRuns) {
-      map.set(run.id, run);
-    }
-    for (const query of missingRunQueries) {
-      if (query.data) {
-        map.set(query.data.id, query.data);
-      }
-    }
-    return map;
-  }, [availableRuns, missingRunQueries]);
+  const runsById = useMemo(
+    () => buildCompareRunsMap(availableRuns, missingRunQueries),
+    [availableRuns, missingRunQueries],
+  );
+
+  const { isMissingRunsPending, failedMissingQueries, missingRunError } =
+    summarizeMissingQueries(missingRunQueries);
 
   const handleRetryList = useCallback(() => {
-    void refetchList();
-  }, [refetchList]);
+    if (listError) {
+      void refetchList();
+      return;
+    }
+    for (const query of failedMissingQueries) {
+      void query.refetch();
+    }
+  }, [failedMissingQueries, listError, refetchList]);
 
   return {
     availableRuns,
     runsById,
-    isListPending,
-    listErrorMessage: listError ? listError.message : null,
+    isListPending: isListPending || isMissingRunsPending,
+    listErrorMessage: listError?.message ?? missingRunError?.message ?? null,
     hasAnyRuns: availableRuns.length > 0 || runsById.size > 0,
     handleRetryList,
   };
@@ -209,8 +259,8 @@ function useCompareDerivedSelection({
   }, [baselineRunId, focusedDiffRunId, sortedRuns]);
 
   const fallbackDiffTargetId = useMemo(
-    () => sortedRuns.find((run) => run.id !== baselineRunId)?.id ?? null,
-    [baselineRunId, sortedRuns],
+    () => chronoRuns.findLast((run) => run.id !== baselineRunId)?.id ?? null,
+    [baselineRunId, chronoRuns],
   );
 
   return useMemo(

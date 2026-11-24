@@ -336,4 +336,104 @@ describe("useCompareController", () => {
     unmount();
     client.clear();
   });
+
+  it("picks the newest chronological non-baseline run for fallbackDiffTargetId regardless of table sort", async () => {
+    const fetchMock = vi.fn(async () => {
+      return new Response(
+        JSON.stringify({
+          runs: [r3, r2, r1],
+          total: 3,
+          limit: 100,
+          offset: 0,
+        }),
+        { status: 200 },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    updateNativeSearchParams("?runs=cmp-1,cmp-2,cmp-3&baseline=cmp-1", {
+      replace: true,
+    });
+
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    });
+    const { result, unmount } = renderHook(() => useCompareController(), {
+      wrapper: createWrapper(client),
+    });
+
+    await waitFor(() => expect(result.current.isListPending).toBe(false));
+
+    act(() => {
+      result.current.handleSort("createdAt");
+    });
+    expect(result.current.sortDir).toBe("asc");
+    expect(result.current.fallbackDiffTargetId).toBe("cmp-3");
+
+    act(() => {
+      result.current.handleSetBaseline("cmp-3");
+    });
+    expect(result.current.fallbackDiffTargetId).toBe("cmp-2");
+
+    unmount();
+    client.clear();
+  });
+
+  it("surfaces errors for failed selected detail runs and retries them", async () => {
+    let failExtra = true;
+    const fetchMock = vi.fn(async (input: string) => {
+      if (input === "/api/lighthouse/runs/cmp-extra") {
+        if (failExtra) {
+          return new Response(
+            JSON.stringify({
+              error: { code: "INTERNAL", message: "Detail run unavailable" },
+            }),
+            { status: 500 },
+          );
+        }
+        return new Response(JSON.stringify(toDetail(extraRun)), {
+          status: 200,
+        });
+      }
+      return new Response(
+        JSON.stringify({
+          runs: [r3, r2, r1],
+          total: 3,
+          limit: 100,
+          offset: 0,
+        }),
+        { status: 200 },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    updateNativeSearchParams("?runs=cmp-extra,cmp-1&baseline=cmp-extra", {
+      replace: true,
+    });
+
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    });
+    const { result, unmount } = renderHook(() => useCompareController(), {
+      wrapper: createWrapper(client),
+    });
+
+    await waitFor(() =>
+      expect(result.current.listErrorMessage).toBe("Detail run unavailable"),
+    );
+
+    failExtra = false;
+    act(() => {
+      result.current.handleRetryList();
+    });
+
+    await waitFor(() => expect(result.current.listErrorMessage).toBeNull());
+    await waitFor(() => expect(result.current.isListPending).toBe(false));
+    expect(result.current.baselineRun?.id).toBe("cmp-extra");
+    expect(result.current.chronoRuns.map((run) => run.id)).toEqual([
+      "cmp-extra",
+      "cmp-1",
+    ]);
+
+    unmount();
+    client.clear();
+  });
 });

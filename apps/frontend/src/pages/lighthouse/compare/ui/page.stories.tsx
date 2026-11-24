@@ -809,6 +809,28 @@ export const MultiRunTrendOverlay: Story = {
       setTimeout(resolve, 60);
     });
 
+    await userEvent.click(canvas.getByRole("tab", { name: "LCP (ms)" }));
+    await fireEvent.mouseMove(chartSvg, { clientX: 180, clientY: 140 });
+    await waitFor(async () => {
+      const footer = canvas.getByText("Click to inspect");
+      const tooltip = footer.parentElement?.parentElement;
+      if (!tooltip) throw new Error("Expected tooltip container");
+      await expect(within(tooltip).getByText("LCP (ms)")).toBeInTheDocument();
+      await expect(within(tooltip).getByText(/[+-]\d+ ms/)).toBeInTheDocument();
+    });
+
+    await userEvent.click(canvas.getByRole("tab", { name: "CLS" }));
+    await fireEvent.mouseMove(chartSvg, { clientX: 180, clientY: 140 });
+    await waitFor(async () => {
+      const footer = canvas.getByText("Click to inspect");
+      const tooltip = footer.parentElement?.parentElement;
+      if (!tooltip) throw new Error("Expected tooltip container");
+      await expect(within(tooltip).getByText("CLS")).toBeInTheDocument();
+      await expect(
+        within(tooltip).getByText(/[+-]0\.\d{3}/),
+      ).toBeInTheDocument();
+    });
+
     await userEvent.click(canvas.getByRole("tab", { name: "All 4 Scores" }));
     await expect(
       canvas.getByRole("button", { name: "Performance", pressed: true }),

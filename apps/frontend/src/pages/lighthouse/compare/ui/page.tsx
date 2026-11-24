@@ -297,6 +297,9 @@ function formatSeriesValue(key: SeriesKey, value: number | null): string {
   if (value === null) {
     return "—";
   }
+  if (key === "cls") {
+    return value.toFixed(3);
+  }
   return key.endsWith("Ms")
     ? `${Math.round(value)} ms`
     : String(Math.round(value));
@@ -317,9 +320,12 @@ function formatSeriesDelta(
   }
   const improved = higherIsBetter ? delta > 0 : delta < 0;
   const sign = delta > 0 ? "+" : "";
-  const text = key.endsWith("Ms")
-    ? `${sign}${Math.round(delta)} ms`
-    : `${sign}${Math.round(delta)}`;
+  const text =
+    key === "cls"
+      ? `${sign}${delta.toFixed(3)}`
+      : key.endsWith("Ms")
+        ? `${sign}${Math.round(delta)} ms`
+        : `${sign}${Math.round(delta)}`;
   return {
     text,
     toneClass: improved
@@ -381,22 +387,18 @@ interface CompareTrendTooltipProps {
   baselineRun: LighthouseRunListItem | null;
 }
 
-function CompareTrendTooltip({
-  active,
-  payload,
-  runsById,
-  mode,
-  singleMetric,
-  visibleSeries,
+function SingleMetricTooltipRows({
+  run,
   baselineRun,
-}: CompareTrendTooltipProps) {
-  const runId = active ? extractRunIdFromPayload(payload) : null;
-  const run = runId ? runsById.get(runId) : undefined;
-  if (!run) {
-    return null;
-  }
-  const isBaseline = baselineRun !== null && run.id === baselineRun.id;
-
+  isBaseline,
+  singleMetric,
+}: {
+  run: LighthouseRunListItem;
+  baselineRun: LighthouseRunListItem | null;
+  isBaseline: boolean;
+  singleMetric: CompareChartMetric;
+}) {
+  const activeMeta = SINGLE_META_BY_KEY[singleMetric];
   const summaryScoreRows: readonly {
     key: CompareChartMetric | "bestPracticesScore" | "seoScore";
     label: string;
@@ -421,6 +423,61 @@ function CompareTrendTooltip({
   ];
 
   return (
+    <div className="flex flex-col gap-1">
+      {!activeMeta.isScore ? (
+        <TooltipMetricRow
+          dotClass={SINGLE_SERIES_META_BY_KEY[singleMetric].dotClass}
+          label={activeMeta.label}
+          valueText={formatSeriesValue(singleMetric, run[singleMetric])}
+          delta={
+            !isBaseline && baselineRun
+              ? formatSeriesDelta(
+                  singleMetric,
+                  run[singleMetric],
+                  baselineRun[singleMetric],
+                  activeMeta.higherIsBetter,
+                )
+              : null
+          }
+        />
+      ) : null}
+      {summaryScoreRows.map((row) => {
+        const tone = getScoreTone(row.value);
+        const activeDelta =
+          !isBaseline && row.key === singleMetric && baselineRun
+            ? formatSeriesDelta(row.key, row.value, baselineRun[row.key], true)
+            : null;
+        return (
+          <TooltipMetricRow
+            key={row.key}
+            dotClass={SCORE_TONE_DOT_CLASS[tone]}
+            label={row.label}
+            valueText={row.value ?? "—"}
+            delta={activeDelta}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function CompareTrendTooltip({
+  active,
+  payload,
+  runsById,
+  mode,
+  singleMetric,
+  visibleSeries,
+  baselineRun,
+}: CompareTrendTooltipProps) {
+  const runId = active ? extractRunIdFromPayload(payload) : null;
+  const run = runId ? runsById.get(runId) : undefined;
+  if (!run) {
+    return null;
+  }
+  const isBaseline = baselineRun !== null && run.id === baselineRun.id;
+
+  return (
     <div className="bg-popover text-popover-foreground border-border w-64 rounded-lg border p-3 text-xs shadow-md">
       <div className="flex items-center justify-between gap-2">
         <span className="font-semibold">{formatTimestamp(run.createdAt)}</span>
@@ -436,29 +493,12 @@ function CompareTrendTooltip({
       </div>
 
       {mode === "single" ? (
-        <div className="flex flex-col gap-1">
-          {summaryScoreRows.map((row) => {
-            const tone = getScoreTone(row.value);
-            const activeDelta =
-              !isBaseline && row.key === singleMetric && baselineRun
-                ? formatSeriesDelta(
-                    row.key,
-                    row.value,
-                    baselineRun[row.key],
-                    true,
-                  )
-                : null;
-            return (
-              <TooltipMetricRow
-                key={row.key}
-                dotClass={SCORE_TONE_DOT_CLASS[tone]}
-                label={row.label}
-                valueText={row.value ?? "—"}
-                delta={activeDelta}
-              />
-            );
-          })}
-        </div>
+        <SingleMetricTooltipRows
+          run={run}
+          baselineRun={baselineRun}
+          isBaseline={isBaseline}
+          singleMetric={singleMetric}
+        />
       ) : (
         <div className="flex flex-col gap-1">
           {visibleSeries.map((series) => {

@@ -835,7 +835,7 @@ export function RunPage() {
   }, []);
 
   if (jobId) {
-    return <LiveJobTracker jobId={jobId} />;
+    return <LiveJobTracker key={jobId} jobId={jobId} />;
   }
 
   if (!runId) {

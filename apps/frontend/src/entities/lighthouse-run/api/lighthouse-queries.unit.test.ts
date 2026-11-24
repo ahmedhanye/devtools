@@ -164,6 +164,7 @@ describe("lighthouseQueries factory", () => {
     expect(detailOpts.queryKey).toEqual(["lighthouse", "run", "r1"]);
     expect(diffOpts.queryKey).toEqual(["lighthouse", "diff", "r1", "r2"]);
     expect(activeOpts.queryKey).toEqual(["lighthouse", "active-job"]);
+    expect(activeOpts.refetchOnWindowFocus).toBe("always");
 
     const client = new QueryClient();
     const listResult = await client.fetchQuery(listOpts);

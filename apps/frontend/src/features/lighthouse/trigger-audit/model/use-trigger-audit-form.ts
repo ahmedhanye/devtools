@@ -122,14 +122,19 @@ function useTriggerAuditFields(initialUrl: string) {
   };
 }
 
+interface ConflictState {
+  jobId: string;
+  recordedAtUpdateCount: number;
+}
+
 function useTriggerAuditMutation({
   onClose,
   onJobStarted,
-  setConflictJobId,
+  setConflict,
 }: {
   onClose: () => void;
   onJobStarted?: (job: AuditJob) => void;
-  setConflictJobId: (jobId: string | null) => void;
+  setConflict: (conflict: ConflictState | null) => void;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -156,7 +161,10 @@ function useTriggerAuditMutation({
     onError: (error) => {
       const activeId = extractConflictJobId(error);
       if (activeId) {
-        setConflictJobId(activeId);
+        const recordedAtUpdateCount =
+          queryClient.getQueryState(lighthouseQueries.activeJob().queryKey)
+            ?.dataUpdateCount ?? 0;
+        setConflict({ jobId: activeId, recordedAtUpdateCount });
         void queryClient.invalidateQueries({
           queryKey: lighthouseQueries.activeJob().queryKey,
         });
@@ -179,7 +187,8 @@ export function useTriggerAuditForm({
   onJobStarted?: (job: AuditJob) => void;
 }) {
   const fields = useTriggerAuditFields(initialUrl);
-  const [conflictJobId, setConflictJobId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const [conflict, setConflict] = useState<ConflictState | null>(null);
 
   const activeJobQuery = useQuery(lighthouseQueries.activeJob());
   const recentRunsQuery = useQuery(lighthouseQueries.recentUrls());
@@ -192,7 +201,7 @@ export function useTriggerAuditForm({
   const mutation = useTriggerAuditMutation({
     onClose,
     onJobStarted,
-    setConflictJobId,
+    setConflict,
   });
 
   const {
@@ -209,7 +218,7 @@ export function useTriggerAuditForm({
     (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();
       setValidationError(null);
-      setConflictJobId(null);
+      setConflict(null);
 
       const parsed = TriggerLighthouseAuditRequestSchema.safeParse({
         url,
@@ -241,17 +250,27 @@ export function useTriggerAuditForm({
 
   const activeJob =
     activeJobQuery.data?.active === true ? activeJobQuery.data.job : null;
+  const activeJobUpdateCount =
+    queryClient.getQueryState(lighthouseQueries.activeJob().queryKey)
+      ?.dataUpdateCount ?? 0;
+  const conflictResolvedByServer =
+    conflict !== null &&
+    !activeJobQuery.isFetching &&
+    activeJobQuery.data?.active === false &&
+    activeJobUpdateCount > conflict.recordedAtUpdateCount;
+  const activeConflictJobId =
+    conflict && !conflictResolvedByServer ? conflict.jobId : null;
 
   return {
     ...fields,
     quickTargetUrls,
     activeJob,
-    effectiveActiveJobId: activeJob?.id ?? conflictJobId,
+    effectiveActiveJobId: activeJob?.id ?? activeConflictJobId,
     isPending: mutation.isPending,
     submissionErrorMessage: getSubmitErrorMessage(
       validationError,
       mutation.error,
-      conflictJobId,
+      conflict?.jobId ?? null,
     ),
     handleSubmit,
   };
