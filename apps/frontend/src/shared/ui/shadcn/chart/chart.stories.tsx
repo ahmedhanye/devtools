@@ -25,10 +25,7 @@ const CHART_CONFIG: ChartConfig = {
   },
   accessibility: {
     label: "Accessibility",
-    theme: {
-      light: "#2563eb",
-      dark: "#60a5fa",
-    },
+    color: "var(--color-chart-2)",
   },
 };
 
