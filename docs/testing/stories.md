@@ -23,7 +23,7 @@ Guidelines for running Portable Stories under Vitest and authoring interactive `
 
 ## Interactive `play()` functions
 
-Stateful interactive components (`Dialog`, `Sheet`, `Tooltip`, `AppLayout`, forms, interactive `Button` callbacks) require an async `play()` function; stateless primitives (`Badge`, `Card`, `Separator`, `Skeleton`) require only visual CSF render stories.
+Every UI `.tsx` file (exporting a single React component: `pages/<slice>/ui/page.tsx`, `features/<slice>/ui/<feature>.tsx`, exported `entities/<slice>/ui/<component>.tsx`, `app/layouts/<layout>/<layout>.tsx`, and `shared/ui/`) pairs 1:1 with a co-located `*.stories.tsx` file. Stateful interactive components (`Dialog`, `Sheet`, `Tooltip`, `AppShell`, forms, interactive `Button` callbacks) require an async `play()` function; stateless primitives (`Badge`, `Card`, `Empty`, `Separator`, `Skeleton`) require only visual CSF render stories.
 
 In Storybook 10, import `expect`, `fn`, `userEvent`, `waitFor`, and `within` from `"storybook/test"`:
 
@@ -43,7 +43,7 @@ export const ClickedWithPointer: Story = {
 };
 ```
 
-See `apps/frontend/src/shared/ui/shadcn/button/button.stories.tsx`, `apps/frontend/src/shared/ui/shadcn/sheet/sheet.stories.tsx`, and `apps/frontend/src/shared/ui/blocks/app-layout/app-layout.stories.tsx` for full interactive examples.
+See `apps/frontend/src/shared/ui/shadcn/button/button.stories.tsx`, `apps/frontend/src/shared/ui/shadcn/sheet/sheet.stories.tsx`, and `apps/frontend/src/app/layouts/app-shell/app-shell.stories.tsx` for full interactive examples.
 
 ### Authoring rules for `play()`
 
@@ -53,3 +53,5 @@ See `apps/frontend/src/shared/ui/shadcn/button/button.stories.tsx`, `apps/fronte
 - **Reset persistent browser storage.** When a component reads or writes `localStorage`, `sessionStorage`, or cookies (such as `"sidebar_state"`), clear the key in a story decorator so reloads stay deterministic.
 - **Test keyboard controls.** Exercise `{Enter}`, `{Escape}`, and `userEvent.tab()` on interactive overlays and controls.
 - **Cover conditional render branches.** Include story variants or `play()` paths for every conditional prop or state branch added in the diff to satisfy 100% diff coverage.
+- **Assert callbacks with spies, not DOM probes.** Verify event handlers with `fn()` spies (`expect(args.onAction).toHaveBeenCalledWith(...)`) rather than rendering visible `<output>` debug elements inside stories.
+- **Keep product UI inside the component.** Never inject component-owned controls (such as header action buttons) inside story wrappers or decorators; keep stories focused on rendering the component under test.

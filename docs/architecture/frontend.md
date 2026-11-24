@@ -18,13 +18,13 @@ flowchart LR
   Dist --> Daemon["apps/cli Daemon<br/>(serves /* alongside /api/*)"]
 ```
 
-| Layer       | Responsibility                                                                                                           | Public boundary             |
-| :---------- | :----------------------------------------------------------------------------------------------------------------------- | :-------------------------- |
-| `app/`      | Thin App Router boundary adapters (`page.next.tsx`, `layout.next.tsx`) declaring metadata and global providers.          | Next.js `pageExtensions`    |
-| `pages/`    | Full-page compositions, page-scoped state, and query orchestration (default home per pages-first extraction rule).       | `pages/<slice>/index.ts`    |
-| `features/` | Reusable user interactions carrying business value, extracted only when shared across distinct pages.                    | `features/<slice>/index.ts` |
-| `entities/` | Reusable domain models and entity cards, extracted only when shared across distinct pages.                               | `entities/<slice>/index.ts` |
-| `shared/`   | Reusable UI primitives (`@base-ui/react`), Tailwind `cn`, semantic theme tokens, and tear-free client hydration helpers. | `shared/<segment>/index.ts` |
+| Layer       | Responsibility                                                                                                                                                                      | Public boundary             |
+| :---------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------- |
+| `app/`      | Thin App Router boundary adapters (`page.next.tsx`, `layout.next.tsx`), runtime context providers (`app/providers/`), and app-wide layout chrome (`app/layouts/app-shell/`).        | Next.js `pageExtensions`    |
+| `pages/`    | Full-page compositions, page-scoped state, and query orchestration (supports domain slice groups such as `pages/lighthouse/{history,compare,run}`).                                 | `pages/<slice>/index.ts`    |
+| `features/` | Reusable user interactions carrying business value, extracted when shared across distinct pages or app layouts (supports groups like `features/lighthouse/*`).                      | `features/<slice>/index.ts` |
+| `entities/` | Reusable domain API clients, TanStack Query factories (`lighthouseQueries`), formatting models, and domain views (such as `entities/lighthouse-run`).                               | `entities/<slice>/index.ts` |
+| `shared/`   | Reusable pure presentational UI (`shadcn/` and `blocks/` with zero business logic or upper-layer imports), fetch client, semantic theme tokens, and reactive query-param hydration. | `shared/<segment>/index.ts` |
 
 ## Static export and Daemon delivery
 
@@ -32,6 +32,7 @@ flowchart LR
 
 - `bun --filter @devtools/frontend build` compiles static HTML, CSS, and client JS bundles into `apps/frontend/dist`.
 - `startDaemon` (`apps/cli/src/commands/web/daemon.ts`) serves these static files on `/*` while mounting `@devtools/api` on `/api/*`, avoiding a separate production Next.js server process.
-- `apps/frontend` imports only browser-safe workspace packages (`@devtools/core` and `@devtools/lighthouse/schemas`), enforced by `.fallowrc.json`.
+- Runtime entity views route through flat static paths paired with query parameters (`?id=`, `?job=`, `?tab=`, `?runs=`, `?baseline=`) instead of dynamic `[id]` segments, per [ADR 0007](../adr/0007-static-export-query-param-routing.md).
+- Frontend requests use relative `/api/*` paths (including SSE `EventSource` and `<iframe sandbox="allow-scripts allow-popups allow-downloads">` report views), and `apps/frontend` imports only browser-safe workspace packages (`@devtools/core` and `@devtools/lighthouse/schemas`), enforced by `.fallowrc.json`.
 
 For FSD authoring rules, Storybook portable stories, React 19 standards, and tear-free client hydration hooks, see [Frontend standards](../coding-standards/frontend.md).
