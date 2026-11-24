@@ -466,6 +466,41 @@ describe("End-to-End Interconnected Stack Integration (CLI -> Daemon -> UI -> AP
       const static404Html = await static404Res.text();
       expect(static404Html).toContain("404");
 
+      for (const route of [
+        "/lighthouse",
+        "/lighthouse/compare?runs=a,b&baseline=a",
+        "/lighthouse/run?id=a",
+      ]) {
+        const lhRes = await fetch(`${baseUrl}${route}`);
+        expect(lhRes.status).toBe(200);
+        expect(lhRes.headers.get("content-type")).toContain("text/html");
+        const lhHtml = await lhRes.text();
+        expect(lhHtml).toContain("<!DOCTYPE html>");
+      }
+
+      const lh404Res = await fetch(`${baseUrl}/lighthouse/nonexistent`);
+      expect(lh404Res.status).toBe(404);
+
+      const lhRunsRes = await fetch(
+        `${baseUrl}/api/lighthouse/runs?throttlingMethod=simulate`,
+      );
+      expect(lhRunsRes.status).toBe(200);
+      expect(lhRunsRes.headers.get("content-type")).toContain(
+        "application/json",
+      );
+
+      const lhRunsInvalidRes = await fetch(
+        `${baseUrl}/api/lighthouse/runs?throttlingMethod=invalid`,
+      );
+      expect(lhRunsInvalidRes.status).toBe(422);
+      expect(lhRunsInvalidRes.headers.get("content-type")).toContain(
+        "application/json",
+      );
+      const lhRunsInvalidPayload = await lhRunsInvalidRes.json();
+      const validatedLhError =
+        ApiErrorResponseSchema.parse(lhRunsInvalidPayload);
+      expect(validatedLhError.error.code).toBe("VALIDATION_ERROR");
+
       const healthRes = await fetch(`${baseUrl}/api/health`);
       expect(healthRes.status).toBe(200);
       expect(healthRes.headers.get("content-type")).toContain(
