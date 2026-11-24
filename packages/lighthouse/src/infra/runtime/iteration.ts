@@ -81,6 +81,13 @@ interface LighthouseRuntime {
 
 let cachedLighthouseRuntime: LighthouseRuntime | null = null;
 
+/**
+ * Clears the cached Lighthouse runtime module reference for hermetic cold-start tests.
+ */
+export function resetLighthouseRuntimeCache(): void {
+  cachedLighthouseRuntime = null;
+}
+
 async function loadLighthouseRuntime(options?: {
   isStandalone?: boolean;
   onLoading?: () => void;

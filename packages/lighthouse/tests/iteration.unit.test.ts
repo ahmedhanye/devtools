@@ -21,6 +21,7 @@ import {
   executeIteration,
   extractReportStrings,
   mapLighthouseStatusToProgress,
+  resetLighthouseRuntimeCache,
 } from "../src/infra/runtime/iteration";
 import { restoreLighthouseVirtualFs } from "../src/infra/runtime/virtual-fs";
 
@@ -509,6 +510,8 @@ describe("executeBatchWithPorts & executeIteration option/abort seams", () => {
 
   it("executeIteration loads Lighthouse runtime with standalone virtual FS on cold start and emits loading message", async () => {
     const events: LighthouseProgressEvent[] = [];
+    resetLighthouseRuntimeCache();
+    restoreLighthouseVirtualFs();
     try {
       await expect(
         executeIteration(
@@ -537,6 +540,7 @@ describe("executeBatchWithPorts & executeIteration option/abort seams", () => {
         message: "Loading Lighthouse runtime...",
       });
     } finally {
+      resetLighthouseRuntimeCache();
       restoreLighthouseVirtualFs();
     }
   });
