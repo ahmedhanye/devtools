@@ -8,6 +8,9 @@ const nextConfig: NextConfig = {
   pageExtensions: ["next.tsx", "next.ts"],
   ...(isDev
     ? {
+        experimental: {
+          proxyTimeout: 300_000,
+        },
         async rewrites() {
           return [
             {

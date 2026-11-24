@@ -11,6 +11,10 @@ const meta: Meta<typeof Badge> = {
       options: [
         "default",
         "secondary",
+        "neutral",
+        "info",
+        "success",
+        "warning",
         "destructive",
         "outline",
         "ghost",
@@ -49,4 +53,19 @@ export const Outline: Story = {
     variant: "outline",
     children: "Outline",
   },
+};
+
+export const SemanticTones: Story = {
+  render: () => (
+    <div className="flex flex-wrap items-center gap-2">
+      <Badge variant="neutral">Neutral</Badge>
+      <Badge variant="info">Running</Badge>
+      <Badge variant="success" size="md">
+        96 Passing
+      </Badge>
+      <Badge variant="warning">Warning</Badge>
+      <Badge variant="destructive">Failing</Badge>
+      <Badge variant="outline">Outline</Badge>
+    </div>
+  ),
 };

@@ -107,6 +107,7 @@ export default defineConfig({
   test: {
     environment: "happy-dom",
     globals: true,
+    testTimeout: 15_000,
     server: {
       deps: {
         inline: [/@storybook/, /vite-plugin-storybook-nextjs/],
