@@ -124,6 +124,28 @@ export async function executeBatchWithPorts(
   const { representative, runIndex, medianMetadata } =
     computeRepresentativeRun(iterations);
   const normalized = normalizeLhr(representative.lhr, medianMetadata);
+
+  options.onProgress?.({
+    stage: "generating_report",
+    message: "Generating JSON and HTML reports",
+    runIndex: validated.runs - 1,
+    totalRuns: validated.runs,
+  });
+  if (options.onProgress) {
+    // Yield a macrotask so SSE flushes generating_report before synchronous HTML rendering.
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+    throwIfAborted(options.signal);
+  }
+
+  const reportHtml =
+    representative.reportHtml ??
+    (ports.generateHtmlReport
+      ? await ports.generateHtmlReport(representative.lhr)
+      : `<html><body><pre>${representative.reportJson}</pre></body></html>`);
+  throwIfAborted(options.signal);
+
   const durationMs = Math.max(1, Math.round(performance.now() - startTime));
 
   return {
@@ -133,7 +155,7 @@ export async function executeBatchWithPorts(
     totalRuns: validated.runs,
     normalized,
     reportJson: representative.reportJson,
-    reportHtml: representative.reportHtml,
+    reportHtml,
     representativeRunIndex: runIndex,
     durationMs,
   };

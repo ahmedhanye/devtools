@@ -15,6 +15,7 @@ import type {
   LighthouseThrottlingMethod,
   ListLighthouseRunsOptions,
   NewLighthouseRunRecord,
+  RawLighthouseResult,
   SingleIterationResult,
 } from "../contracts";
 
@@ -58,6 +59,8 @@ export interface ExecuteBatchPorts {
   executeIteration: LighthouseIterationExecutor;
   /** Default browser discovery resolver when `options.resolveBrowser` is omitted. */
   resolveBrowser: BrowserResolverPort;
+  /** Optional HTML report renderer invoked once for the winning representative run. */
+  generateHtmlReport?: (lhr: RawLighthouseResult) => Promise<string> | string;
 }
 
 /**

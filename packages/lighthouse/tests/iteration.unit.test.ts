@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import { describe, expect, it } from "bun:test";
 import type {
   BrowserResolution,
@@ -9,6 +10,7 @@ import {
   type ExecuteIterationParams,
 } from "../src/application";
 import type {
+  LighthouseProgressEvent,
   RawLighthouseResult,
   SingleIterationResult,
 } from "../src/contracts";
@@ -18,7 +20,9 @@ import {
   DESKTOP_THROTTLING,
   executeIteration,
   extractReportStrings,
+  mapLighthouseStatusToProgress,
 } from "../src/infra/runtime/iteration";
+import { restoreLighthouseVirtualFs } from "../src/infra/runtime/virtual-fs";
 
 describe("Lighthouse Iteration Pure Configuration & Report Helpers", () => {
   it("buildLighthouseConfig constructs mobile and desktop configs with default 4 categories and throttling overrides", () => {
@@ -294,5 +298,246 @@ describe("executeBatchWithPorts & executeIteration option/abort seams", () => {
     ).rejects.toBeInstanceOf(AuditCancelledError);
 
     expect(abortedKillCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it("mapLighthouseStatusToProgress maps curated Lighthouse phases and ignores unrelated statuses", () => {
+    expect(mapLighthouseStatusToProgress("Connecting to browser")).toEqual({
+      stage: "navigating",
+      message: "Connecting to headless Chrome",
+    });
+    expect(
+      mapLighthouseStatusToProgress("Preparing network conditions"),
+    ).toEqual({
+      stage: "navigating",
+      message: "Preparing browser cache and network conditions",
+    });
+    expect(mapLighthouseStatusToProgress("Cleaning browser cache")).toEqual({
+      stage: "navigating",
+      message: "Preparing browser cache and network conditions",
+    });
+    expect(mapLighthouseStatusToProgress("Getting artifact: Trace")).toEqual({
+      stage: "analyzing",
+      message: "Capturing page trace and artifacts",
+    });
+    expect(
+      mapLighthouseStatusToProgress("Getting artifact: Accessibility"),
+    ).toEqual({
+      stage: "analyzing",
+      message: "Collecting accessibility tree and DOM metrics",
+    });
+    expect(mapLighthouseStatusToProgress("Audit phase")).toEqual({
+      stage: "analyzing",
+      message: "Analyzing Core Web Vitals and running audits",
+    });
+    expect(
+      mapLighthouseStatusToProgress("Analyzing and running audits..."),
+    ).toEqual({
+      stage: "analyzing",
+      message: "Analyzing Core Web Vitals and running audits",
+    });
+    expect(
+      mapLighthouseStatusToProgress("Auditing: Largest Contentful Paint"),
+    ).toEqual({
+      stage: "analyzing",
+      message: "Analyzing Core Web Vitals and running audits",
+    });
+    expect(mapLighthouseStatusToProgress("Generating results...")).toEqual({
+      stage: "analyzing",
+      message: "Scoring categories and computing insights",
+    });
+    expect(
+      mapLighthouseStatusToProgress("Navigating to https://example.com"),
+    ).toBeNull();
+  });
+
+  it("executeIteration emits deduplicated curated milestones on live status events and detaches listener on error", async () => {
+    const emitter = new EventEmitter();
+    const events: LighthouseProgressEvent[] = [];
+    const fakeLhr = makeSingleIterationResult().lhr;
+    let capturedOutputFlag: unknown;
+
+    const iterResult = await executeIteration(
+      {
+        url: "https://example.com/live",
+        formFactor: "mobile",
+        throttlingMethod: "simulate",
+        categories: ["performance"],
+        browser: MOCK_BROWSER,
+        runIndex: 0,
+        totalRuns: 3,
+        onProgress: (event) => {
+          events.push(event);
+        },
+      },
+      {
+        statusEvents: emitter,
+        launchChrome: async () => ({
+          port: 49335,
+          kill: async () => {},
+        }),
+        runLighthouse: async (_url, flags) => {
+          capturedOutputFlag = flags.output;
+          expect(emitter.listenerCount("status")).toBe(1);
+          emitter.emit("status", ["status", "Connecting to browser"]);
+          emitter.emit("status", ["status", "Cleaning browser cache"]);
+          emitter.emit("status", ["status", "Preparing network conditions"]);
+          emitter.emit("status", ["status", "Getting artifact: Trace"]);
+          emitter.emit("status", ["status", "Getting artifact: DevtoolsLog"]);
+          emitter.emit("status", ["status", "Getting artifact: Accessibility"]);
+          emitter.emit("status", ["status", "Connecting to browser"]);
+          emitter.emit("status", ["status", "Analyzing and running audits..."]);
+          emitter.emit("status", [
+            "status",
+            "Auditing: First Contentful Paint",
+          ]);
+          emitter.emit("status", ["status", "Generating results..."]);
+          return {
+            lhr: fakeLhr,
+            report: JSON.stringify(fakeLhr),
+          };
+        },
+      },
+    );
+
+    expect(emitter.listenerCount("status")).toBe(0);
+    expect(capturedOutputFlag).toBe("json");
+    expect(iterResult.reportHtml).toBeUndefined();
+    expect(events.map((e) => `${e.stage}:${e.message}`)).toEqual([
+      "launching_browser:Launching headless Chromium (Chromium 136.0.0)",
+      "navigating:Navigating to https://example.com/live",
+      "navigating:Connecting to headless Chrome",
+      "navigating:Preparing browser cache and network conditions",
+      "analyzing:Capturing page trace and artifacts",
+      "analyzing:Collecting accessibility tree and DOM metrics",
+      "analyzing:Analyzing Core Web Vitals and running audits",
+      "analyzing:Scoring categories and computing insights",
+    ]);
+
+    // Also detaches listener when runLighthouse throws
+    await expect(
+      executeIteration(
+        {
+          url: "https://example.com/fail",
+          formFactor: "mobile",
+          throttlingMethod: "simulate",
+          categories: ["performance"],
+          browser: MOCK_BROWSER,
+          runIndex: 0,
+          totalRuns: 1,
+        },
+        {
+          statusEvents: emitter,
+          launchChrome: async () => ({
+            port: 49336,
+            kill: async () => {},
+          }),
+          runLighthouse: async () => {
+            expect(emitter.listenerCount("status")).toBe(1);
+            throw new Error("boom");
+          },
+        },
+      ),
+    ).rejects.toThrow("boom");
+
+    expect(emitter.listenerCount("status")).toBe(0);
+  });
+
+  it("executeBatchWithPorts emits generating_report once at the end and renders HTML once for the representative run", async () => {
+    const events: LighthouseProgressEvent[] = [];
+    let htmlRenderCount = 0;
+
+    const batch = await executeBatchWithPorts(
+      {
+        url: "https://example.com/multi",
+        runs: 3,
+        onProgress: (event) => {
+          events.push(event);
+        },
+      },
+      {
+        resolveBrowser: async () => MOCK_BROWSER,
+        executeIteration: async (params) => {
+          const base = makeSingleIterationResult("https://example.com/multi");
+          params.onProgress?.({
+            stage: "launching_browser",
+            message: "Launching",
+            runIndex: params.runIndex,
+            totalRuns: params.totalRuns,
+          });
+          params.onProgress?.({
+            stage: "navigating",
+            message: "Navigating",
+            runIndex: params.runIndex,
+            totalRuns: params.totalRuns,
+          });
+          params.onProgress?.({
+            stage: "analyzing",
+            message: "Analyzing",
+            runIndex: params.runIndex,
+            totalRuns: params.totalRuns,
+          });
+          return {
+            lhr: base.lhr,
+            reportJson: base.reportJson,
+          };
+        },
+        generateHtmlReport: () => {
+          htmlRenderCount += 1;
+          return "<html><body>representative-html</body></html>";
+        },
+      },
+    );
+
+    expect(htmlRenderCount).toBe(1);
+    expect(batch.reportHtml).toBe(
+      "<html><body>representative-html</body></html>",
+    );
+    expect(events.map((e) => e.stage)).toEqual([
+      "locating_browser",
+      "launching_browser",
+      "navigating",
+      "analyzing",
+      "launching_browser",
+      "navigating",
+      "analyzing",
+      "launching_browser",
+      "navigating",
+      "analyzing",
+      "generating_report",
+    ]);
+  });
+
+  it("executeIteration loads Lighthouse runtime with standalone virtual FS on cold start and emits loading message", async () => {
+    const events: LighthouseProgressEvent[] = [];
+    try {
+      await expect(
+        executeIteration(
+          {
+            url: "https://example.com/cold-load",
+            formFactor: "mobile",
+            throttlingMethod: "simulate",
+            categories: ["performance"],
+            runIndex: 0,
+            totalRuns: 1,
+            onProgress: (event) => {
+              events.push(event);
+            },
+          },
+          {
+            isStandalone: true,
+            resolveBrowser: async () => {
+              throw new Error("stop-after-load");
+            },
+          },
+        ),
+      ).rejects.toThrow("stop-after-load");
+
+      expect(events[0]).toMatchObject({
+        stage: "locating_browser",
+        message: "Loading Lighthouse runtime...",
+      });
+    } finally {
+      restoreLighthouseVirtualFs();
+    }
   });
 });

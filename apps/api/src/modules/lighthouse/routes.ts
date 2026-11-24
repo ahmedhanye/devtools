@@ -71,6 +71,33 @@ function resolveStoreRead<T>(
   }
 }
 
+function parseQueryParams<T>(
+  c: Context<{ Bindings: ApiBindings }>,
+  schema: {
+    safeParse: (
+      input: unknown,
+    ) =>
+      | { success: true; data: T }
+      | { success: false; error: { flatten: () => unknown } };
+  },
+  message: string,
+): { ok: true; data: T } | { ok: false; response: Response } {
+  const parsed = schema.safeParse(c.req.query());
+  if (!parsed.success) {
+    return {
+      ok: false,
+      response: jsonApiError(
+        c,
+        422,
+        API_ERROR_CODES.VALIDATION_ERROR,
+        message,
+        parsed.error.flatten(),
+      ),
+    };
+  }
+  return { ok: true, data: parsed.data };
+}
+
 /**
  * Creates the `/lighthouse` Hono route module exposing Audit Job triggering, SSE streaming,
  * historical run inspection, isolated HTML report serving, and pairwise diffs.
@@ -187,7 +214,7 @@ export function createLighthouseRoutes(options: LighthouseRoutesOptions) {
 
       c.env?.server?.timeout(c.req.raw, 0);
 
-      return streamSSE(c, async (stream) => {
+      const response = streamSSE(c, async (stream) => {
         let finished = false;
         let keepaliveTimer: ReturnType<typeof setInterval> | undefined;
         let unsubscribe: (() => void) | undefined;
@@ -265,17 +292,19 @@ export function createLighthouseRoutes(options: LighthouseRoutesOptions) {
           cleanup();
         }
       });
+
+      response.headers.set("Cache-Control", "no-cache, no-transform");
+      response.headers.set("X-Accel-Buffering", "no");
+      return response;
     })
     .get("/runs", (c) => {
-      const parsed = ListLighthouseRunsQuerySchema.safeParse(c.req.query());
-      if (!parsed.success) {
-        return jsonApiError(
-          c,
-          422,
-          API_ERROR_CODES.VALIDATION_ERROR,
-          "Invalid query parameters",
-          parsed.error.flatten(),
-        );
+      const parsed = parseQueryParams(
+        c,
+        ListLighthouseRunsQuerySchema,
+        "Invalid query parameters",
+      );
+      if (!parsed.ok) {
+        return parsed.response;
       }
 
       const limit = parsed.data.limit ?? 50;
@@ -286,6 +315,7 @@ export function createLighthouseRoutes(options: LighthouseRoutesOptions) {
         url: parsed.data.url,
         search: parsed.data.search,
         formFactor: parsed.data.formFactor,
+        throttlingMethod: parsed.data.throttlingMethod,
         limit,
         offset,
       });
@@ -338,15 +368,13 @@ export function createLighthouseRoutes(options: LighthouseRoutesOptions) {
       return createHtmlReportResponse(safePath);
     })
     .get("/diff", (c) => {
-      const parsed = LighthouseDiffQuerySchema.safeParse(c.req.query());
-      if (!parsed.success) {
-        return jsonApiError(
-          c,
-          422,
-          API_ERROR_CODES.VALIDATION_ERROR,
-          "Both 'baseline' and 'comparison' query parameters are required",
-          parsed.error.flatten(),
-        );
+      const parsed = parseQueryParams(
+        c,
+        LighthouseDiffQuerySchema,
+        "Both 'baseline' and 'comparison' query parameters are required",
+      );
+      if (!parsed.ok) {
+        return parsed.response;
       }
 
       const diffResult = resolveStoreRead(c, () =>

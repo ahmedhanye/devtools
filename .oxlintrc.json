@@ -92,7 +92,8 @@
         "jsx-a11y/anchor-is-valid": "deny",
         "jsx-a11y/click-events-have-key-events": "warn",
         "jsx-a11y/prefer-tag-over-role": "off",
-        "react-perf/jsx-no-jsx-as-prop": "off"
+        "react-perf/jsx-no-jsx-as-prop": "off",
+        "react-perf/jsx-no-new-function-as-prop": "off"
       }
     },
     {

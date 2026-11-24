@@ -384,6 +384,65 @@ describe("LighthouseStore Persistence (createLighthouseStore)", () => {
       expect(store.listRunsWithTotal().total).toBe(4);
     });
 
+    it("filters by throttlingMethod across listRuns and listRunsWithTotal", () => {
+      store.insertRun(
+        makeSampleRow({
+          id: "t-sim",
+          throttlingMethod: "simulate",
+          formFactor: "mobile",
+          createdAt: new Date("2026-11-10T10:00:00Z"),
+        }),
+      );
+      store.insertRun(
+        makeSampleRow({
+          id: "t-dev-1",
+          throttlingMethod: "devtools",
+          formFactor: "desktop",
+          createdAt: new Date("2026-11-10T11:00:00Z"),
+        }),
+      );
+      store.insertRun(
+        makeSampleRow({
+          id: "t-dev-2",
+          throttlingMethod: "devtools",
+          formFactor: "mobile",
+          createdAt: new Date("2026-11-10T12:00:00Z"),
+        }),
+      );
+      store.insertRun(
+        makeSampleRow({
+          id: "t-prov",
+          throttlingMethod: "provided",
+          formFactor: "desktop",
+          createdAt: new Date("2026-11-10T13:00:00Z"),
+        }),
+      );
+
+      const devtoolsAll = store.listRuns({ throttlingMethod: "devtools" });
+      expect(devtoolsAll.map((r) => r.id)).toEqual(["t-dev-2", "t-dev-1"]);
+
+      const devtoolsPaged = store.listRunsWithTotal({
+        throttlingMethod: "devtools",
+        limit: 1,
+        offset: 0,
+      });
+      expect(devtoolsPaged.total).toBe(2);
+      expect(devtoolsPaged.runs.map((r) => r.id)).toEqual(["t-dev-2"]);
+
+      const combined = store.listRunsWithTotal({
+        throttlingMethod: "devtools",
+        formFactor: "desktop",
+      });
+      expect(combined.total).toBe(1);
+      expect(combined.runs.map((r) => r.id)).toEqual(["t-dev-1"]);
+
+      const providedOnly = store.listRunsWithTotal({
+        throttlingMethod: "provided",
+      });
+      expect(providedOnly.total).toBe(1);
+      expect(providedOnly.runs.map((r) => r.id)).toEqual(["t-prov"]);
+    });
+
     it("preserves null summaryJson for malformed rows and avoids false insight diffs in both directions", () => {
       const malformedSummary = {
         unexpected: true,

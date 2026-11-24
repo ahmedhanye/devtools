@@ -178,6 +178,10 @@ describe("Lighthouse Audit Job SSE Streaming (/api/lighthouse/audits/:jobId/stre
     expect(streamRes.headers.get("content-type")).toContain(
       "text/event-stream",
     );
+    expect(streamRes.headers.get("cache-control")).toBe(
+      "no-cache, no-transform",
+    );
+    expect(streamRes.headers.get("x-accel-buffering")).toBe("no");
     expect(timeoutCalls).toEqual([0]);
 
     // Wait long enough for >= 1 keepalive comment, then resolve job

@@ -637,6 +637,17 @@ export async function collectCoverage(
   };
 }
 
+/**
+ * Formats a concise single-line trailing failure summary for stderr when coverage collection fails.
+ *
+ * @param err - Error instance or thrown value from coverage execution or CLI parsing.
+ * @returns Single-line failure summary pointing to the test/error output above the coverage table.
+ */
+export function formatCoverageFailureMessage(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  return `[collect-coverage] FAILED: ${message} (inspect test/error summary above the coverage table)`;
+}
+
 if (import.meta.main) {
   try {
     const cli = parseCollectCoverageCliArgs(process.argv.slice(2));
@@ -654,11 +665,11 @@ if (import.meta.main) {
       cleanPriorReports: true,
       workspaces: cli.workspaces,
     }).catch((err) => {
-      console.error(err);
+      console.error(formatCoverageFailureMessage(err));
       process.exit(1);
     });
   } catch (err) {
-    console.error(err instanceof Error ? err.message : String(err));
+    console.error(formatCoverageFailureMessage(err));
     process.exit(1);
   }
 }

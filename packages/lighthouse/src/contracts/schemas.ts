@@ -344,7 +344,10 @@ export const TriggerLighthouseAuditRequestSchema = z
     formFactor: LighthouseFormFactorSchema.optional(),
     throttlingMethod: LighthouseThrottlingMethodSchema.optional(),
     runs: z.number().int().min(1).optional(),
-    categories: z.array(LighthouseCategoryIdSchema).min(1).optional(),
+    categories: z
+      .array(LighthouseCategoryIdSchema)
+      .min(1, "Select at least one audit category")
+      .optional(),
   })
   .strict();
 
@@ -408,6 +411,7 @@ export const ListLighthouseRunsQuerySchema = z
     url: z.string().trim().min(1).optional(),
     search: z.string().trim().min(1).optional(),
     formFactor: LighthouseFormFactorSchema.optional(),
+    throttlingMethod: LighthouseThrottlingMethodSchema.optional(),
     limit: z
       .preprocess(parseQueryInt, z.number().int().min(1).max(100))
       .optional(),

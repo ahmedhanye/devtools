@@ -318,6 +318,7 @@ describe("Lighthouse HTTP API Routes (/api/lighthouse)", () => {
           id: "aaaaaaaa-1111-4111-8111-111111111111",
           url: "https://docs.example.com/intro",
           formFactor: "desktop",
+          throttlingMethod: "devtools",
           htmlReportPath: run1Html,
           createdAt: new Date("2026-11-10T12:00:00Z"),
         }),
@@ -327,6 +328,7 @@ describe("Lighthouse HTTP API Routes (/api/lighthouse)", () => {
           id: "bbbbbbbb-2222-4222-8222-222222222222",
           url: "https://example.com/",
           formFactor: "mobile",
+          throttlingMethod: "simulate",
           createdAt: new Date("2026-11-10T11:00:00Z"),
         }),
       );
@@ -335,6 +337,7 @@ describe("Lighthouse HTTP API Routes (/api/lighthouse)", () => {
           id: "cccccccc-3333-4333-8333-333333333333",
           url: "https://other.dev/",
           formFactor: "mobile",
+          throttlingMethod: "provided",
           createdAt: new Date("2026-11-10T10:00:00Z"),
         }),
       );
@@ -385,6 +388,27 @@ describe("Lighthouse HTTP API Routes (/api/lighthouse)", () => {
       expect(invalidQueryRes.status).toBe(422);
       expect(
         ApiErrorResponseSchema.parse(await invalidQueryRes.json()).error.code,
+      ).toBe(API_ERROR_CODES.VALIDATION_ERROR);
+
+      const throttlingRes = await app.request(
+        "/api/lighthouse/runs?throttlingMethod=provided",
+      );
+      expect(throttlingRes.status).toBe(200);
+      const throttlingData = ListLighthouseRunsResponseSchema.parse(
+        await throttlingRes.json(),
+      );
+      expect(throttlingData.total).toBe(1);
+      expect(throttlingData.runs.map((r) => r.id)).toEqual([
+        "cccccccc-3333-4333-8333-333333333333",
+      ]);
+
+      const invalidThrottlingRes = await app.request(
+        "/api/lighthouse/runs?throttlingMethod=invalid",
+      );
+      expect(invalidThrottlingRes.status).toBe(422);
+      expect(
+        ApiErrorResponseSchema.parse(await invalidThrottlingRes.json()).error
+          .code,
       ).toBe(API_ERROR_CODES.VALIDATION_ERROR);
     });
 
