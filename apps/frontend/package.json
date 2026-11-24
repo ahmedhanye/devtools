@@ -20,12 +20,15 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
+    "@tanstack/react-query": "^5.108.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
     "lucide-react": "^1.73.0",
     "next": "^16.4.6",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
+    "recharts": "3.8.0",
     "tailwind-merge": "^3.7.0"
   },
   "devDependencies": {
@@ -41,6 +44,7 @@
     "happy-dom": "^21.0.1",
     "postcss": "^8.5.33",
     "react-doctor": "^0.9.23",
+    "shadcn": "^4.23.0",
     "steiger": "^0.10.0",
     "storybook": "^10.6.7",
     "tailwindcss": "^4.3.3",

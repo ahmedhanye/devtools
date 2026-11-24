@@ -145,6 +145,14 @@
         "patterns": ["apps/frontend/src/pages/**"]
       },
       {
+        "name": "frontend-features",
+        "patterns": ["apps/frontend/src/features/**"]
+      },
+      {
+        "name": "frontend-entities",
+        "patterns": ["apps/frontend/src/entities/**"]
+      },
+      {
         "name": "frontend-shared",
         "patterns": ["apps/frontend/src/shared/**"]
       }
@@ -307,6 +315,8 @@
         "from": "frontend-app",
         "allow": [
           "frontend-pages",
+          "frontend-features",
+          "frontend-entities",
           "frontend-shared",
           "core",
           "lighthouse-schemas"
@@ -314,6 +324,25 @@
       },
       {
         "from": "frontend-pages",
+        "allow": [
+          "frontend-features",
+          "frontend-entities",
+          "frontend-shared",
+          "core",
+          "lighthouse-schemas"
+        ]
+      },
+      {
+        "from": "frontend-features",
+        "allow": [
+          "frontend-entities",
+          "frontend-shared",
+          "core",
+          "lighthouse-schemas"
+        ]
+      },
+      {
+        "from": "frontend-entities",
         "allow": ["frontend-shared", "core", "lighthouse-schemas"]
       },
       {

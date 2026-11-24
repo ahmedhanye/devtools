@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type * as React from "react";
 import { AppLayout } from "@/shared/ui";
+import { QueryProvider } from "./providers/query-provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -16,7 +17,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="bg-background text-foreground min-h-dvh antialiased">
-        <AppLayout>{children}</AppLayout>
+        <QueryProvider>
+          <AppLayout>{children}</AppLayout>
+        </QueryProvider>
       </body>
     </html>
   );
