@@ -7,7 +7,7 @@ Guidelines for running Portable Stories under Vitest and authoring interactive `
 > [!WARNING]
 > Every story file must declare a named `const meta` before `export default meta;`. Anonymous `export default { ... }` declarations fail `storybookStoriesPlugin` transformation during Vitest runs.
 
-- **Zero UI component `.test.tsx` files.** Presentational components across `apps/frontend/src/{pages,features,entities,shared}/` are tested exclusively through co-located `*.stories.tsx` Portable Stories.
+- **Zero UI component `.test.tsx` files.** Presentational components across `apps/frontend/src/{app/layouts,pages,features,entities,shared}/` are tested exclusively through co-located `*.stories.tsx` Portable Stories.
 - **Automatic CSF transformation.** [`apps/frontend/vitest.config.ts`](../../apps/frontend/vitest.config.ts) parses `src/**/*.stories.{ts,tsx}` with `loadCsf` (`storybook/internal/csf-tools`), wraps exported stories with `composeStories` from `@storybook/nextjs-vite` and `.storybook/preview`, and runs `await story.run()` in `happy-dom` under `@vitest/coverage-v8`.
 - **Built-in Next.js mocks.** `apps/frontend/vitest.config.ts` aliases `next/navigation`, `next/link`, `next/headers`, `next/router`, `next/cache`, and `sb-original/image-context` automatically. Do not add manual `vi.mock("next/navigation")` calls inside story files.
 
