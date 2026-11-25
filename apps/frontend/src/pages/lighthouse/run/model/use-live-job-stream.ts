@@ -53,6 +53,19 @@ function clearSettleTimer(tracker: StreamTrackerRefs): void {
   }
 }
 
+function isNewerOrEqualProgress(
+  incoming: AuditSseProgressEvent,
+  existing: AuditSseProgressEvent | null | undefined,
+): boolean {
+  if (!existing) {
+    return true;
+  }
+  return (
+    new Date(incoming.timestamp).getTime() >=
+    new Date(existing.timestamp).getTime()
+  );
+}
+
 function syncActiveJobProgressInCache(
   queryClient: QueryClient,
   jobId: string,
@@ -62,6 +75,9 @@ function syncActiveJobProgressInCache(
     lighthouseQueries.activeJob().queryKey,
     (prev) => {
       if (prev?.active !== true || prev.job.id !== jobId) {
+        return prev;
+      }
+      if (!isNewerOrEqualProgress(event, prev.job.latestProgress)) {
         return prev;
       }
       return {
@@ -94,11 +110,38 @@ function applyCompletedAuditToCache(
   });
 }
 
+function scheduleRetryOrDisconnect(params: {
+  isDisposed: () => boolean;
+  tracker: StreamTrackerRefs;
+  setStreamAttempt: React.Dispatch<React.SetStateAction<number>>;
+  setIsStreamDisconnected: React.Dispatch<React.SetStateAction<boolean>>;
+}): void {
+  const { isDisposed, tracker, setStreamAttempt, setIsStreamDisconnected } =
+    params;
+  if (tracker.retryCount < MAX_SSE_RETRIES) {
+    const delayMs = computeSseRetryDelay(tracker.retryCount);
+    tracker.retryCount += 1;
+    clearRetryTimer(tracker);
+    tracker.retryTimer = setTimeout(() => {
+      tracker.retryTimer = null;
+      if (!isDisposed() && !tracker.terminalReceived) {
+        tracker.awaitingInactiveFinal = false;
+        setStreamAttempt((attempt) => attempt + 1);
+      }
+    }, delayMs);
+    return;
+  }
+  setIsStreamDisconnected(true);
+}
+
 async function handleStreamConnectionDrop(params: {
   jobId: string;
   isDisposed: () => boolean;
   tracker: StreamTrackerRefs;
-  refetchActiveJob: () => Promise<{ data?: ActiveAuditJobResponse }>;
+  refetchActiveJob: () => Promise<{
+    data?: ActiveAuditJobResponse;
+    isError?: boolean;
+  }>;
   setStreamAttempt: React.Dispatch<React.SetStateAction<number>>;
   setIsExpired: React.Dispatch<React.SetStateAction<boolean>>;
   setIsStreamDisconnected: React.Dispatch<React.SetStateAction<boolean>>;
@@ -118,25 +161,27 @@ async function handleStreamConnectionDrop(params: {
     return;
   }
 
+  if (result.isError) {
+    scheduleRetryOrDisconnect({
+      isDisposed,
+      tracker,
+      setStreamAttempt,
+      setIsStreamDisconnected,
+    });
+    return;
+  }
+
   const latestActive =
     result.data?.active === true && result.data.job.id === jobId;
   if (latestActive) {
     tracker.sawActive = true;
     tracker.awaitingInactiveFinal = true;
-    if (tracker.retryCount < MAX_SSE_RETRIES) {
-      const delayMs = computeSseRetryDelay(tracker.retryCount);
-      tracker.retryCount += 1;
-      clearRetryTimer(tracker);
-      tracker.retryTimer = setTimeout(() => {
-        tracker.retryTimer = null;
-        if (!isDisposed() && !tracker.terminalReceived) {
-          tracker.awaitingInactiveFinal = false;
-          setStreamAttempt((attempt) => attempt + 1);
-        }
-      }, delayMs);
-    } else {
-      setIsStreamDisconnected(true);
-    }
+    scheduleRetryOrDisconnect({
+      isDisposed,
+      tracker,
+      setStreamAttempt,
+      setIsStreamDisconnected,
+    });
     return;
   }
 
@@ -155,7 +200,10 @@ interface AuditStreamHandlerParams {
   queryClient: QueryClient;
   tracker: StreamTrackerRefs;
   isDisposed: () => boolean;
-  refetchActiveJob: () => Promise<{ data?: ActiveAuditJobResponse }>;
+  refetchActiveJob: () => Promise<{
+    data?: ActiveAuditJobResponse;
+    isError?: boolean;
+  }>;
   setLatestProgress: React.Dispatch<
     React.SetStateAction<AuditSseProgressEvent | null>
   >;
@@ -189,7 +237,9 @@ function buildAuditStreamHandlers(params: AuditStreamHandlerParams) {
       tracker.retryCount = 0;
       tracker.awaitingInactiveFinal = false;
       setIsStreamDisconnected(false);
-      setLatestProgress(event);
+      setLatestProgress((prev) =>
+        isNewerOrEqualProgress(event, prev) ? event : prev,
+      );
       syncActiveJobProgressInCache(queryClient, jobId, event);
     },
     onComplete: (event: AuditSseCompleteEvent) => {
@@ -415,7 +465,7 @@ export function useLiveJobStream(jobId: string) {
     sseError,
     isExpired: isExpired && !activeJob,
     isCompleting,
-    isStreamDisconnected: isStreamDisconnected && Boolean(activeJob),
+    isStreamDisconnected: isStreamDisconnected && !isExpired,
     handleReconnect,
   };
 }

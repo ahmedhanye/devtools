@@ -357,7 +357,7 @@ describe("useLiveJobStream", () => {
     client.clear();
   });
 
-  it("performs final stream check when active job transitions to inactive after exhausted retries", async () => {
+  it("performs automatic final stream check when polling reports inactive after exhausted retries", async () => {
     vi.useFakeTimers();
     let active = true;
     const fetchMock = vi.fn(
@@ -401,12 +401,6 @@ describe("useLiveJobStream", () => {
     expect(FakeEventSource.instances).toHaveLength(5);
     expect(result.current.isStreamDisconnected).toBe(true);
 
-    act(() => {
-      result.current.handleReconnect();
-    });
-    expect(result.current.isStreamDisconnected).toBe(false);
-    expect(FakeEventSource.instances).toHaveLength(6);
-
     active = false;
     await act(async () => {
       await vi.advanceTimersByTimeAsync(4_500);
@@ -414,15 +408,12 @@ describe("useLiveJobStream", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(10);
     });
-    await act(async () => {
-      FakeEventSource.instances[5]!.emit("error", new Event("error"));
-    });
 
-    expect(FakeEventSource.instances).toHaveLength(7);
+    expect(FakeEventSource.instances).toHaveLength(6);
     expect(result.current.isExpired).toBe(false);
 
     act(() => {
-      FakeEventSource.instances[6]!.emit(
+      FakeEventSource.instances[5]!.emit(
         "complete",
         new MessageEvent("complete", {
           data: JSON.stringify({
@@ -440,6 +431,54 @@ describe("useLiveJobStream", () => {
       await vi.advanceTimersByTimeAsync(250);
     });
     expect(window.location.search).toBe("?id=run-99");
+    unmount();
+    client.clear();
+  });
+
+  it("re-opens stream and clears disconnected state on manual reconnect", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ active: true, job: makeJob() }), {
+          status: 200,
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    });
+    const { result, unmount } = renderHook(() => useLiveJobStream("job-1"), {
+      wrapper: createWrapper(client),
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(result.current.activeJob?.id).toBe("job-1");
+
+    const backoffDelays = [250, 500, 1000, 2000];
+    for (const [idx, delay] of backoffDelays.entries()) {
+      await act(async () => {
+        FakeEventSource.instances[idx]!.emit("error", new Event("error"));
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(delay);
+      });
+    }
+
+    await act(async () => {
+      FakeEventSource.instances[4]!.emit("error", new Event("error"));
+    });
+    expect(FakeEventSource.instances).toHaveLength(5);
+    expect(result.current.isStreamDisconnected).toBe(true);
+
+    act(() => {
+      result.current.handleReconnect();
+    });
+    expect(result.current.isStreamDisconnected).toBe(false);
+    expect(FakeEventSource.instances).toHaveLength(6);
+
     unmount();
     client.clear();
   });
@@ -682,6 +721,138 @@ describe("useLiveJobStream", () => {
         "active-job",
       ])?.job?.latestProgress,
     ).toBeNull();
+
+    unmount();
+    client.clear();
+  });
+
+  it("keeps newer polled progress when an older delayed SSE progress event arrives", async () => {
+    const jobWithNewerProgress: AuditJob = {
+      ...makeJob(),
+      latestProgress: {
+        jobId: "job-1",
+        status: "running",
+        stage: "analyzing",
+        message: "Analyzing traces",
+        timestamp: "2026-11-22T02:00:12.000Z",
+      },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ active: true, job: jobWithNewerProgress }),
+            { status: 200 },
+          ),
+      ),
+    );
+
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    });
+    const { result, unmount } = renderHook(() => useLiveJobStream("job-1"), {
+      wrapper: createWrapper(client),
+    });
+
+    await waitFor(() => expect(result.current.activeJob?.id).toBe("job-1"));
+
+    act(() => {
+      FakeEventSource.instances[0]!.emit(
+        "progress",
+        new MessageEvent("progress", {
+          data: JSON.stringify({
+            jobId: "job-1",
+            status: "running",
+            stage: "navigating",
+            message: "Navigating",
+            timestamp: "2026-11-22T02:00:04.000Z",
+          }),
+        }),
+      );
+    });
+
+    expect(
+      client.getQueryData<{ active: boolean; job: AuditJob | null }>([
+        "lighthouse",
+        "active-job",
+      ])?.job?.latestProgress?.stage,
+    ).toBe("analyzing");
+
+    act(() => {
+      FakeEventSource.instances[0]!.emit(
+        "progress",
+        new MessageEvent("progress", {
+          data: JSON.stringify({
+            jobId: "job-1",
+            status: "running",
+            stage: "generating_report",
+            message: "Generating report",
+            timestamp: "2026-11-22T02:00:15.000Z",
+          }),
+        }),
+      );
+      FakeEventSource.instances[0]!.emit(
+        "progress",
+        new MessageEvent("progress", {
+          data: JSON.stringify({
+            jobId: "job-1",
+            status: "running",
+            stage: "navigating",
+            message: "Delayed navigating",
+            timestamp: "2026-11-22T02:00:06.000Z",
+          }),
+        }),
+      );
+    });
+
+    expect(result.current.latestProgress?.stage).toBe("generating_report");
+    expect(
+      client.getQueryData<{ active: boolean; job: AuditJob | null }>([
+        "lighthouse",
+        "active-job",
+      ])?.job?.latestProgress?.stage,
+    ).toBe("generating_report");
+
+    unmount();
+    client.clear();
+  });
+
+  it("retries and enters disconnected state instead of expired when active-job refetch fails", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(
+      async () => new Response("Service unavailable", { status: 500 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    });
+    const { result, unmount } = renderHook(() => useLiveJobStream("job-1"), {
+      wrapper: createWrapper(client),
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    const backoffDelays = [250, 500, 1000, 2000];
+    for (const [idx, delay] of backoffDelays.entries()) {
+      await act(async () => {
+        FakeEventSource.instances[idx]!.emit("error", new Event("error"));
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(delay);
+      });
+    }
+
+    await act(async () => {
+      FakeEventSource.instances[4]!.emit("error", new Event("error"));
+    });
+
+    expect(FakeEventSource.instances).toHaveLength(5);
+    expect(result.current.isExpired).toBe(false);
+    expect(result.current.isStreamDisconnected).toBe(true);
 
     unmount();
     client.clear();

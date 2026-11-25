@@ -336,4 +336,84 @@ describe("useTriggerAuditForm", () => {
     });
     expect(result.current.submissionErrorMessage).toBeNull();
   });
+
+  it("keeps pending submission active when fields are edited mid-request and surfaces its failure", async () => {
+    let rejectPost: ((reason?: unknown) => void) | undefined;
+    const fetchSpy = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === "string"
+            ? input
+            : input instanceof URL
+              ? input.href
+              : input.url;
+        if (url.includes("/api/lighthouse/audits/active")) {
+          return new Response(JSON.stringify({ active: false, job: null }), {
+            status: 200,
+          });
+        }
+        if (url.includes("/api/lighthouse/runs")) {
+          return new Response(JSON.stringify({ runs: [], total: 0 }), {
+            status: 200,
+          });
+        }
+        if (url.includes("/api/lighthouse/audits") && init?.method === "POST") {
+          return new Promise<Response>((_, reject) => {
+            rejectPost = reject;
+          });
+        }
+        return new Response("{}", { status: 404 });
+      },
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+
+    const { result } = renderHook(
+      () =>
+        useTriggerAuditForm({
+          initialUrl: "https://example.com/",
+          onClose: vi.fn(),
+        }),
+      { wrapper: createWrapper(client) },
+    );
+
+    act(() => {
+      result.current.handleSubmit({
+        preventDefault: vi.fn(),
+      } as unknown as React.FormEvent<HTMLFormElement>);
+    });
+
+    await waitFor(() => expect(result.current.isPending).toBe(true));
+
+    act(() => {
+      result.current.handleUrlChange({
+        target: { value: "https://example.org/" },
+      } as React.ChangeEvent<HTMLInputElement>);
+      result.current.handleToggleCategory("seo");
+    });
+
+    expect(result.current.isPending).toBe(true);
+
+    act(() => {
+      rejectPost?.(new Error("Request timed out"));
+    });
+
+    await waitFor(() =>
+      expect(result.current.submissionErrorMessage).toBe("Request timed out"),
+    );
+    expect(result.current.isPending).toBe(false);
+
+    act(() => {
+      result.current.handleUrlChange({
+        target: { value: "https://example.net/" },
+      } as React.ChangeEvent<HTMLInputElement>);
+    });
+    expect(result.current.submissionErrorMessage).toBeNull();
+  });
 });

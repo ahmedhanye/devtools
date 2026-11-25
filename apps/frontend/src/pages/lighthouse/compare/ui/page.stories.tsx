@@ -395,12 +395,22 @@ export const MatrixSortAndRemoveFocusedDiff: Story = {
     if (!rowSetBaseBtn) throw new Error("Expected row Set Base button");
     await userEvent.click(rowSetBaseBtn);
 
+    await expect(
+      await canvas.findByText(/Compared: shop\.example\.com\/checkout/),
+    ).toBeInTheDocument();
+
     await userEvent.click(
       canvas.getByRole("button", { name: "Remove run cmp-run-2" }),
     );
     await expect(
       await canvas.findByText("Comparison Matrix (2 Runs)"),
     ).toBeInTheDocument();
+    await expect(
+      await canvas.findByText(/Compared: shop\.example\.com\/ \(/),
+    ).toBeInTheDocument();
+    await expect(
+      canvas.queryByText(/Compared: shop\.example\.com\/checkout/),
+    ).not.toBeInTheDocument();
   },
 };
 
@@ -455,6 +465,32 @@ export const PresetsAndMissingExplicitRun: Story = {
   },
 };
 
+async function getChartTickPoint(chartSvg: HTMLElement, tickIndex: number) {
+  const tick = await waitFor(() => {
+    const ticks = chartSvg.querySelectorAll(
+      ".recharts-xAxis-tick-labels .recharts-cartesian-axis-tick-value",
+    );
+    const target = ticks[tickIndex];
+    if (!target) {
+      throw new Error(`Expected chart X-axis tick at index ${tickIndex}`);
+    }
+    return target;
+  });
+  const chartRect = chartSvg.getBoundingClientRect();
+  if (chartRect.width > 0 && chartRect.height > 0) {
+    const tickRect = tick.getBoundingClientRect();
+    return {
+      clientX: tickRect.left + tickRect.width / 2,
+      clientY: chartRect.top + chartRect.height * 0.5,
+    };
+  }
+  const xAttr = Number.parseFloat(tick.getAttribute("x") ?? "");
+  return {
+    clientX: Number.isFinite(xAttr) ? xAttr : 80 + tickIndex * 100,
+    clientY: 150,
+  };
+}
+
 export const ChartPointAndBarInspect: Story = {
   render: () => (
     <CompareProviders handler={populatedCompareHandler}>
@@ -476,19 +512,28 @@ export const ChartPointAndBarInspect: Story = {
     await expect(chartSvg.innerHTML).not.toContain("var(--color-value)");
     await expect(chartSvg.innerHTML).toContain("var(--color-chart-1)");
 
-    const rect = chartSvg.getBoundingClientRect();
-    const clickX = rect.width > 0 ? rect.left + rect.width * 0.25 : 80;
-    const clickY = rect.height > 0 ? rect.top + rect.height * 0.5 : 150;
-    await fireEvent.mouseMove(chartSvg, { clientX: clickX, clientY: clickY });
-    await new Promise((resolve) => {
-      setTimeout(resolve, 60);
+    const targetPoint = await getChartTickPoint(chartSvg, 1);
+    await fireEvent.mouseMove(chartSvg, targetPoint);
+    await waitFor(async () => {
+      const footer = canvas.getByText("Click to inspect");
+      const tooltip = footer.parentElement?.parentElement;
+      if (!tooltip) throw new Error("Expected tooltip container");
+      await expect(
+        within(tooltip).getByText("Nov 22, 02:00 AM"),
+      ).toBeInTheDocument();
     });
-    await fireEvent.click(chartSvg, { clientX: clickX, clientY: clickY });
+    await fireEvent.click(chartSvg, targetPoint);
 
     await expect(
       await body.findByText("Audit Run Inspector"),
     ).toBeInTheDocument();
-    await expect(body.getByText(/Inspecting run cmp-run-/)).toBeInTheDocument();
+    const openFullPageLink = await body.findByRole("link", {
+      name: "Open Full Page",
+    });
+    await expect(openFullPageLink).toHaveAttribute(
+      "href",
+      "/lighthouse/run?id=cmp-run-3",
+    );
     await userEvent.click(body.getByRole("button", { name: "Close" }));
     await waitFor(async () => {
       await expect(
@@ -799,28 +844,26 @@ export const MultiRunTrendOverlay: Story = {
       {},
       { timeout: 4000 },
     );
-    const rect = chartSvg.getBoundingClientRect();
-    const hoverX = rect.width > 0 ? rect.left + rect.width * 0.5 : 180;
-    const hoverY = rect.height > 0 ? rect.top + rect.height * 0.5 : 140;
-    await fireEvent.mouseMove(chartSvg, { clientX: hoverX, clientY: hoverY });
-    await new Promise((resolve) => {
-      setTimeout(resolve, 60);
+    const hoverPoint = await getChartTickPoint(chartSvg, 1);
+    await fireEvent.mouseMove(chartSvg, hoverPoint);
+    await waitFor(async () => {
+      await expect(canvas.getByText("Click to inspect")).toBeInTheDocument();
     });
 
     await userEvent.click(canvas.getByRole("tab", { name: "CWV Timings" }));
-    await fireEvent.mouseMove(chartSvg, { clientX: hoverX, clientY: hoverY });
-    await new Promise((resolve) => {
-      setTimeout(resolve, 60);
+    await fireEvent.mouseMove(chartSvg, hoverPoint);
+    await waitFor(async () => {
+      await expect(canvas.getByText("Click to inspect")).toBeInTheDocument();
     });
 
     await userEvent.click(canvas.getByRole("tab", { name: "Single Metric" }));
-    await fireEvent.mouseMove(chartSvg, { clientX: hoverX, clientY: hoverY });
-    await new Promise((resolve) => {
-      setTimeout(resolve, 60);
+    await fireEvent.mouseMove(chartSvg, hoverPoint);
+    await waitFor(async () => {
+      await expect(canvas.getByText("Click to inspect")).toBeInTheDocument();
     });
 
     await userEvent.click(canvas.getByRole("tab", { name: "LCP (ms)" }));
-    await fireEvent.mouseMove(chartSvg, { clientX: hoverX, clientY: hoverY });
+    await fireEvent.mouseMove(chartSvg, hoverPoint);
     await waitFor(async () => {
       const footer = canvas.getByText("Click to inspect");
       const tooltip = footer.parentElement?.parentElement;
@@ -830,7 +873,7 @@ export const MultiRunTrendOverlay: Story = {
     });
 
     await userEvent.click(canvas.getByRole("tab", { name: "CLS" }));
-    await fireEvent.mouseMove(chartSvg, { clientX: hoverX, clientY: hoverY });
+    await fireEvent.mouseMove(chartSvg, hoverPoint);
     await waitFor(async () => {
       const footer = canvas.getByText("Click to inspect");
       const tooltip = footer.parentElement?.parentElement;

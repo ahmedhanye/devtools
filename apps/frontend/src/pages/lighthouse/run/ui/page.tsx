@@ -397,7 +397,8 @@ function formatProgressDescription(
   ) {
     return baseMessage;
   }
-  return `${baseMessage} (Iteration ${event.runIndex + 1} of ${event.totalRuns})`;
+  const iteration = Math.min(event.runIndex, event.totalRuns - 1) + 1;
+  return `${baseMessage} (Iteration ${iteration} of ${event.totalRuns})`;
 }
 
 function computeProgressMetrics(

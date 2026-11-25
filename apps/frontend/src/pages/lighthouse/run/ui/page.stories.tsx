@@ -317,58 +317,67 @@ export const LiveJobStreamsToCompleteDetail: Story = {
   },
 };
 
-export const MountWithPolledProgressAndStreamDisconnect: Story = {
-  render: () => {
-    let pollStage: "navigating" | "analyzing" = "navigating";
-    const handler: FetchHandler = async (rawUrl) => {
-      if (rawUrl === "/api/lighthouse/audits/active") {
-        const currentStage = pollStage;
-        return new Response(
-          JSON.stringify({
-            active: true,
-            job: {
-              id: "job-polled-1",
-              url: "https://shop.example.com/",
-              formFactor: "mobile",
-              throttlingMethod: "simulate",
-              runs: 3,
-              categories: ["performance"],
-              status: "running",
-              startedAt: "2026-11-22T02:00:00.000Z",
-              completedAt: null,
-              latestProgress: {
-                jobId: "job-polled-1",
-                status: "running",
-                stage: currentStage,
-                message:
-                  currentStage === "navigating"
-                    ? "Navigating page"
-                    : "Analyzing traces",
-                runIndex: 1,
-                totalRuns: 3,
-                timestamp:
-                  currentStage === "navigating"
-                    ? "2026-11-22T02:00:04.000Z"
-                    : "2026-11-22T02:00:12.000Z",
-              },
-              runId: null,
-              error: null,
-            },
-          }),
-          { status: 200 },
-        );
-      }
-      if (rawUrl === "/api/lighthouse/audits/advance") {
-        pollStage = "analyzing";
-      }
-      return detailHandler(rawUrl);
-    };
-    return (
-      <RunProviders handler={handler} initialSearch="?job=job-polled-1">
-        <RunPage />
-      </RunProviders>
+const polledDisconnectHandler: FetchHandler = async (rawUrl) => {
+  if (rawUrl === "/api/lighthouse/audits/active") {
+    return new Response(
+      JSON.stringify({
+        active: true,
+        job: {
+          id: "job-polled-1",
+          url: "https://shop.example.com/",
+          formFactor: "mobile",
+          throttlingMethod: "simulate",
+          runs: 3,
+          categories: ["performance"],
+          status: "running",
+          startedAt: "2026-11-22T02:00:00.000Z",
+          completedAt: null,
+          latestProgress: {
+            jobId: "job-polled-1",
+            status: "running",
+            stage: "navigating",
+            message: "Navigating page",
+            runIndex: 1,
+            totalRuns: 3,
+            timestamp: "2026-11-22T02:00:04.000Z",
+          },
+          runId: null,
+          error: null,
+        },
+      }),
+      { status: 200 },
     );
-  },
+  }
+  return detailHandler(rawUrl);
+};
+
+async function exhaustStreamRetries(retryIndex = 0): Promise<void> {
+  if (retryIndex >= 5) {
+    return;
+  }
+  await waitFor(
+    async () => {
+      await expect(MockEventSource.instances.length).toBeGreaterThan(
+        retryIndex,
+      );
+    },
+    { timeout: 4000 },
+  );
+  const source = MockEventSource.instances[retryIndex];
+  if (!source) throw new Error(`Expected MockEventSource[${retryIndex}]`);
+  source.emit("error", new Event("error"));
+  await exhaustStreamRetries(retryIndex + 1);
+}
+
+export const MountWithPolledProgressAndStreamDisconnect: Story = {
+  render: () => (
+    <RunProviders
+      handler={polledDisconnectHandler}
+      initialSearch="?job=job-polled-1"
+    >
+      <RunPage />
+    </RunProviders>
+  ),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(
@@ -382,6 +391,24 @@ export const MountWithPolledProgressAndStreamDisconnect: Story = {
 
     await waitFor(async () => {
       await expect(canvas.queryByText("0.0s")).not.toBeInTheDocument();
+    });
+
+    await exhaustStreamRetries();
+
+    await expect(
+      await canvas.findByText(
+        "Live stream disconnected",
+        {},
+        { timeout: 4000 },
+      ),
+    ).toBeInTheDocument();
+    const reconnectBtn = canvas.getByRole("button", { name: "Reconnect" });
+    await userEvent.click(reconnectBtn);
+    await waitFor(async () => {
+      await expect(
+        canvas.queryByText("Live stream disconnected"),
+      ).not.toBeInTheDocument();
+      await expect(MockEventSource.instances.length).toBe(6);
     });
   },
 };

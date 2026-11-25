@@ -182,6 +182,30 @@ function useTriggerAuditMutation({
   });
 }
 
+function useErrorResetCallback(isError: boolean, reset: () => void) {
+  return useCallback(() => {
+    if (isError) {
+      reset();
+    }
+  }, [isError, reset]);
+}
+
+function resolveActiveConflictJobId(
+  conflict: ConflictState | null,
+  isFetching: boolean,
+  isServerInactive: boolean,
+  activeJobUpdateCount: number,
+): string | null {
+  if (!conflict) {
+    return null;
+  }
+  const resolvedByServer =
+    !isFetching &&
+    isServerInactive &&
+    activeJobUpdateCount > conflict.recordedAtUpdateCount;
+  return resolvedByServer ? null : conflict.jobId;
+}
+
 /**
  * Controller hook managing form fields, schema validation, recent URLs, active-job conflicts,
  * and audit trigger submission for {@link TriggerAuditForm}.
@@ -212,7 +236,12 @@ export function useTriggerAuditForm({
     setConflict,
   });
 
-  const fields = useTriggerAuditFields(initialUrl, mutation.reset);
+  const handleFieldEdit = useErrorResetCallback(
+    mutation.isError,
+    mutation.reset,
+  );
+
+  const fields = useTriggerAuditFields(initialUrl, handleFieldEdit);
 
   const {
     url,
@@ -263,13 +292,12 @@ export function useTriggerAuditForm({
   const activeJobUpdateCount =
     queryClient.getQueryState(lighthouseQueries.activeJob().queryKey)
       ?.dataUpdateCount ?? 0;
-  const conflictResolvedByServer =
-    conflict !== null &&
-    !activeJobQuery.isFetching &&
-    activeJobQuery.data?.active === false &&
-    activeJobUpdateCount > conflict.recordedAtUpdateCount;
-  const activeConflictJobId =
-    conflict && !conflictResolvedByServer ? conflict.jobId : null;
+  const activeConflictJobId = resolveActiveConflictJobId(
+    conflict,
+    activeJobQuery.isFetching,
+    activeJobQuery.data?.active === false,
+    activeJobUpdateCount,
+  );
 
   return {
     ...fields,
