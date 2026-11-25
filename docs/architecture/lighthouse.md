@@ -35,11 +35,13 @@ sequenceDiagram
         Iter->>Browser: launchBrowserSession({ browser, disableSandbox, signal })
         Browser->>Chrome: launch on port 0 (ignoreDefaultFlags, handleSIGINT: false)
         Iter->>Chrome: run programmatic Lighthouse audit
-        Chrome-->>Iter: Lighthouse Result and HTML report
+        Chrome-->>Iter: Lighthouse Result (LHR and JSON)
         Iter->>Browser: session.kill() (finally block)
         Iter-->>Batch: SingleIterationResult
     end
     Batch->>Batch: select Representative Run and normalize Audit Summary
+    Batch->>Iter: generateLighthouseHtmlReport(representative.lhr)
+    Iter-->>Batch: standalone HTML report
     Store->>Disk: write report.json and report.html (inside rollback guard)
     Store->>DB: insert canonical row into lighthouse_runs
     Store-->>App: LighthouseAuditExecutionResult
@@ -47,7 +49,7 @@ sequenceDiagram
 
 ### Execution lifecycle guarantees
 
-1. **In-process purity and borrowed `DbSession` (ADR 0005 and ADR 0006).** `executeIteration` (`packages/lighthouse/src/infra/runtime/iteration.ts`) runs inside the active runtime with no `Bun.spawn` worker scripts per [ADR 0005](../adr/0005-in-process-lighthouse-execution.md), activating `ensureLighthouseVirtualFs()` lazily only during real executions so compiled binaries (`dist/devtools`) work out of the box. `createLighthouseStore({ db })` (`packages/lighthouse/src/wiring.ts`) operates over a caller-borrowed `DbSession` (never owning or closing the database handle), providing rollback-safe `persistBatch` (artifact directory creation and writes sit inside the `try/catch` alongside best-effort cleanup), read-only artifact path checks without `mkdirSync`, and `BEGIN DEFERRED` snapshot transactions for `listRunsWithTotal` and `diffRuns`.
+1. **In-process purity and borrowed `DbSession` (ADR 0005 and ADR 0006).** `executeIteration` (`packages/lighthouse/src/infra/runtime/iteration.ts`) runs inside the active runtime with no `Bun.spawn` worker scripts per [ADR 0005](../adr/0005-in-process-lighthouse-execution.md). `loadLighthouseRuntime()` activates `ensureLighthouseVirtualFs()` and `registerBundledModules()` only when `isStandaloneRuntime()` is true (caching the loaded runtime in-process), while `executeIteration` streams live `navigating` and `analyzing` milestones from `lighthouse-logger` (`mapLighthouseStatusToProgress`). `executeBatchWithPorts` yields a macrotask as a best-effort opportunity for queued SSE writes to flush `generating_report` before rendering the standalone HTML report once via `generateLighthouseHtmlReport` for the winning Representative Run (rendering may still begin while the event is pending if an earlier write is in flight). `createLighthouseStore({ db })` (`packages/lighthouse/src/wiring.ts`) operates over a caller-borrowed `DbSession` (never owning or closing the database handle), providing rollback-safe `persistBatch` (artifact directory creation and writes sit inside the `try/catch` alongside best-effort cleanup), read-only artifact path checks without `mkdirSync`, and `BEGIN DEFERRED` snapshot transactions for `listRunsWithTotal` and `diffRuns`.
 2. **Domain-owned single-flight jobs and serializers.** `createAuditJobManager` (`packages/lighthouse/src/application/job-manager.ts`, backed by `packages/lighthouse/src/serializers.ts`) coordinates single-flight active web audit state, progress replay, 5-minute terminal job retention, and `AbortSignal` shutdown so `apps/api` remains a thin HTTP/SSE adapter.
 3. **Batch-once browser resolution and ephemeral ports.** `executeLighthouseBatch` resolves Chromium once per batch and launches Chrome with `port: 0` and `ignoreDefaultFlags: true`.
 4. **Cooperative cancellation.** `signal?: AbortSignal` flows through browser discovery, Chrome launch (`handleSIGINT: false`), iteration loops, and post-batch persistence, with `session.kill()` always running in `finally`.

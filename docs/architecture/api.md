@@ -31,7 +31,7 @@ flowchart LR
   Runs --> Store["LighthouseStore (borrowed DbSession)"]
 ```
 
-In `GET /api/lighthouse/audits/:jobId/stream` (`apps/api/src/modules/lighthouse/routes.ts`), if a retained terminal job expires or is cleared between `hasJob(jobId)` and `subscribe(jobId, ...)`, the stream handler calls `cleanup()` immediately instead of leaving the connection hanging.
+In `GET /api/lighthouse/audits/:jobId/stream` (`apps/api/src/modules/lighthouse/routes.ts`), if a retained terminal job expires or is cleared between `hasJob(jobId)` and `subscribe(jobId, ...)`, the stream handler calls `cleanup()` immediately instead of leaving the connection hanging. The route also sets `Cache-Control: no-cache, no-transform` and `X-Accel-Buffering: no` so dev rewrites and reverse proxies flush SSE frames without buffering.
 
 ## Mounted routes and SSE transport
 
