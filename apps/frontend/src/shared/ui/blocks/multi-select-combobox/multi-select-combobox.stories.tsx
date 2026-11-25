@@ -44,6 +44,7 @@ function ComboboxHarness({
         placeholder="All items included"
         searchPlaceholder="Filter options..."
         selectAllLabel="Select all"
+        clearAllLabel="Clear all"
         onlyActionLabel="Only"
         footerText={withFooter ? `${selected.length} active` : undefined}
         ariaLabel="Filter items"
@@ -76,15 +77,27 @@ export const InteractiveSelection: Story = {
     const body = within(canvasElement.ownerDocument.body);
 
     const checkoutOption = await body.findByText("shop.example.com/checkout");
+    const checkoutOptionRow = checkoutOption.closest('[role="option"]');
+    await expect(checkoutOptionRow).toHaveAttribute("aria-checked", "false");
+
     await userEvent.click(checkoutOption);
     await expect(trigger).toHaveTextContent("3 selected");
+    await expect(checkoutOptionRow).toHaveAttribute("aria-checked", "true");
+
+    // 2 known options + 1 unknown value equals options.length, but docs is still unselected
+    const selectAllStillVisible = body.getByRole("button", {
+      name: "Select all",
+    });
+    await expect(selectAllStillVisible).toBeVisible();
+    await expect(body.getByRole("button", { name: "Clear all" })).toBeVisible();
 
     const onlyButtons = await body.findAllByRole("button", { name: "Only" });
     const firstOnlyButton = onlyButtons[0];
     if (!firstOnlyButton) {
       throw new Error("Expected Only action button");
     }
-    await userEvent.click(firstOnlyButton);
+    firstOnlyButton.focus();
+    await userEvent.keyboard("{Enter}");
     await expect(trigger).toHaveTextContent("shop.example.com/");
 
     await userEvent.click(checkoutOption);
@@ -95,6 +108,20 @@ export const InteractiveSelection: Story = {
 
     const selectAllButton = body.getByRole("button", { name: "Select all" });
     await userEvent.click(selectAllButton);
+    await expect(trigger).toHaveTextContent("3 selected");
+    await expect(
+      body.queryByRole("button", { name: "Select all" }),
+    ).not.toBeInTheDocument();
+
+    const clearAllButton = body.getByRole("button", { name: "Clear all" });
+    await expect(clearAllButton).toBeVisible();
+    clearAllButton.focus();
+    await userEvent.keyboard("{Enter}");
+    await expect(trigger).toHaveTextContent("All items included");
+    await expect(
+      body.queryByRole("button", { name: "Clear all" }),
+    ).not.toBeInTheDocument();
+    await userEvent.click(body.getByRole("button", { name: "Select all" }));
     await expect(trigger).toHaveTextContent("3 selected");
 
     const searchInput = body.getByPlaceholderText("Filter options...");
@@ -119,7 +146,17 @@ export const InteractiveSelection: Story = {
 };
 
 export const EmptyAndUnknownFallback: Story = {
-  render: () => <ComboboxHarness initialSelected={[]} withFooter={false} />,
+  render: () => (
+    <div className="flex flex-col gap-4">
+      <ComboboxHarness initialSelected={[]} withFooter={false} />
+      <MultiSelectCombobox
+        options={SAMPLE_OPTIONS}
+        selectedValues={[]}
+        onSelectedValuesChange={() => {}}
+        ariaLabel="Minimal combobox"
+      />
+    </div>
+  ),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const trigger = canvas.getByRole("combobox", { name: "Filter items" });
@@ -131,5 +168,12 @@ export const EmptyAndUnknownFallback: Story = {
     });
     await userEvent.click(selectAllButton);
     await expect(trigger).toHaveTextContent("3 selected");
+
+    await userEvent.click(
+      canvas.getByRole("combobox", { name: "Minimal combobox" }),
+    );
+    await expect(
+      body.queryByRole("button", { name: "Select all" }),
+    ).not.toBeInTheDocument();
   },
 };

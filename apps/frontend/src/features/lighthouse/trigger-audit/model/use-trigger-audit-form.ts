@@ -61,8 +61,8 @@ export function getSubmitErrorMessage(
     : "Failed to start Audit Job";
 }
 
-function useTriggerAuditFields(initialUrl: string) {
-  const [url, setUrl] = useState(initialUrl);
+function useTriggerAuditFields(initialUrl: string, onFieldEdit: () => void) {
+  const [url, setUrlState] = useState(initialUrl);
   const [formFactor, setFormFactor] = useState<LighthouseFormFactor>("mobile");
   const [throttlingMethod, setThrottlingMethod] =
     useState<LighthouseThrottlingMethod>("simulate");
@@ -72,12 +72,20 @@ function useTriggerAuditFields(initialUrl: string) {
   ]);
   const [validationError, setValidationError] = useState<string | null>(null);
 
+  const setUrl = useCallback(
+    (nextUrl: string) => {
+      setUrlState(nextUrl);
+      setValidationError(null);
+      onFieldEdit();
+    },
+    [onFieldEdit],
+  );
+
   const handleUrlChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
       setUrl(event.target.value);
-      setValidationError(null);
     },
-    [],
+    [setUrl],
   );
 
   const handleThrottlingChange = useCallback((value: string | null) => {
@@ -101,8 +109,9 @@ function useTriggerAuditFields(initialUrl: string) {
           : [...prev, categoryId],
       );
       setValidationError(null);
+      onFieldEdit();
     },
-    [],
+    [onFieldEdit],
   );
 
   return {
@@ -186,7 +195,6 @@ export function useTriggerAuditForm({
   onClose: () => void;
   onJobStarted?: (job: AuditJob) => void;
 }) {
-  const fields = useTriggerAuditFields(initialUrl);
   const queryClient = useQueryClient();
   const [conflict, setConflict] = useState<ConflictState | null>(null);
 
@@ -203,6 +211,8 @@ export function useTriggerAuditForm({
     onJobStarted,
     setConflict,
   });
+
+  const fields = useTriggerAuditFields(initialUrl, mutation.reset);
 
   const {
     url,

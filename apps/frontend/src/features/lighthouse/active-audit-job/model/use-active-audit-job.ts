@@ -9,7 +9,7 @@ import {
   lighthouseQueries,
   PROGRESS_STAGE_LABELS,
 } from "@/entities/lighthouse-run";
-import { updateNativeSearchParams } from "@/shared/lib";
+import { isPlainPrimaryClick, updateNativeSearchParams } from "@/shared/lib";
 
 /**
  * Subscribes to the active Lighthouse Audit Job query and derives progress percentage,
@@ -23,7 +23,7 @@ export function useActiveAuditJob() {
 
   const handleNavigate = useCallback(
     (event: React.MouseEvent<HTMLAnchorElement>) => {
-      if (job && pathname === "/lighthouse/run") {
+      if (job && pathname === "/lighthouse/run" && isPlainPrimaryClick(event)) {
         event.preventDefault();
         updateNativeSearchParams(new URLSearchParams({ job: job.id }));
       }

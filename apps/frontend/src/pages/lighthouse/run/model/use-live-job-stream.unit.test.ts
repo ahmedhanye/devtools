@@ -399,6 +399,13 @@ describe("useLiveJobStream", () => {
       FakeEventSource.instances[4]!.emit("error", new Event("error"));
     });
     expect(FakeEventSource.instances).toHaveLength(5);
+    expect(result.current.isStreamDisconnected).toBe(true);
+
+    act(() => {
+      result.current.handleReconnect();
+    });
+    expect(result.current.isStreamDisconnected).toBe(false);
+    expect(FakeEventSource.instances).toHaveLength(6);
 
     active = false;
     await act(async () => {
@@ -407,12 +414,15 @@ describe("useLiveJobStream", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(10);
     });
+    await act(async () => {
+      FakeEventSource.instances[5]!.emit("error", new Event("error"));
+    });
 
-    expect(FakeEventSource.instances).toHaveLength(6);
+    expect(FakeEventSource.instances).toHaveLength(7);
     expect(result.current.isExpired).toBe(false);
 
     act(() => {
-      FakeEventSource.instances[5]!.emit(
+      FakeEventSource.instances[6]!.emit(
         "complete",
         new MessageEvent("complete", {
           data: JSON.stringify({
@@ -430,6 +440,56 @@ describe("useLiveJobStream", () => {
       await vi.advanceTimersByTimeAsync(250);
     });
     expect(window.location.search).toBe("?id=run-99");
+    unmount();
+    client.clear();
+  });
+
+  it("marks sawActive on SSE progress even if REST active-job poll has not returned active", async () => {
+    let active = false;
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify(
+            active
+              ? { active: true, job: makeJob() }
+              : { active: false, job: null },
+          ),
+          { status: 200 },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    });
+    const { result, unmount } = renderHook(() => useLiveJobStream("job-1"), {
+      wrapper: createWrapper(client),
+    });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      FakeEventSource.instances[0]!.emit(
+        "progress",
+        new MessageEvent("progress", {
+          data: JSON.stringify({
+            jobId: "job-1",
+            status: "running",
+            stage: "analyzing",
+            message: "Analyzing",
+            timestamp: "2026-11-22T02:00:05.000Z",
+          }),
+        }),
+      );
+    });
+
+    await act(async () => {
+      FakeEventSource.instances[0]!.emit("error", new Event("error"));
+    });
+
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(2));
+    expect(result.current.isExpired).toBe(false);
+
     unmount();
     client.clear();
   });

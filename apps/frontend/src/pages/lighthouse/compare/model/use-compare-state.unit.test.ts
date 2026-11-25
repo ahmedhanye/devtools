@@ -378,7 +378,7 @@ describe("useCompareController", () => {
     client.clear();
   });
 
-  it("surfaces errors for failed selected detail runs and retries them", async () => {
+  it("surfaces failed selected detail runs inline without blocking loaded runs, retries them, and preserves hidden URL baseline under device filters", async () => {
     let failExtra = true;
     const fetchMock = vi.fn(async (input: string) => {
       if (input === "/api/lighthouse/runs/cmp-extra") {
@@ -397,7 +397,7 @@ describe("useCompareController", () => {
       return new Response(
         JSON.stringify({
           runs: [r3, r2, r1],
-          total: 3,
+          total: 105,
           limit: 100,
           offset: 0,
         }),
@@ -417,21 +417,39 @@ describe("useCompareController", () => {
     });
 
     await waitFor(() =>
-      expect(result.current.listErrorMessage).toBe("Detail run unavailable"),
+      expect(result.current.failedMissingRuns).toEqual([
+        { runId: "cmp-extra", message: "Detail run unavailable" },
+      ]),
     );
+    expect(result.current.listErrorMessage).toBeNull();
+    expect(result.current.hasAnyRuns).toBe(true);
+    expect(result.current.builder.totalStoredCount).toBe(105);
+    expect(result.current.builder.totalAvailableCount).toBe(3);
 
     failExtra = false;
     act(() => {
-      result.current.handleRetryList();
+      result.current.handleRetryMissingRun("cmp-extra");
     });
 
-    await waitFor(() => expect(result.current.listErrorMessage).toBeNull());
+    await waitFor(() => expect(result.current.failedMissingRuns).toEqual([]));
     await waitFor(() => expect(result.current.isListPending).toBe(false));
     expect(result.current.baselineRun?.id).toBe("cmp-extra");
     expect(result.current.chronoRuns.map((run) => run.id)).toEqual([
       "cmp-extra",
       "cmp-1",
     ]);
+
+    // Filter to desktop (hides mobile baseline cmp-extra) and add cmp-2:
+    // URL baseline must remain cmp-extra rather than overwriting with cmp-1/cmp-2.
+    act(() => {
+      result.current.builder.onDeviceRuleChange("desktop");
+    });
+    act(() => {
+      result.current.builder.onAddSpecificRun("cmp-2");
+    });
+    expect(window.location.search).toBe(
+      "?runs=cmp-extra%2Ccmp-1%2Ccmp-2&baseline=cmp-extra",
+    );
 
     unmount();
     client.clear();

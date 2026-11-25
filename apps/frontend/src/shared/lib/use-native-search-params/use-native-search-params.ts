@@ -5,6 +5,36 @@ import { useMemo, useSyncExternalStore } from "react";
 const SEARCH_PARAMS_CHANGE_EVENT = "devtools:search-params-change";
 
 /**
+ * Checks whether a click event is an unmodified primary-button click eligible
+ * for client-side same-route handling instead of browser tab/window navigation.
+ */
+export function isPlainPrimaryClick(event: {
+  button: number;
+  metaKey: boolean;
+  ctrlKey: boolean;
+  shiftKey: boolean;
+  altKey: boolean;
+}): boolean {
+  return (
+    event.button === 0 &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.shiftKey &&
+    !event.altKey
+  );
+}
+
+function sanitizeHistoryState(state: unknown): unknown {
+  if (typeof state !== "object" || state === null || Array.isArray(state)) {
+    return state;
+  }
+  const entries = Object.entries(state).filter(
+    ([key]) => key !== "__NA" && key !== "_N",
+  );
+  return entries.length > 0 ? Object.fromEntries(entries) : null;
+}
+
+/**
  * Dispatches a synthetic notification event so active {@link useNativeSearchParams}
  * hooks re-read `window.location.search` after programmatic history mutations.
  */
@@ -47,10 +77,11 @@ export function updateNativeSearchParams(
     url.search = serialized ? `?${serialized}` : "";
   }
 
+  const nextState = sanitizeHistoryState(window.history.state);
   if (options?.replace) {
-    window.history.replaceState(window.history.state, "", url.toString());
+    window.history.replaceState(nextState, "", url.toString());
   } else {
-    window.history.pushState(window.history.state, "", url.toString());
+    window.history.pushState(nextState, "", url.toString());
   }
   notifySearchParamsChange();
 }

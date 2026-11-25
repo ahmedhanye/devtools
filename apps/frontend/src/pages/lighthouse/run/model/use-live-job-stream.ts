@@ -1,7 +1,7 @@
 "use client";
 
 import type * as React from "react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type QueryClient,
   useQuery,
@@ -101,6 +101,7 @@ async function handleStreamConnectionDrop(params: {
   refetchActiveJob: () => Promise<{ data?: ActiveAuditJobResponse }>;
   setStreamAttempt: React.Dispatch<React.SetStateAction<number>>;
   setIsExpired: React.Dispatch<React.SetStateAction<boolean>>;
+  setIsStreamDisconnected: React.Dispatch<React.SetStateAction<boolean>>;
 }): Promise<void> {
   const {
     jobId,
@@ -109,6 +110,7 @@ async function handleStreamConnectionDrop(params: {
     refetchActiveJob,
     setStreamAttempt,
     setIsExpired,
+    setIsStreamDisconnected,
   } = params;
 
   const result = await refetchActiveJob();
@@ -132,6 +134,8 @@ async function handleStreamConnectionDrop(params: {
           setStreamAttempt((attempt) => attempt + 1);
         }
       }, delayMs);
+    } else {
+      setIsStreamDisconnected(true);
     }
     return;
   }
@@ -144,6 +148,203 @@ async function handleStreamConnectionDrop(params: {
   }
 
   setIsExpired(true);
+}
+
+interface AuditStreamHandlerParams {
+  jobId: string;
+  queryClient: QueryClient;
+  tracker: StreamTrackerRefs;
+  isDisposed: () => boolean;
+  refetchActiveJob: () => Promise<{ data?: ActiveAuditJobResponse }>;
+  setLatestProgress: React.Dispatch<
+    React.SetStateAction<AuditSseProgressEvent | null>
+  >;
+  setSseError: React.Dispatch<
+    React.SetStateAction<AuditSseErrorEvent["error"] | null>
+  >;
+  setStreamAttempt: React.Dispatch<React.SetStateAction<number>>;
+  setIsExpired: React.Dispatch<React.SetStateAction<boolean>>;
+  setIsCompleting: React.Dispatch<React.SetStateAction<boolean>>;
+  setIsStreamDisconnected: React.Dispatch<React.SetStateAction<boolean>>;
+}
+
+function buildAuditStreamHandlers(params: AuditStreamHandlerParams) {
+  const {
+    jobId,
+    queryClient,
+    tracker,
+    isDisposed,
+    refetchActiveJob,
+    setLatestProgress,
+    setSseError,
+    setStreamAttempt,
+    setIsExpired,
+    setIsCompleting,
+    setIsStreamDisconnected,
+  } = params;
+
+  return {
+    onProgress: (event: AuditSseProgressEvent) => {
+      tracker.sawActive = true;
+      tracker.retryCount = 0;
+      tracker.awaitingInactiveFinal = false;
+      setIsStreamDisconnected(false);
+      setLatestProgress(event);
+      syncActiveJobProgressInCache(queryClient, jobId, event);
+    },
+    onComplete: (event: AuditSseCompleteEvent) => {
+      tracker.terminalReceived = true;
+      tracker.awaitingInactiveFinal = false;
+      setIsStreamDisconnected(false);
+      clearRetryTimer(tracker);
+      clearSettleTimer(tracker);
+      applyCompletedAuditToCache(queryClient, event);
+      setIsCompleting(true);
+      tracker.settleTimer = setTimeout(() => {
+        tracker.settleTimer = null;
+        if (!isDisposed()) {
+          updateNativeSearchParams(
+            (urlParams) => {
+              urlParams.delete("job");
+              urlParams.set("id", event.runId);
+              urlParams.delete("tab");
+            },
+            { replace: true },
+          );
+        }
+      }, COMPLETION_SETTLE_MS);
+    },
+    onError: (event: AuditSseErrorEvent) => {
+      tracker.terminalReceived = true;
+      tracker.awaitingInactiveFinal = false;
+      setIsStreamDisconnected(false);
+      clearRetryTimer(tracker);
+      setSseError(event.error);
+      void queryClient.invalidateQueries({
+        queryKey: lighthouseQueries.activeJob().queryKey,
+      });
+    },
+    onConnectionError: () => {
+      void handleStreamConnectionDrop({
+        jobId,
+        isDisposed,
+        tracker,
+        refetchActiveJob,
+        setStreamAttempt,
+        setIsExpired,
+        setIsStreamDisconnected,
+      });
+    },
+  };
+}
+
+function useTrackActiveJobTransitions(
+  isJobActive: boolean,
+  trackerRef: React.RefObject<StreamTrackerRefs>,
+  setStreamAttempt: React.Dispatch<React.SetStateAction<number>>,
+) {
+  useEffect(() => {
+    const tracker = trackerRef.current;
+    const wasActive = tracker.prevActive;
+    tracker.prevActive = isJobActive;
+
+    if (isJobActive) {
+      tracker.sawActive = true;
+      return undefined;
+    }
+
+    const shouldTriggerFinal =
+      wasActive &&
+      tracker.awaitingInactiveFinal &&
+      !tracker.finalAttemptUsed &&
+      !tracker.terminalReceived;
+
+    if (!shouldTriggerFinal) {
+      return undefined;
+    }
+
+    tracker.awaitingInactiveFinal = false;
+    tracker.finalAttemptUsed = true;
+    clearRetryTimer(tracker);
+    const timer = setTimeout(() => {
+      setStreamAttempt((attempt) => attempt + 1);
+    }, 0);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [isJobActive, setStreamAttempt, trackerRef]);
+}
+
+function resolveActiveJob(
+  activeJobData: ActiveAuditJobResponse | undefined,
+  jobId: string,
+) {
+  if (activeJobData?.active !== true || activeJobData.job.id !== jobId) {
+    return null;
+  }
+  return activeJobData.job;
+}
+
+function useAuditStreamSubscription(
+  params: Omit<AuditStreamHandlerParams, "tracker" | "isDisposed"> & {
+    trackerRef: React.RefObject<StreamTrackerRefs>;
+    streamAttempt: number;
+  },
+) {
+  const {
+    jobId,
+    queryClient,
+    trackerRef,
+    refetchActiveJob,
+    setLatestProgress,
+    setSseError,
+    setStreamAttempt,
+    setIsExpired,
+    setIsCompleting,
+    setIsStreamDisconnected,
+    streamAttempt,
+  } = params;
+
+  useEffect(() => {
+    const tracker = trackerRef.current;
+    let disposed = false;
+
+    const unsubscribe = subscribeToAuditJob(
+      jobId,
+      buildAuditStreamHandlers({
+        jobId,
+        queryClient,
+        tracker,
+        isDisposed: () => disposed,
+        refetchActiveJob,
+        setLatestProgress,
+        setSseError,
+        setStreamAttempt,
+        setIsExpired,
+        setIsCompleting,
+        setIsStreamDisconnected,
+      }),
+    );
+
+    return () => {
+      disposed = true;
+      unsubscribe();
+      clearRetryTimer(tracker);
+      clearSettleTimer(tracker);
+    };
+  }, [
+    jobId,
+    queryClient,
+    refetchActiveJob,
+    setIsCompleting,
+    setIsExpired,
+    setIsStreamDisconnected,
+    setLatestProgress,
+    setSseError,
+    setStreamAttempt,
+    streamAttempt,
+    trackerRef,
+  ]);
 }
 
 /**
@@ -161,6 +362,7 @@ export function useLiveJobStream(jobId: string) {
   const [streamAttempt, setStreamAttempt] = useState(0);
   const [isExpired, setIsExpired] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
+  const [isStreamDisconnected, setIsStreamDisconnected] = useState(false);
   const trackerRef = useRef<StreamTrackerRefs>({
     sawActive: false,
     prevActive: false,
@@ -176,102 +378,36 @@ export function useLiveJobStream(jobId: string) {
     lighthouseQueries.activeJob(),
   );
 
-  const activeJob =
-    activeJobData?.active === true && activeJobData.job.id === jobId
-      ? activeJobData.job
-      : null;
-  const isJobActive = activeJob !== null;
+  const activeJob = resolveActiveJob(activeJobData, jobId);
 
-  useEffect(() => {
+  useTrackActiveJobTransitions(
+    activeJob !== null,
+    trackerRef,
+    setStreamAttempt,
+  );
+
+  useAuditStreamSubscription({
+    jobId,
+    queryClient,
+    trackerRef,
+    refetchActiveJob,
+    setLatestProgress,
+    setSseError,
+    setStreamAttempt,
+    setIsExpired,
+    setIsCompleting,
+    setIsStreamDisconnected,
+    streamAttempt,
+  });
+
+  const handleReconnect = useCallback(() => {
     const tracker = trackerRef.current;
-    const wasActive = tracker.prevActive;
-    tracker.prevActive = isJobActive;
-
-    if (isJobActive) {
-      tracker.sawActive = true;
-      return undefined;
-    }
-
-    if (
-      wasActive &&
-      tracker.awaitingInactiveFinal &&
-      !tracker.finalAttemptUsed &&
-      !tracker.terminalReceived
-    ) {
-      tracker.awaitingInactiveFinal = false;
-      tracker.finalAttemptUsed = true;
-      clearRetryTimer(tracker);
-      const timer = setTimeout(() => {
-        setStreamAttempt((attempt) => attempt + 1);
-      }, 0);
-      return () => {
-        clearTimeout(timer);
-      };
-    }
-
-    return undefined;
-  }, [isJobActive]);
-
-  useEffect(() => {
-    const tracker = trackerRef.current;
-    let disposed = false;
-
-    const unsubscribe = subscribeToAuditJob(jobId, {
-      onProgress: (event) => {
-        tracker.retryCount = 0;
-        tracker.awaitingInactiveFinal = false;
-        setLatestProgress(event);
-        syncActiveJobProgressInCache(queryClient, jobId, event);
-      },
-      onComplete: (event) => {
-        tracker.terminalReceived = true;
-        tracker.awaitingInactiveFinal = false;
-        clearRetryTimer(tracker);
-        clearSettleTimer(tracker);
-        applyCompletedAuditToCache(queryClient, event);
-        setIsCompleting(true);
-        tracker.settleTimer = setTimeout(() => {
-          tracker.settleTimer = null;
-          if (!disposed) {
-            updateNativeSearchParams(
-              (params) => {
-                params.delete("job");
-                params.set("id", event.runId);
-                params.delete("tab");
-              },
-              { replace: true },
-            );
-          }
-        }, COMPLETION_SETTLE_MS);
-      },
-      onError: (event) => {
-        tracker.terminalReceived = true;
-        tracker.awaitingInactiveFinal = false;
-        clearRetryTimer(tracker);
-        setSseError(event.error);
-        void queryClient.invalidateQueries({
-          queryKey: lighthouseQueries.activeJob().queryKey,
-        });
-      },
-      onConnectionError: () => {
-        void handleStreamConnectionDrop({
-          jobId,
-          isDisposed: () => disposed,
-          tracker,
-          refetchActiveJob,
-          setStreamAttempt,
-          setIsExpired,
-        });
-      },
-    });
-
-    return () => {
-      disposed = true;
-      unsubscribe();
-      clearRetryTimer(tracker);
-      clearSettleTimer(tracker);
-    };
-  }, [jobId, queryClient, refetchActiveJob, streamAttempt]);
+    tracker.retryCount = 0;
+    tracker.awaitingInactiveFinal = false;
+    clearRetryTimer(tracker);
+    setIsStreamDisconnected(false);
+    setStreamAttempt((attempt) => attempt + 1);
+  }, []);
 
   return {
     activeJob,
@@ -279,5 +415,7 @@ export function useLiveJobStream(jobId: string) {
     sseError,
     isExpired: isExpired && !activeJob,
     isCompleting,
+    isStreamDisconnected: isStreamDisconnected && Boolean(activeJob),
+    handleReconnect,
   };
 }

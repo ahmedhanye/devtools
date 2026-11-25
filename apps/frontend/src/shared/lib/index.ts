@@ -8,6 +8,7 @@ export { cn } from "./cn";
 export { useIsMounted } from "./use-is-mounted";
 export { useIsMobile } from "./use-mobile";
 export {
+  isPlainPrimaryClick,
   updateNativeSearchParams,
   useNativeSearchParams,
 } from "./use-native-search-params";

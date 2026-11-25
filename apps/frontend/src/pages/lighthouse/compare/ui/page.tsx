@@ -1168,7 +1168,7 @@ function QuickPresetsSection({
           onClick={onPresetAllRuns}
           className="w-full justify-between"
         >
-          <span>All Runs</span>
+          <span>Recent Runs</span>
           <span className="text-muted-foreground tabular-nums">
             {totalAvailableCount}
           </span>
@@ -1302,6 +1302,20 @@ function CompareBuilderSidebar({ builder }: { builder: CompareBuilderModel }) {
               onPresetAllRuns={builder.onPresetAllRuns}
             />
 
+            {builder.totalStoredCount > builder.totalAvailableCount ? (
+              <p className="text-muted-foreground text-xs leading-relaxed">
+                Showing the latest {builder.totalAvailableCount} of{" "}
+                {builder.totalStoredCount} runs. Select older runs in{" "}
+                <Link
+                  href={buildHistoryUrl()}
+                  className="text-foreground font-medium underline underline-offset-2"
+                >
+                  Audit History
+                </Link>
+                .
+              </p>
+            ) : null}
+
             <div className="flex flex-col gap-1.5">
               <span className="text-foreground text-xs font-medium">
                 Include by URL
@@ -1313,6 +1327,7 @@ function CompareBuilderSidebar({ builder }: { builder: CompareBuilderModel }) {
                 placeholder="Select audited URLs"
                 searchPlaceholder="Filter URLs..."
                 selectAllLabel="Select all"
+                clearAllLabel="Clear all"
                 onlyActionLabel="Only"
                 footerText={`${builder.chronoRuns.length} matching ${builder.chronoRuns.length === 1 ? "run" : "runs"}`}
                 ariaLabel="Include runs by URL"
@@ -1742,10 +1757,14 @@ function buildMixedVerdict(
   const perfText =
     perfDelta === null
       ? "Some insights improved while new regressions appeared."
-      : `Performance ${perfDelta > 0 ? `+${perfDelta}` : perfDelta} pts overall, with new regressions to review.`;
+      : `Performance ${perfDelta > 0 ? `+${perfDelta}` : perfDelta} pts overall, with ${regressedCount > 0 ? "new regressions" : "resolved insights"} to review.`;
+  const headline =
+    regressedCount > 0
+      ? `Mixed changes: ${resolvedCount} resolved, ${regressedCount} regressed`
+      : `Mixed changes: ${pluralizeInsights(resolvedCount)} resolved, Performance ${perfDelta ?? 0} pts`;
   return {
     tone: "warning",
-    headline: `Mixed changes: ${resolvedCount} resolved, ${regressedCount} regressed`,
+    headline,
     subline: perfText,
   };
 }
@@ -1811,7 +1830,7 @@ function summarizeDiffVerdict(diff: LighthouseDiffResponse): {
   const hasImprovement = perfTrend === "improved" || resolvedCount > 0;
   const hasRegression = perfTrend === "regressed" || regressedCount > 0;
 
-  if (hasImprovement && regressedCount > 0) {
+  if (hasImprovement && hasRegression) {
     return buildMixedVerdict(perfDelta, resolvedCount, regressedCount);
   }
   if (hasRegression) {
@@ -1823,7 +1842,7 @@ function summarizeDiffVerdict(diff: LighthouseDiffResponse): {
   return {
     tone: "neutral",
     headline: "No major score or insight transitions",
-    subline: "Category scores and insight statuses match the baseline run.",
+    subline: "Performance score and insight statuses match the baseline run.",
   };
 }
 
@@ -2391,6 +2410,48 @@ export function ComparePage() {
         <CompareBuilderSidebar builder={cmp.builder} />
 
         <div className="flex min-w-0 flex-1 flex-col gap-4">
+          {cmp.failedMissingRuns.length > 0 ? (
+            <Alert variant="destructive">
+              <AlertCircle className="size-4" />
+              <AlertTitle>Some selected runs could not be loaded</AlertTitle>
+              <AlertDescription>
+                <div className="flex flex-col gap-2">
+                  {cmp.failedMissingRuns.map((failure) => (
+                    <div
+                      key={failure.runId}
+                      className="flex flex-wrap items-center justify-between gap-2"
+                    >
+                      <span>
+                        Run <span className="font-mono">{failure.runId}</span>:{" "}
+                        {failure.message}
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="xs"
+                          onClick={() =>
+                            cmp.handleRetryMissingRun(failure.runId)
+                          }
+                        >
+                          Retry
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="xs"
+                          onClick={() => cmp.handleRemoveRun(failure.runId)}
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </AlertDescription>
+            </Alert>
+          ) : null}
+
           <CompareTrendChart
             runs={cmp.chronoRuns}
             baselineRun={cmp.baselineRun}

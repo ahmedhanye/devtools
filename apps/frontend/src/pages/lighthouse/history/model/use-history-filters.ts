@@ -36,6 +36,7 @@ export interface HistoryFiltersModel {
 
 export interface HistoryTableStateModel {
   isPending: boolean;
+  isPlaceholderData: boolean;
   errorMessage: string | null;
   runs: readonly LighthouseRunListItem[];
   total: number;
@@ -268,7 +269,7 @@ export function useHistoryController() {
   const inputs = useHistoryFilterInputs();
   const latestQuery = useQuery(lighthouseQueries.list({ limit: 1, offset: 0 }));
   const { urlOptions, urlFilterItems } = useHistoryUrlOptions();
-  const { data, isPending, error, refetch } = useQuery({
+  const { data, isPending, isPlaceholderData, error, refetch } = useQuery({
     ...buildHistoryListQueryOptions(inputs),
     placeholderData: keepPreviousData,
   });
@@ -302,6 +303,7 @@ export function useHistoryController() {
   const tableState: HistoryTableStateModel = useMemo(
     () => ({
       isPending,
+      isPlaceholderData,
       errorMessage: error ? error.message : null,
       runs,
       total,
@@ -316,7 +318,16 @@ export function useHistoryController() {
       onPrevPage: inputs.onPrevPage,
       onNextPage: inputs.onNextPage,
     }),
-    [error, inputs, isPending, onRetry, runs, selection, total],
+    [
+      error,
+      inputs,
+      isPending,
+      isPlaceholderData,
+      onRetry,
+      runs,
+      selection,
+      total,
+    ],
   );
 
   return {

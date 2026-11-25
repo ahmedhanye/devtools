@@ -317,6 +317,71 @@ export const LiveJobStreamsToCompleteDetail: Story = {
   },
 };
 
+export const MountWithPolledProgressAndStreamDisconnect: Story = {
+  render: () => {
+    let pollStage: "navigating" | "analyzing" = "navigating";
+    const handler: FetchHandler = async (rawUrl) => {
+      if (rawUrl === "/api/lighthouse/audits/active") {
+        const currentStage = pollStage;
+        return new Response(
+          JSON.stringify({
+            active: true,
+            job: {
+              id: "job-polled-1",
+              url: "https://shop.example.com/",
+              formFactor: "mobile",
+              throttlingMethod: "simulate",
+              runs: 3,
+              categories: ["performance"],
+              status: "running",
+              startedAt: "2026-11-22T02:00:00.000Z",
+              completedAt: null,
+              latestProgress: {
+                jobId: "job-polled-1",
+                status: "running",
+                stage: currentStage,
+                message:
+                  currentStage === "navigating"
+                    ? "Navigating page"
+                    : "Analyzing traces",
+                runIndex: 1,
+                totalRuns: 3,
+                timestamp:
+                  currentStage === "navigating"
+                    ? "2026-11-22T02:00:04.000Z"
+                    : "2026-11-22T02:00:12.000Z",
+              },
+              runId: null,
+              error: null,
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      if (rawUrl === "/api/lighthouse/audits/advance") {
+        pollStage = "analyzing";
+      }
+      return detailHandler(rawUrl);
+    };
+    return (
+      <RunProviders handler={handler} initialSearch="?job=job-polled-1">
+        <RunPage />
+      </RunProviders>
+    );
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      await canvas.findByText(/Navigating page \(Iteration 2 of 3\)/),
+    ).toBeInTheDocument();
+
+    const iter2Toggle = canvas.getByRole("button", {
+      name: /Iteration 2 of 3/i,
+    });
+    await expect(iter2Toggle).toHaveAttribute("aria-expanded", "true");
+  },
+};
+
 export const LiveJobSseError: Story = {
   render: () => (
     <RunProviders handler={activeStreamHandler} initialSearch="?job=job-fail-1">

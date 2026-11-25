@@ -75,7 +75,7 @@ const RICH_RUN: LighthouseRunDetail = {
         score: 0.4,
         scoreDisplayMode: "numeric",
         displayValue: "450 ms",
-        metricSavings: { LCP: 450 },
+        metricSavings: { LCP: 450, CLS: 0.045 },
         replacesAudits: ["prioritize-lcp-image"],
       },
     ],

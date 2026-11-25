@@ -273,4 +273,71 @@ describe("useHistoryController", () => {
     unmount();
     client.clear();
   });
+
+  it("exposes isPlaceholderData as true while a filtered query is pending", async () => {
+    let resolveFiltered: ((res: Response) => void) | null = null;
+    const fetchMock = vi.fn((input: string) => {
+      if (input.includes("search=checkout")) {
+        return new Promise<Response>((resolve) => {
+          resolveFiltered = resolve;
+        });
+      }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            runs: [r1, r2],
+            total: 41,
+            limit: 20,
+            offset: 0,
+          }),
+          { status: 200 },
+        ),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    });
+    const { result, unmount } = renderHook(() => useHistoryController(), {
+      wrapper: createWrapper(client),
+    });
+
+    await waitFor(() =>
+      expect(result.current.tableState.isPending).toBe(false),
+    );
+    expect(result.current.tableState.isPlaceholderData).toBe(false);
+
+    act(() => {
+      result.current.filters.onSearchChange({
+        target: { value: "checkout" },
+      } as React.ChangeEvent<HTMLInputElement>);
+    });
+
+    await waitFor(() =>
+      expect(result.current.tableState.isPlaceholderData).toBe(true),
+    );
+
+    await act(async () => {
+      resolveFiltered?.(
+        new Response(
+          JSON.stringify({
+            runs: [r2],
+            total: 1,
+            limit: 20,
+            offset: 0,
+          }),
+          { status: 200 },
+        ),
+      );
+    });
+
+    await waitFor(() =>
+      expect(result.current.tableState.isPlaceholderData).toBe(false),
+    );
+    expect(result.current.total).toBe(1);
+
+    unmount();
+    client.clear();
+  });
 });

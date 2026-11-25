@@ -252,4 +252,88 @@ describe("useTriggerAuditForm", () => {
     await waitFor(() => expect(result.current.effectiveActiveJobId).toBeNull());
     expect(result.current.submissionErrorMessage).toBeNull();
   });
+
+  it("clears previous submission errors when the user edits the URL or categories", async () => {
+    const fetchSpy = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === "string"
+            ? input
+            : input instanceof URL
+              ? input.href
+              : input.url;
+        if (url.includes("/api/lighthouse/audits/active")) {
+          return new Response(JSON.stringify({ active: false, job: null }), {
+            status: 200,
+          });
+        }
+        if (url.includes("/api/lighthouse/runs")) {
+          return new Response(JSON.stringify({ runs: [], total: 0 }), {
+            status: 200,
+          });
+        }
+        if (url.includes("/api/lighthouse/audits") && init?.method === "POST") {
+          return new Response(
+            JSON.stringify({
+              error: { code: "INTERNAL", message: "Runner failed to start" },
+            }),
+            { status: 500 },
+          );
+        }
+        return new Response("{}", { status: 404 });
+      },
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+
+    const { result } = renderHook(
+      () =>
+        useTriggerAuditForm({
+          initialUrl: "https://example.com/",
+          onClose: vi.fn(),
+        }),
+      { wrapper: createWrapper(client) },
+    );
+
+    act(() => {
+      result.current.handleSubmit({
+        preventDefault: vi.fn(),
+      } as unknown as React.FormEvent<HTMLFormElement>);
+    });
+
+    await waitFor(() =>
+      expect(result.current.submissionErrorMessage).toBe(
+        "Runner failed to start",
+      ),
+    );
+
+    act(() => {
+      result.current.handleUrlChange({
+        target: { value: "https://example.org/" },
+      } as React.ChangeEvent<HTMLInputElement>);
+    });
+    expect(result.current.submissionErrorMessage).toBeNull();
+
+    act(() => {
+      result.current.handleSubmit({
+        preventDefault: vi.fn(),
+      } as unknown as React.FormEvent<HTMLFormElement>);
+    });
+    await waitFor(() =>
+      expect(result.current.submissionErrorMessage).toBe(
+        "Runner failed to start",
+      ),
+    );
+
+    act(() => {
+      result.current.handleToggleCategory("seo");
+    });
+    expect(result.current.submissionErrorMessage).toBeNull();
+  });
 });

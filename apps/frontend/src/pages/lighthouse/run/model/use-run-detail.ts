@@ -4,6 +4,26 @@ import { useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { buildCompareUrl, lighthouseQueries } from "@/entities/lighthouse-run";
 
+function findPreviousSameUrlRun(
+  runs: readonly { id: string; url: string; createdAt: string }[],
+  currentRun: { id: string; url: string; createdAt: string },
+): string | null {
+  const runTime = new Date(currentRun.createdAt).getTime();
+  let bestId: string | null = null;
+  let bestTime = -Infinity;
+  for (const candidate of runs) {
+    if (candidate.url !== currentRun.url || candidate.id === currentRun.id) {
+      continue;
+    }
+    const candidateTime = new Date(candidate.createdAt).getTime();
+    if (candidateTime < runTime && candidateTime > bestTime) {
+      bestId = candidate.id;
+      bestTime = candidateTime;
+    }
+  }
+  return bestId;
+}
+
 /**
  * Fetches Audit Run detail and recent URLs to compute compare links and retry handlers
  * for {@link RunPage}.
@@ -22,13 +42,11 @@ export function useRunDetail(runId: string) {
     if (!run) {
       return buildCompareUrl();
     }
-    const previousForUrl = (recentRunsData?.runs ?? []).find(
-      (candidate) => candidate.url === run.url && candidate.id !== run.id,
-    );
-    return previousForUrl
+    const previousId = findPreviousSameUrlRun(recentRunsData?.runs ?? [], run);
+    return previousId
       ? buildCompareUrl({
-          runIds: [previousForUrl.id, run.id],
-          baselineId: previousForUrl.id,
+          runIds: [previousId, run.id],
+          baselineId: previousId,
         })
       : buildCompareUrl({
           runIds: [run.id],

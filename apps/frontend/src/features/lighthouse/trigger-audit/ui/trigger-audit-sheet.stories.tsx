@@ -428,6 +428,15 @@ export const SameRouteBlockerAlertUpdatesSearchParams: Story = {
     const liveLink = await body.findByRole("link", {
       name: "View live progress",
     });
+    const modifiedEvent = new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      ctrlKey: true,
+    });
+    liveLink.dispatchEvent(modifiedEvent);
+    await expect(window.location.search).toBe("?id=run-1");
+    await expect(args.onOpenChange).not.toHaveBeenCalled();
+
     await userEvent.click(liveLink);
     await expect(window.location.search).toBe("?job=job-live-42");
     await expect(args.onOpenChange).toHaveBeenCalledWith(false);

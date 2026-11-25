@@ -404,12 +404,14 @@ function HistoryPaginationBar({
   offset,
   countOnPage,
   total,
+  isPlaceholderData,
   onPrevPage,
   onNextPage,
 }: {
   offset: number;
   countOnPage: number;
   total: number;
+  isPlaceholderData: boolean;
   onPrevPage: () => void;
   onNextPage: () => void;
 }) {
@@ -428,7 +430,7 @@ function HistoryPaginationBar({
           type="button"
           variant="outline"
           size="sm"
-          disabled={offset === 0}
+          disabled={isPlaceholderData || offset === 0}
           onClick={onPrevPage}
         >
           Previous
@@ -437,7 +439,7 @@ function HistoryPaginationBar({
           type="button"
           variant="outline"
           size="sm"
-          disabled={offset + HISTORY_PAGE_SIZE >= total}
+          disabled={isPlaceholderData || offset + HISTORY_PAGE_SIZE >= total}
           onClick={onNextPage}
         >
           Next
@@ -491,6 +493,7 @@ function HistoryRunsTable({
         offset={state.offset}
         countOnPage={state.runs.length}
         total={state.total}
+        isPlaceholderData={state.isPlaceholderData}
         onPrevPage={state.onPrevPage}
         onNextPage={state.onNextPage}
       />

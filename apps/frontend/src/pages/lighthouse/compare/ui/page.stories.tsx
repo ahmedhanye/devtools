@@ -350,7 +350,7 @@ export const MatrixDiffAndCollapse: Story = {
       await canvas.findByText("Comparison Matrix (2 Runs)"),
     ).toBeInTheDocument();
 
-    await userEvent.click(canvas.getByRole("button", { name: /All Runs/i }));
+    await userEvent.click(canvas.getByRole("button", { name: /Recent Runs/i }));
     await expect(
       await canvas.findByText("Comparison Matrix (3 Runs)"),
     ).toBeInTheDocument();
@@ -396,8 +396,11 @@ export const MatrixSortAndRemoveFocusedDiff: Story = {
     await userEvent.click(rowSetBaseBtn);
 
     await userEvent.click(
-      canvas.getByRole("button", { name: "Remove run cmp-run-1" }),
+      canvas.getByRole("button", { name: "Remove run cmp-run-2" }),
     );
+    await expect(
+      await canvas.findByText("Comparison Matrix (2 Runs)"),
+    ).toBeInTheDocument();
   },
 };
 
@@ -473,15 +476,19 @@ export const ChartPointAndBarInspect: Story = {
     await expect(chartSvg.innerHTML).not.toContain("var(--color-value)");
     await expect(chartSvg.innerHTML).toContain("var(--color-chart-1)");
 
-    await fireEvent.mouseMove(chartSvg, { clientX: 80, clientY: 150 });
+    const rect = chartSvg.getBoundingClientRect();
+    const clickX = rect.width > 0 ? rect.left + rect.width * 0.25 : 80;
+    const clickY = rect.height > 0 ? rect.top + rect.height * 0.5 : 150;
+    await fireEvent.mouseMove(chartSvg, { clientX: clickX, clientY: clickY });
     await new Promise((resolve) => {
       setTimeout(resolve, 60);
     });
-    await fireEvent.click(chartSvg, { clientX: 80, clientY: 150 });
+    await fireEvent.click(chartSvg, { clientX: clickX, clientY: clickY });
 
     await expect(
       await body.findByText("Audit Run Inspector"),
     ).toBeInTheDocument();
+    await expect(body.getByText(/Inspecting run cmp-run-/)).toBeInTheDocument();
     await userEvent.click(body.getByRole("button", { name: "Close" }));
     await waitFor(async () => {
       await expect(
@@ -792,25 +799,28 @@ export const MultiRunTrendOverlay: Story = {
       {},
       { timeout: 4000 },
     );
-    await fireEvent.mouseMove(chartSvg, { clientX: 180, clientY: 140 });
+    const rect = chartSvg.getBoundingClientRect();
+    const hoverX = rect.width > 0 ? rect.left + rect.width * 0.5 : 180;
+    const hoverY = rect.height > 0 ? rect.top + rect.height * 0.5 : 140;
+    await fireEvent.mouseMove(chartSvg, { clientX: hoverX, clientY: hoverY });
     await new Promise((resolve) => {
       setTimeout(resolve, 60);
     });
 
     await userEvent.click(canvas.getByRole("tab", { name: "CWV Timings" }));
-    await fireEvent.mouseMove(chartSvg, { clientX: 180, clientY: 140 });
+    await fireEvent.mouseMove(chartSvg, { clientX: hoverX, clientY: hoverY });
     await new Promise((resolve) => {
       setTimeout(resolve, 60);
     });
 
     await userEvent.click(canvas.getByRole("tab", { name: "Single Metric" }));
-    await fireEvent.mouseMove(chartSvg, { clientX: 180, clientY: 140 });
+    await fireEvent.mouseMove(chartSvg, { clientX: hoverX, clientY: hoverY });
     await new Promise((resolve) => {
       setTimeout(resolve, 60);
     });
 
     await userEvent.click(canvas.getByRole("tab", { name: "LCP (ms)" }));
-    await fireEvent.mouseMove(chartSvg, { clientX: 180, clientY: 140 });
+    await fireEvent.mouseMove(chartSvg, { clientX: hoverX, clientY: hoverY });
     await waitFor(async () => {
       const footer = canvas.getByText("Click to inspect");
       const tooltip = footer.parentElement?.parentElement;
@@ -820,7 +830,7 @@ export const MultiRunTrendOverlay: Story = {
     });
 
     await userEvent.click(canvas.getByRole("tab", { name: "CLS" }));
-    await fireEvent.mouseMove(chartSvg, { clientX: 180, clientY: 140 });
+    await fireEvent.mouseMove(chartSvg, { clientX: hoverX, clientY: hoverY });
     await waitFor(async () => {
       const footer = canvas.getByText("Click to inspect");
       const tooltip = footer.parentElement?.parentElement;
@@ -955,6 +965,133 @@ export const NeutralDiffVerdict: Story = {
     const canvas = within(canvasElement);
     await expect(
       await canvas.findByText("No major score or insight transitions"),
+    ).toBeInTheDocument();
+    await expect(
+      canvas.getByText(
+        "Performance score and insight statuses match the baseline run.",
+      ),
+    ).toBeInTheDocument();
+  },
+};
+
+const partialMissingAndTruncatedHandler: FetchHandler = async (
+  rawUrl: string,
+) => {
+  if (rawUrl === "/api/lighthouse/runs/missing-404") {
+    return new Response(
+      JSON.stringify({
+        error: { code: "NOT_FOUND", message: "Run not found" },
+      }),
+      { status: 404 },
+    );
+  }
+  if (rawUrl.startsWith("/api/lighthouse/runs?")) {
+    return new Response(
+      JSON.stringify({
+        runs: COMPARE_RUNS,
+        total: 120,
+        limit: 100,
+        offset: 0,
+      }),
+      { status: 200 },
+    );
+  }
+  return populatedCompareHandler(rawUrl);
+};
+
+export const PartialMissingRunAndTruncatedHistoryNotice: Story = {
+  render: () => (
+    <CompareProviders
+      handler={partialMissingAndTruncatedHandler}
+      initialSearch="?runs=cmp-run-1,cmp-run-3,missing-404&baseline=cmp-run-1"
+    >
+      <ComparePage />
+    </CompareProviders>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      await canvas.findByText("Some selected runs could not be loaded"),
+    ).toBeInTheDocument();
+    await expect(
+      canvas.getByText(/Showing the latest 3 of 120 runs/i),
+    ).toBeInTheDocument();
+    await expect(
+      canvas.getByText("Comparison Matrix (2 Runs)"),
+    ).toBeInTheDocument();
+
+    await userEvent.click(canvas.getByRole("button", { name: "Retry" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Remove" }));
+    await waitFor(async () => {
+      await expect(
+        canvas.queryByText("Some selected runs could not be loaded"),
+      ).not.toBeInTheDocument();
+    });
+  },
+};
+
+const symmetricMixedHandler = createCustomDiffHandler((payload) => ({
+  ...payload,
+  deltas: {
+    ...payload.deltas,
+    scores: {
+      ...payload.deltas.scores,
+      performanceScore: -4,
+    },
+    insights: {
+      resolved: [
+        { id: "lcp-discovery-insight", title: "Optimize LCP discovery" },
+      ],
+      regressed: [],
+      clsCulpritDelta: 0,
+    },
+  },
+}));
+
+export const SymmetricMixedVerdictScoreDropWithResolvedInsight: Story = {
+  render: () => (
+    <CompareProviders handler={symmetricMixedHandler}>
+      <ComparePage />
+    </CompareProviders>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      await canvas.findByText(
+        "Mixed changes: 1 insight resolved, Performance -4 pts",
+      ),
+    ).toBeInTheDocument();
+  },
+};
+
+const regressionDiffHandler = createCustomDiffHandler((payload) => ({
+  ...payload,
+  deltas: {
+    ...payload.deltas,
+    scores: {
+      ...payload.deltas.scores,
+      performanceScore: -8,
+    },
+    insights: {
+      resolved: [],
+      regressed: [
+        { id: "cls-culprits-insight", title: "Layout shift culprits" },
+      ],
+      clsCulpritDelta: 1,
+    },
+  },
+}));
+
+export const RegressionDiffVerdict: Story = {
+  render: () => (
+    <CompareProviders handler={regressionDiffHandler}>
+      <ComparePage />
+    </CompareProviders>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      await canvas.findByText("Regression detected (Performance -8 pts)"),
     ).toBeInTheDocument();
   },
 };

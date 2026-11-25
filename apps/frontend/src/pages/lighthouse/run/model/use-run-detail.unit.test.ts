@@ -161,4 +161,76 @@ describe("useRunDetail", () => {
       "/lighthouse/compare?runs=run-2&baseline=run-2",
     );
   });
+
+  it("pairs an older run with the closest earlier run rather than a newer run, or falls back to single-run when oldest", async () => {
+    const { summary: _summary, ...run2Summary } = RUN_2_DETAIL;
+    const newerRun = {
+      ...run2Summary,
+      id: "run-3",
+      createdAt: "2026-11-22T03:00:00.000Z",
+    };
+    const olderRun = {
+      ...run2Summary,
+      id: "run-1",
+      createdAt: "2026-11-22T01:00:00.000Z",
+    };
+    const oldestRun = {
+      ...run2Summary,
+      id: "run-0",
+      createdAt: "2026-11-22T00:00:00.000Z",
+    };
+
+    const fetchSpy = vi.fn(async (input: RequestInfo | URL) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      if (url.includes("/api/lighthouse/runs/run-2")) {
+        return new Response(JSON.stringify(RUN_2_DETAIL), { status: 200 });
+      }
+      if (url.includes("/api/lighthouse/runs/run-0")) {
+        return new Response(JSON.stringify({ ...RUN_2_DETAIL, ...oldestRun }), {
+          status: 200,
+        });
+      }
+      if (url.includes("/api/lighthouse/runs?")) {
+        return new Response(
+          JSON.stringify({
+            runs: [newerRun, run2Summary, olderRun, oldestRun],
+            total: 4,
+            limit: 100,
+            offset: 0,
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response("{}", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const { result } = renderHook(() => useRunDetail("run-2"), {
+      wrapper: createWrapper(client),
+    });
+
+    await waitFor(() =>
+      expect(result.current.compareHref).toBe(
+        "/lighthouse/compare?runs=run-1%2Crun-2&baseline=run-1",
+      ),
+    );
+
+    const { result: oldestResult } = renderHook(() => useRunDetail("run-0"), {
+      wrapper: createWrapper(client),
+    });
+
+    await waitFor(() =>
+      expect(oldestResult.current.compareHref).toBe(
+        "/lighthouse/compare?runs=run-0&baseline=run-0",
+      ),
+    );
+  });
 });

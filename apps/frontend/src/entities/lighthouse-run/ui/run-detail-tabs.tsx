@@ -495,9 +495,12 @@ function InsightsListCard({
                       </span>
                     </div>
                     <div className="flex flex-wrap items-center gap-1.5">
-                      {savingsEntries.map(([metricKey, savingsMs]) => (
+                      {savingsEntries.map(([metricKey, savingsValue]) => (
                         <Badge key={metricKey} variant="info">
-                          {metricKey} -{Math.round(savingsMs)} ms
+                          {metricKey} -
+                          {metricKey === "CLS"
+                            ? savingsValue.toFixed(3)
+                            : `${Math.round(savingsValue)} ms`}
                         </Badge>
                       ))}
                       <Badge variant={failing ? "destructive" : "success"}>

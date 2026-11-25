@@ -16,7 +16,11 @@ import {
   shortUrlLabel,
   THROTTLING_METHOD_LABELS,
 } from "@/entities/lighthouse-run";
-import { cn, updateNativeSearchParams } from "@/shared/lib";
+import {
+  cn,
+  isPlainPrimaryClick,
+  updateNativeSearchParams,
+} from "@/shared/lib";
 import {
   Alert,
   AlertDescription,
@@ -165,6 +169,9 @@ function ActiveJobBlockerAlert({
   const pathname = usePathname();
   const handleLinkClick = useCallback(
     (event: React.MouseEvent<HTMLAnchorElement>) => {
+      if (!isPlainPrimaryClick(event)) {
+        return;
+      }
       if (pathname === "/lighthouse/run") {
         event.preventDefault();
         updateNativeSearchParams(new URLSearchParams({ job: jobId }));

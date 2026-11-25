@@ -5,7 +5,11 @@ import { useCallback } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Plus } from "lucide-react";
-import { cn, updateNativeSearchParams } from "@/shared/lib";
+import {
+  cn,
+  isPlainPrimaryClick,
+  updateNativeSearchParams,
+} from "@/shared/lib";
 import { Button } from "@/shared/ui";
 import { buildCompareUrl, buildHistoryUrl } from "../model/thresholds";
 
@@ -23,7 +27,7 @@ export function LighthouseHeader({
 
   const handleCompareClick = useCallback(
     (event: React.MouseEvent<HTMLAnchorElement>) => {
-      if (pathname === "/lighthouse/compare") {
+      if (pathname === "/lighthouse/compare" && isPlainPrimaryClick(event)) {
         event.preventDefault();
         updateNativeSearchParams("");
       }

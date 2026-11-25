@@ -31,6 +31,14 @@ export interface MultiSelectOption {
   count?: number;
 }
 
+function handleActionButtonKeyDown(
+  event: React.KeyboardEvent<HTMLButtonElement>,
+) {
+  if (event.key === "Enter") {
+    event.stopPropagation();
+  }
+}
+
 function ComboboxOptionRow({
   option,
   selected,
@@ -60,6 +68,7 @@ function ComboboxOptionRow({
   return (
     <CommandItem
       value={`${option.label} ${option.value}`}
+      aria-checked={selected}
       onSelect={handleSelect}
       showCheck={false}
     >
@@ -90,6 +99,7 @@ function ComboboxOptionRow({
             <button
               type="button"
               onClick={handleOnlyClick}
+              onKeyDown={handleActionButtonKeyDown}
               className="text-muted-foreground hover:text-foreground hover:bg-muted rounded px-1.5 py-0.5 text-xs font-medium opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100"
             >
               {onlyActionLabel}
@@ -116,77 +126,82 @@ function getTriggerSummary(
   return `${selectedValues.length} selected`;
 }
 
+function FooterActionButton({
+  label,
+  onClick,
+  className,
+}: {
+  label?: string;
+  onClick: () => void;
+  className: string;
+}) {
+  if (!label) {
+    return null;
+  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onKeyDown={handleActionButtonKeyDown}
+      className={className}
+    >
+      {label}
+    </button>
+  );
+}
+
 function ComboboxFooter({
   footerText,
+  clearLabel,
   selectAllLabel,
-  showSelectAll,
   onSelectAll,
+  onClearAll,
 }: {
   footerText?: string;
+  clearLabel?: string;
   selectAllLabel?: string;
-  showSelectAll: boolean;
   onSelectAll: () => void;
+  onClearAll: () => void;
 }) {
-  if (!showSelectAll && !footerText) {
+  if (!selectAllLabel && !clearLabel && !footerText) {
     return null;
   }
   return (
     <div className="border-border flex items-center justify-between gap-2 border-t px-2.5 py-2 text-xs">
       <span className="text-muted-foreground truncate">{footerText ?? ""}</span>
-      {showSelectAll && selectAllLabel ? (
-        <button
-          type="button"
+      <div className="flex shrink-0 items-center gap-2">
+        <FooterActionButton
+          label={clearLabel}
+          onClick={onClearAll}
+          className="text-muted-foreground hover:text-foreground shrink-0 font-medium"
+        />
+        <FooterActionButton
+          label={selectAllLabel}
           onClick={onSelectAll}
           className="text-primary hover:text-primary/80 shrink-0 font-medium"
-        >
-          {selectAllLabel}
-        </button>
-      ) : null}
+        />
+      </div>
     </div>
   );
 }
 
-/**
- * Searchable multi-select popover combobox built on Base UI Popover and cmdk.
- */
-export function MultiSelectCombobox({
+function useComboboxHandlers({
   options,
   selectedValues,
+  selectedSet,
   onSelectedValuesChange,
-  placeholder = "Select items",
-  searchPlaceholder = "Filter items...",
-  emptyText = "No matching items.",
-  selectAllLabel,
-  onlyActionLabel,
-  footerText,
-  ariaLabel,
-  className,
 }: {
   options: readonly MultiSelectOption[];
   selectedValues: readonly string[];
+  selectedSet: ReadonlySet<string>;
   onSelectedValuesChange: (nextValues: string[]) => void;
-  placeholder?: string;
-  searchPlaceholder?: string;
-  emptyText?: string;
-  selectAllLabel?: string;
-  onlyActionLabel?: string;
-  footerText?: string;
-  ariaLabel?: string;
-  className?: string;
 }) {
-  const [open, setOpen] = useState(false);
-
-  const selectedSet = useMemo(() => new Set(selectedValues), [selectedValues]);
-
   const handleToggle = useCallback(
     (value: string) => {
-      if (selectedSet.has(value)) {
-        onSelectedValuesChange(
-          selectedValues.filter((existing) => existing !== value),
-        );
-        return;
-      }
-      onSelectedValuesChange([...selectedValues, value]);
+      const next = selectedSet.has(value)
+        ? selectedValues.filter((existing) => existing !== value)
+        : [...selectedValues, value];
+      onSelectedValuesChange(next);
     },
     [onSelectedValuesChange, selectedSet, selectedValues],
   );
@@ -202,16 +217,158 @@ export function MultiSelectCombobox({
     onSelectedValuesChange(options.map((option) => option.value));
   }, [onSelectedValuesChange, options]);
 
+  const handleClearAll = useCallback(() => {
+    onSelectedValuesChange([]);
+  }, [onSelectedValuesChange]);
+
+  return { handleToggle, handleSelectOnly, handleSelectAll, handleClearAll };
+}
+
+function ComboboxPopoverBody({
+  options,
+  selectedSet,
+  searchPlaceholder,
+  emptyText,
+  onlyActionLabel,
+  footerText,
+  clearLabel,
+  selectAllLabel,
+  onToggle,
+  onSelectOnly,
+  onSelectAll,
+  onClearAll,
+}: {
+  options: readonly MultiSelectOption[];
+  selectedSet: ReadonlySet<string>;
+  searchPlaceholder: string;
+  emptyText: string;
+  onlyActionLabel?: string;
+  footerText?: string;
+  clearLabel?: string;
+  selectAllLabel?: string;
+  onToggle: (value: string) => void;
+  onSelectOnly: (value: string) => void;
+  onSelectAll: () => void;
+  onClearAll: () => void;
+}) {
+  return (
+    <PopoverContent align="start" padding="none" className="w-80">
+      <Command>
+        <CommandInput placeholder={searchPlaceholder} />
+        <CommandList>
+          <CommandEmpty>{emptyText}</CommandEmpty>
+          <ScrollArea className="max-h-60">
+            <CommandGroup>
+              {options.map((option) => (
+                <ComboboxOptionRow
+                  key={option.value}
+                  option={option}
+                  selected={selectedSet.has(option.value)}
+                  onlyActionLabel={onlyActionLabel}
+                  onToggle={onToggle}
+                  onSelectOnly={onlyActionLabel ? onSelectOnly : undefined}
+                />
+              ))}
+            </CommandGroup>
+          </ScrollArea>
+        </CommandList>
+        <ComboboxFooter
+          footerText={footerText}
+          clearLabel={clearLabel}
+          selectAllLabel={selectAllLabel}
+          onSelectAll={onSelectAll}
+          onClearAll={onClearAll}
+        />
+      </Command>
+    </PopoverContent>
+  );
+}
+
+interface MultiSelectComboboxProps {
+  options: readonly MultiSelectOption[];
+  selectedValues: readonly string[];
+  onSelectedValuesChange: (nextValues: string[]) => void;
+  placeholder?: string;
+  searchPlaceholder?: string;
+  emptyText?: string;
+  selectAllLabel?: string;
+  clearAllLabel?: string;
+  onlyActionLabel?: string;
+  footerText?: string;
+  ariaLabel?: string;
+  className?: string;
+}
+
+function useComboboxState({
+  options,
+  selectedValues,
+  placeholder = "Select items",
+  selectAllLabel,
+  clearAllLabel,
+  onSelectedValuesChange,
+}: Pick<
+  MultiSelectComboboxProps,
+  | "options"
+  | "selectedValues"
+  | "placeholder"
+  | "selectAllLabel"
+  | "clearAllLabel"
+  | "onSelectedValuesChange"
+>) {
+  const selectedSet = useMemo(() => new Set(selectedValues), [selectedValues]);
+  const handlers = useComboboxHandlers({
+    options,
+    selectedValues,
+    selectedSet,
+    onSelectedValuesChange,
+  });
   const triggerSummary = useMemo(
     () => getTriggerSummary(options, selectedValues, placeholder),
     [options, placeholder, selectedValues],
   );
-
-  const showSelectAll = Boolean(
-    selectAllLabel &&
-    options.length > 0 &&
-    selectedValues.length < options.length,
+  const hasUnselected = options.some(
+    (option) => !selectedSet.has(option.value),
   );
+  const visibleSelectAllLabel = hasUnselected ? selectAllLabel : undefined;
+  const visibleClearLabel =
+    selectedValues.length > 0 ? clearAllLabel : undefined;
+
+  return {
+    selectedSet,
+    triggerSummary,
+    visibleSelectAllLabel,
+    visibleClearLabel,
+    ...handlers,
+  };
+}
+
+/**
+ * Searchable multi-select popover combobox built on Base UI Popover and cmdk.
+ */
+export function MultiSelectCombobox({
+  options,
+  selectedValues,
+  onSelectedValuesChange,
+  placeholder = "Select items",
+  searchPlaceholder = "Filter items...",
+  emptyText = "No matching items.",
+  selectAllLabel,
+  clearAllLabel,
+  onlyActionLabel,
+  footerText,
+  ariaLabel,
+  className,
+}: MultiSelectComboboxProps) {
+  const [open, setOpen] = useState(false);
+
+  const state = useComboboxState({
+    options,
+    selectedValues,
+    placeholder,
+    selectAllLabel,
+    clearAllLabel,
+    onSelectedValuesChange,
+  });
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -227,39 +384,23 @@ export function MultiSelectCombobox({
           />
         }
       >
-        <span className="truncate font-normal">{triggerSummary}</span>
+        <span className="truncate font-normal">{state.triggerSummary}</span>
         <ChevronsUpDown className="text-muted-foreground size-4 shrink-0" />
       </PopoverTrigger>
-      <PopoverContent align="start" padding="none" className="w-80">
-        <Command>
-          <CommandInput placeholder={searchPlaceholder} />
-          <CommandList>
-            <CommandEmpty>{emptyText}</CommandEmpty>
-            <ScrollArea className="max-h-60">
-              <CommandGroup>
-                {options.map((option) => (
-                  <ComboboxOptionRow
-                    key={option.value}
-                    option={option}
-                    selected={selectedSet.has(option.value)}
-                    onlyActionLabel={onlyActionLabel}
-                    onToggle={handleToggle}
-                    onSelectOnly={
-                      onlyActionLabel ? handleSelectOnly : undefined
-                    }
-                  />
-                ))}
-              </CommandGroup>
-            </ScrollArea>
-          </CommandList>
-          <ComboboxFooter
-            footerText={footerText}
-            selectAllLabel={selectAllLabel}
-            showSelectAll={showSelectAll}
-            onSelectAll={handleSelectAll}
-          />
-        </Command>
-      </PopoverContent>
+      <ComboboxPopoverBody
+        options={options}
+        selectedSet={state.selectedSet}
+        searchPlaceholder={searchPlaceholder}
+        emptyText={emptyText}
+        onlyActionLabel={onlyActionLabel}
+        footerText={footerText}
+        clearLabel={state.visibleClearLabel}
+        selectAllLabel={state.visibleSelectAllLabel}
+        onToggle={state.handleToggle}
+        onSelectOnly={state.handleSelectOnly}
+        onSelectAll={state.handleSelectAll}
+        onClearAll={state.handleClearAll}
+      />
     </Popover>
   );
 }

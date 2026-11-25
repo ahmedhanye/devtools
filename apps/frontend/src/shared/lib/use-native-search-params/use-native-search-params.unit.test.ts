@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   getSearchParamsSnapshot,
   getServerSearchParamsSnapshot,
+  isPlainPrimaryClick,
   notifySearchParamsChange,
   subscribeToSearchParams,
   updateNativeSearchParams,
@@ -154,10 +155,10 @@ describe("useNativeSearchParams hook", () => {
     }
   });
 
-  it("preserves existing window.history.state on pushState and replaceState", () => {
+  it("preserves custom window.history.state while stripping Next.js internal markers", () => {
     const originalHref = window.location.href;
     const originalState: unknown = window.history.state;
-    const sentinelState = { __NA: true, tree: ["lighthouse"] };
+    const sentinelState = { __NA: true, _N: true, tree: ["lighthouse"] };
 
     try {
       window.history.replaceState(
@@ -166,13 +167,30 @@ describe("useNativeSearchParams hook", () => {
         "/lighthouse/run?job=job-1",
       );
       updateNativeSearchParams("id=run-1", { replace: true });
-      expect(window.history.state).toEqual(sentinelState);
+      expect(window.history.state).toEqual({ tree: ["lighthouse"] });
 
+      window.history.replaceState({ __NA: true }, "", "/lighthouse/run?job=1");
       updateNativeSearchParams("id=run-2");
-      expect(window.history.state).toEqual(sentinelState);
+      expect(window.history.state).toBeNull();
     } finally {
       window.history.replaceState(originalState, "", originalHref);
     }
+  });
+
+  it("detects plain unmodified primary clicks via isPlainPrimaryClick", () => {
+    const base = {
+      button: 0,
+      metaKey: false,
+      ctrlKey: false,
+      shiftKey: false,
+      altKey: false,
+    };
+    expect(isPlainPrimaryClick(base)).toBe(true);
+    expect(isPlainPrimaryClick({ ...base, button: 1 })).toBe(false);
+    expect(isPlainPrimaryClick({ ...base, metaKey: true })).toBe(false);
+    expect(isPlainPrimaryClick({ ...base, ctrlKey: true })).toBe(false);
+    expect(isPlainPrimaryClick({ ...base, shiftKey: true })).toBe(false);
+    expect(isPlainPrimaryClick({ ...base, altKey: true })).toBe(false);
   });
 
   it("no-ops updateNativeSearchParams and notifySearchParamsChange when window globals are absent", () => {

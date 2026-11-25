@@ -368,10 +368,17 @@ function resolveProgressEvent(
   latestProgress: AuditSseProgressEvent | null,
   activeJob: AuditJob | null,
 ): AuditSseProgressEvent | null {
-  if (latestProgress) {
+  const polled = activeJob?.latestProgress ?? null;
+  if (!latestProgress) {
+    return polled;
+  }
+  if (!polled) {
     return latestProgress;
   }
-  return activeJob ? activeJob.latestProgress : null;
+  return new Date(polled.timestamp).getTime() >
+    new Date(latestProgress.timestamp).getTime()
+    ? polled
+    : latestProgress;
 }
 
 function formatProgressDescription(
@@ -631,14 +638,12 @@ function resolveLiveJobDisplayMetrics(
   activeJob: Parameters<typeof computeProgressMetrics>[1],
   isCompleting: boolean,
 ) {
+  const event = resolveProgressEvent(latestProgress, activeJob);
   const metrics = computeProgressMetrics(latestProgress, activeJob);
-  const totalRuns = Math.max(
-    1,
-    latestProgress?.totalRuns ?? activeJob?.runs ?? 1,
-  );
+  const totalRuns = Math.max(1, event?.totalRuns ?? activeJob?.runs ?? 1);
   const activeRunIdx = Math.max(
     0,
-    Math.min(latestProgress?.runIndex ?? 0, totalRuns - 1),
+    Math.min(event?.runIndex ?? 0, totalRuns - 1),
   );
   return {
     pct: isCompleting ? 100 : metrics.pct,
@@ -652,8 +657,15 @@ function resolveLiveJobDisplayMetrics(
 }
 
 function LiveJobTracker({ jobId }: { jobId: string }) {
-  const { activeJob, latestProgress, sseError, isExpired, isCompleting } =
-    useLiveJobStream(jobId);
+  const {
+    activeJob,
+    latestProgress,
+    sseError,
+    isExpired,
+    isCompleting,
+    isStreamDisconnected,
+    handleReconnect,
+  } = useLiveJobStream(jobId);
 
   if (sseError) {
     return <FailedJobNotice error={sseError} />;
@@ -676,6 +688,29 @@ function LiveJobTracker({ jobId }: { jobId: string }) {
           </Badge>
         </div>
       </div>
+
+      {isStreamDisconnected ? (
+        <Alert>
+          <AlertCircle className="size-4" />
+          <AlertTitle>Live stream disconnected</AlertTitle>
+          <AlertDescription>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span>
+                Progress is updating via background polling after repeated
+                connection drops.
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleReconnect}
+              >
+                Reconnect
+              </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       <LiveJobCard
         activeJob={activeJob}
