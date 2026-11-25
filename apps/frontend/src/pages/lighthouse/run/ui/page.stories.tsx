@@ -379,6 +379,10 @@ export const MountWithPolledProgressAndStreamDisconnect: Story = {
       name: /Iteration 2 of 3/i,
     });
     await expect(iter2Toggle).toHaveAttribute("aria-expanded", "true");
+
+    await waitFor(async () => {
+      await expect(canvas.queryByText("0.0s")).not.toBeInTheDocument();
+    });
   },
 };
 
