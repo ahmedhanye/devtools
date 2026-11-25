@@ -857,4 +857,87 @@ describe("useLiveJobStream", () => {
     unmount();
     client.clear();
   });
+
+  it("performs final stream check when polling later reports inactive after refetch-error retries exhaust", async () => {
+    vi.useFakeTimers();
+    let mode: "active" | "error" | "inactive" = "active";
+    const fetchMock = vi.fn(async () => {
+      if (mode === "error") {
+        return new Response("Service unavailable", { status: 500 });
+      }
+      return new Response(
+        JSON.stringify(
+          mode === "active"
+            ? { active: true, job: makeJob() }
+            : { active: false, job: null },
+        ),
+        { status: 200 },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    });
+    const { result, unmount } = renderHook(() => useLiveJobStream("job-1"), {
+      wrapper: createWrapper(client),
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(result.current.activeJob?.id).toBe("job-1");
+
+    mode = "error";
+    const backoffDelays = [250, 500, 1000, 2000];
+    for (const [idx, delay] of backoffDelays.entries()) {
+      await act(async () => {
+        FakeEventSource.instances[idx]!.emit("error", new Event("error"));
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(delay);
+      });
+    }
+
+    await act(async () => {
+      FakeEventSource.instances[4]!.emit("error", new Event("error"));
+    });
+    expect(FakeEventSource.instances).toHaveLength(5);
+    expect(result.current.isExpired).toBe(false);
+    expect(result.current.isStreamDisconnected).toBe(true);
+
+    mode = "inactive";
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4_500);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10);
+    });
+
+    expect(FakeEventSource.instances).toHaveLength(6);
+    expect(result.current.isExpired).toBe(false);
+
+    act(() => {
+      FakeEventSource.instances[5]!.emit(
+        "complete",
+        new MessageEvent("complete", {
+          data: JSON.stringify({
+            jobId: "job-1",
+            status: "completed",
+            runId: "run-99",
+            run: makeRunDetail("run-99"),
+          }),
+        }),
+      );
+    });
+
+    expect(result.current.isCompleting).toBe(true);
+    expect(result.current.isStreamDisconnected).toBe(false);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    expect(window.location.search).toBe("?id=run-99");
+    unmount();
+    client.clear();
+  });
 });

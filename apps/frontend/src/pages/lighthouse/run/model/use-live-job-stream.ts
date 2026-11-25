@@ -162,6 +162,7 @@ async function handleStreamConnectionDrop(params: {
   }
 
   if (result.isError) {
+    tracker.awaitingInactiveFinal = true;
     scheduleRetryOrDisconnect({
       isDisposed,
       tracker,
