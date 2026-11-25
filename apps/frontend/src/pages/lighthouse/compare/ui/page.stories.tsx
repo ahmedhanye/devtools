@@ -8,6 +8,7 @@ import type {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Meta, StoryObj } from "@storybook/react";
 import { expect, fireEvent, userEvent, waitFor, within } from "storybook/test";
+import { formatTimestamp } from "@/entities/lighthouse-run";
 import { updateNativeSearchParams } from "@/shared/lib";
 import { ComparePage } from "./page";
 
@@ -512,6 +513,8 @@ export const ChartPointAndBarInspect: Story = {
     await expect(chartSvg.innerHTML).not.toContain("var(--color-value)");
     await expect(chartSvg.innerHTML).toContain("var(--color-chart-1)");
 
+    const expectedRun = COMPARE_RUNS[0];
+    if (!expectedRun) throw new Error("Expected COMPARE_RUNS[0]");
     const targetPoint = await getChartTickPoint(chartSvg, 1);
     await fireEvent.mouseMove(chartSvg, targetPoint);
     await waitFor(async () => {
@@ -519,7 +522,7 @@ export const ChartPointAndBarInspect: Story = {
       const tooltip = footer.parentElement?.parentElement;
       if (!tooltip) throw new Error("Expected tooltip container");
       await expect(
-        within(tooltip).getByText("Nov 22, 02:00 AM"),
+        within(tooltip).getByText(formatTimestamp(expectedRun.createdAt)),
       ).toBeInTheDocument();
     });
     await fireEvent.click(chartSvg, targetPoint);
