@@ -4,7 +4,7 @@ Authoring rules for Feature-Sliced Design (FSD) v2.1 slices, Storybook Portable 
 
 ## FSD v2.1 layer and slice rules
 
-- **Unidirectional imports.** Modules import strictly downward (`app` -> `pages` -> `features` -> `entities` -> `shared`), enforced by `bun run lint:fsd` and `.fallowrc.json` boundary zones. Avoid the `widgets` layer.
+- **Unidirectional imports.** Cross-layer and cross-slice imports flow strictly downward (`app` -> `pages` -> `features` -> `entities` -> `shared`), while modules within a slice may import from sibling segments of that same slice (such as `ui/` importing hooks from `model/`). Cross-layer zones are enforced by `.fallowrc.json`, and FSD slice boundaries are enforced by `bun run lint:fsd`. Avoid the `widgets` layer.
 - **Slice groups without barrels.** Domain-grouped folders such as `src/pages/lighthouse/{history,compare,run}/` or `src/features/lighthouse/{trigger-audit,inspect-run,active-audit-job}/` act strictly as namespaces: keep **no** group-level `index.ts`, **no** shared files directly in the group directory, and **no** imports between sibling slices.
 - **Pages-First Extraction Rule.** Start all page UI, hooks, and fetching inside `apps/frontend/src/pages/<page>/`. Extract to `features/` or `entities/` only when reused across multiple distinct pages (or app shell) with a single focused responsibility.
 - **TanStack Query placement.** Place shared `queryOptions` key factories and API clients inside `entities/<entity>/api/` (such as `lighthouseQueries`) so features and multiple pages share invalidation and cache seeding cleanly; keep page-exclusive queries inside `pages/<slice>/api/`.
