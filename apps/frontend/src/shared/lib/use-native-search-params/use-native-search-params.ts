@@ -2,18 +2,106 @@
 
 import { useMemo, useSyncExternalStore } from "react";
 
+const SEARCH_PARAMS_CHANGE_EVENT = "devtools:search-params-change";
+
 /**
- * Subscribes to browser `popstate` navigation events.
+ * Checks whether a click event is an unmodified primary-button click eligible
+ * for client-side same-route handling instead of browser tab/window navigation.
+ */
+export function isPlainPrimaryClick(event: {
+  button: number;
+  metaKey: boolean;
+  ctrlKey: boolean;
+  shiftKey: boolean;
+  altKey: boolean;
+}): boolean {
+  return (
+    event.button === 0 &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.shiftKey &&
+    !event.altKey
+  );
+}
+
+function sanitizeHistoryState(state: unknown): unknown {
+  if (typeof state !== "object" || state === null || Array.isArray(state)) {
+    return state;
+  }
+  const entries = Object.entries(state).filter(
+    ([key]) => key !== "__NA" && key !== "_N",
+  );
+  return entries.length > 0 ? Object.fromEntries(entries) : null;
+}
+
+/**
+ * Dispatches a synthetic notification event so active {@link useNativeSearchParams}
+ * hooks re-read `window.location.search` after programmatic history mutations.
+ */
+export function notifySearchParamsChange(): void {
+  if (
+    typeof window === "undefined" ||
+    typeof window.dispatchEvent !== "function"
+  ) {
+    return;
+  }
+  window.dispatchEvent(new Event(SEARCH_PARAMS_CHANGE_EVENT));
+}
+
+/**
+ * Updates `window.location.search` via `history.pushState` or `history.replaceState`
+ * and notifies subscribed {@link useNativeSearchParams} consumers immediately.
  *
- * @param callback - Listener invoked when browser history state changes.
- * @returns Cleanup function removing the `popstate` listener.
+ * @param updater - Raw query string, `URLSearchParams`, or mutator callback.
+ * @param options - Navigation options (`replace: true` replaces the current history entry).
+ */
+export function updateNativeSearchParams(
+  updater: string | URLSearchParams | ((current: URLSearchParams) => void),
+  options?: { replace?: boolean },
+): void {
+  if (typeof window === "undefined" || !window.location || !window.history) {
+    return;
+  }
+
+  const url = new URL(window.location.href);
+  if (typeof updater === "string") {
+    const cleaned = updater.startsWith("?") ? updater.slice(1) : updater;
+    url.search = cleaned ? `?${cleaned}` : "";
+  } else if (updater instanceof URLSearchParams) {
+    const serialized = updater.toString();
+    url.search = serialized ? `?${serialized}` : "";
+  } else {
+    const next = new URLSearchParams(url.search);
+    updater(next);
+    const serialized = next.toString();
+    url.search = serialized ? `?${serialized}` : "";
+  }
+
+  const nextState = sanitizeHistoryState(window.history.state);
+  if (options?.replace) {
+    window.history.replaceState(nextState, "", url.toString());
+  } else {
+    window.history.pushState(nextState, "", url.toString());
+  }
+  notifySearchParamsChange();
+}
+
+/**
+ * Subscribes to browser `popstate` and programmatic search-param change events.
+ *
+ * @param callback - Listener invoked when URL search parameters change.
+ * @returns Cleanup function removing registered listeners.
  */
 export function subscribeToSearchParams(callback: () => void): () => void {
   if (typeof window === "undefined" || !window.addEventListener) {
     return () => {};
   }
   window.addEventListener("popstate", callback);
-  return () => window.removeEventListener("popstate", callback);
+  window.addEventListener(SEARCH_PARAMS_CHANGE_EVENT, callback);
+  return () => {
+    window.removeEventListener("popstate", callback);
+    window.removeEventListener(SEARCH_PARAMS_CHANGE_EVENT, callback);
+  };
 }
 
 /**
@@ -38,9 +126,10 @@ export function getServerSearchParamsSnapshot(): string {
 }
 
 /**
- * Reads client URL search parameters via `useSyncExternalStore` (subscribing to `popstate` events)
- * to preserve Next.js static export (`output: "export"`) prerendering without wrapping pages
- * in top-level `<Suspense>` boundaries or triggering `useEffect` state cascades.
+ * Reads client URL search parameters via `useSyncExternalStore` (subscribing to `popstate`
+ * and {@link updateNativeSearchParams} updates) to preserve Next.js static export (`output: "export"`)
+ * prerendering without wrapping pages in top-level `<Suspense>` boundaries or triggering
+ * `useEffect` state cascades.
  *
  * @returns Memoized `URLSearchParams` instance reflecting `window.location.search`.
  */

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import type * as React from "react";
-import { AppLayout } from "@/shared/ui";
+import { AppShell } from "./layouts/app-shell";
 import { QueryProvider } from "./providers/query-provider";
 import "./globals.css";
 
@@ -18,7 +18,7 @@ export default function RootLayout({
     <html lang="en">
       <body className="bg-background text-foreground min-h-dvh antialiased">
         <QueryProvider>
-          <AppLayout>{children}</AppLayout>
+          <AppShell>{children}</AppShell>
         </QueryProvider>
       </body>
     </html>
