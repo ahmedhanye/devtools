@@ -7,11 +7,11 @@
     "devtools": "./bin/devtools.js"
   },
   "scripts": {
-    "test": "bun run --cwd ../.. build:bin && bun test",
+    "test": "bun test --parallel=4 --only-failures",
     "test:unit": "bun test tests/*.unit.test.ts",
     "test:integration": "bun test tests/*.integration.test.ts",
-    "test:e2e": "bun run --cwd ../.. build:bin && bun test tests/*.e2e.test.ts",
-    "test:coverage": "bun run --cwd ../.. build:bin && bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage",
+    "test:e2e": "bun test --parallel=4 --only-failures tests/*.e2e.test.ts",
+    "test:coverage": "bun test --parallel=4 --only-failures --coverage --coverage-reporter=lcov --coverage-dir=coverage",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

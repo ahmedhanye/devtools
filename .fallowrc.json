@@ -1,7 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
   "entry": ["apps/frontend/steiger.config.js", "apps/cli/src/index.ts"],
-  "ignoreDependencies": ["prettier-plugin-tailwindcss"],
   "ignoreDependencyOverrides": [
     {
       "package": "eslint-plugin-react-hooks/zod-validation-error",
@@ -22,6 +21,7 @@
   ],
   "rules": {
     "policy-violation": "off",
+    "private-type-leaks": "error",
     "prop-drilling": "warn",
     "thin-wrapper": "warn",
     "duplicate-prop-shape": "warn"
@@ -359,6 +359,7 @@
         "apps/cli/bin/**",
         "apps/frontend/.storybook/**",
         "apps/frontend/*.config.{ts,js,mjs}",
+        "apps/frontend/vitest.setup.ts",
         "apps/frontend/next-env.d.ts",
         "packages/db/drizzle.config.ts",
         "packages/*/src/**/declarations.d.ts",

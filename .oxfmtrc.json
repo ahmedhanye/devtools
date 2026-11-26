@@ -1,0 +1,30 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 80,
+  "sortPackageJson": false,
+  "overrides": [
+    {
+      "files": ["apps/frontend/**/*.{ts,tsx,css}"],
+      "options": {
+        "sortTailwindcss": {
+          "stylesheet": "apps/frontend/src/app/globals.css",
+          "functions": ["cn", "clsx", "cva"]
+        }
+      }
+    }
+  ],
+  "ignorePatterns": [
+    "dist",
+    "out",
+    ".next",
+    ".turbo",
+    "node_modules",
+    "bun.lock",
+    "skills-lock.json",
+    ".agents/skills",
+    "tmp",
+    "storybook-static",
+    ".source",
+    "coverage"
+  ]
+}

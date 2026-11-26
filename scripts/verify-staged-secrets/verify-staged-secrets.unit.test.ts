@@ -9,6 +9,11 @@ import {
   getStagedFiles,
   getStagedDeletedFiles,
   readStagedContent,
+  resolvePushRange,
+  scanCommitRangeWithTrufflehog,
+  scanCommitRangeFallback,
+  run,
+  runRangeScan,
 } from "./verify-staged-secrets";
 
 describe("isIgnoredLine", () => {
@@ -49,8 +54,8 @@ describe("scanContentForSecrets", () => {
     const content = `\nconst awsKey = "${awsKey}";\nconsole.log(awsKey);\n`;
     const findings = scanContentForSecrets(content, "test.ts");
     expect(findings).toHaveLength(1);
-    expect(findings[0].rule).toBe("AWS Access Key ID");
-    expect(findings[0].line).toBe(2);
+    expect(findings[0]?.rule).toBe("AWS Access Key ID");
+    expect(findings[0]?.line).toBe(2);
   });
 
   it("suppresses AWS access key IDs with trufflehog:ignore", () => {
@@ -65,7 +70,7 @@ describe("scanContentForSecrets", () => {
     const content = `GITHUB_TOKEN=${fakeToken}`;
     const findings = scanContentForSecrets(content, ".env.example");
     expect(findings).toHaveLength(1);
-    expect(findings[0].rule).toBe("GitHub Personal Access Token");
+    expect(findings[0]?.rule).toBe("GitHub Personal Access Token");
   });
 
   it("suppresses GitHub token with hash comment trufflehog:ignore", () => {
@@ -80,7 +85,7 @@ describe("scanContentForSecrets", () => {
     const content = `const slack = "${slackToken}";`;
     const findings = scanContentForSecrets(content, "slack.ts");
     expect(findings).toHaveLength(1);
-    expect(findings[0].rule).toBe("Slack Token");
+    expect(findings[0]?.rule).toBe("Slack Token");
   });
 
   it("detects OpenAI API keys", () => {
@@ -88,7 +93,7 @@ describe("scanContentForSecrets", () => {
     const content = `const openAi = "${openAiKey}";`;
     const findings = scanContentForSecrets(content, "ai.ts");
     expect(findings).toHaveLength(1);
-    expect(findings[0].rule).toBe("OpenAI API Key");
+    expect(findings[0]?.rule).toBe("OpenAI API Key");
   });
 
   it("detects Stripe secret keys", () => {
@@ -96,7 +101,7 @@ describe("scanContentForSecrets", () => {
     const content = `const stripe = "${stripeKey}";`;
     const findings = scanContentForSecrets(content, "stripe.ts");
     expect(findings).toHaveLength(1);
-    expect(findings[0].rule).toBe("Stripe API Key");
+    expect(findings[0]?.rule).toBe("Stripe API Key");
   });
 
   it("detects private keys", () => {
@@ -104,7 +109,7 @@ describe("scanContentForSecrets", () => {
       "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA0...\n-----END RSA PRIVATE KEY-----"; // trufflehog:ignore
     const findings = scanContentForSecrets(privateKey, "key.pem");
     expect(findings.length).toBeGreaterThan(0);
-    expect(findings[0].rule).toBe("Private Key");
+    expect(findings[0]?.rule).toBe("Private Key");
   });
 
   it("allows synthetic mock credentials with mock_ prefix or zeros", () => {
@@ -269,7 +274,7 @@ describe("getStagedDeletedFiles", () => {
       exitCode: 0,
       stdout: "deleted-file.ts\0old-module.ts\0",
     });
-    const deleted = getStagedDeletedFiles(mockSpawn as any);
+    const deleted = getStagedDeletedFiles(mockSpawn);
     expect(deleted.has("deleted-file.ts")).toBe(true);
     expect(deleted.has("old-module.ts")).toBe(true);
     expect(deleted.has("other.ts")).toBe(false);
@@ -287,7 +292,7 @@ describe("getStagedFiles", () => {
       };
     };
 
-    const files = getStagedFiles(mockSpawn as any);
+    const files = getStagedFiles(mockSpawn);
     expect(capturedArgs).toEqual([
       "git",
       "diff",
@@ -306,8 +311,8 @@ describe("getStagedFiles", () => {
       }
       return { exitCode: 0, stdout: "deleted-file.ts\0" };
     };
-    const stagedFiles = getStagedFiles(mockSpawn as any);
-    const deletedFiles = getStagedDeletedFiles(mockSpawn as any);
+    const stagedFiles = getStagedFiles(mockSpawn);
+    const deletedFiles = getStagedDeletedFiles(mockSpawn);
     expect(stagedFiles).toEqual(["active.ts"]);
     expect(deletedFiles).toEqual(new Set(["deleted-file.ts"]));
   });
@@ -322,7 +327,7 @@ describe("getStagedFiles", () => {
     const { mockExit, getExitCode } = createMockExit();
 
     try {
-      expect(() => getStagedFiles(mockSpawn as any, mockExit)).toThrow(
+      expect(() => getStagedFiles(mockSpawn, mockExit)).toThrow(
         "Exit called with 1",
       );
       expect(getExitCode()).toBe(1);
@@ -339,7 +344,7 @@ describe("getStagedFiles", () => {
     const { mockExit, getExitCode } = createMockExit();
 
     try {
-      expect(() => getStagedFiles(mockSpawn as any, mockExit)).toThrow(
+      expect(() => getStagedFiles(mockSpawn, mockExit)).toThrow(
         "Exit called with 1",
       );
       expect(getExitCode()).toBe(1);
@@ -359,11 +364,7 @@ describe("readStagedContent", () => {
       };
     };
 
-    const content = readStagedContent(
-      "src/index.ts",
-      "/mock/repo",
-      mockSpawn as any,
-    );
+    const content = readStagedContent("src/index.ts", "/mock/repo", mockSpawn);
     expect(content).toBe("export const x = 1;\n");
   });
 
@@ -374,11 +375,7 @@ describe("readStagedContent", () => {
       return { exitCode: 0, stdout: "" };
     };
 
-    const content = readStagedContent(
-      "image.png",
-      "/mock/repo",
-      mockSpawn as any,
-    );
+    const content = readStagedContent("image.png", "/mock/repo", mockSpawn);
     expect(content).toBeNull();
     expect(spawnCalled).toBe(false);
   });
@@ -394,16 +391,265 @@ describe("readStagedContent", () => {
 
     try {
       expect(() =>
-        readStagedContent(
-          "missing.ts",
-          "/mock/repo",
-          mockSpawn as any,
-          mockExit,
-        ),
+        readStagedContent("missing.ts", "/mock/repo", mockSpawn, mockExit),
       ).toThrow("Exit called with 1");
       expect(getExitCode()).toBe(1);
     } finally {
       consoleSpy.mockRestore();
+    }
+  });
+});
+
+describe("resolvePushRange", () => {
+  it("uses explicit base ref when provided and has commits", () => {
+    const mockSpawn = (args: string[]) => {
+      if (args[0] === "git" && args[1] === "rev-list") {
+        expect(args).toEqual(["git", "rev-list", "--count", "main..HEAD"]);
+        return { exitCode: 0, stdout: "3\n" };
+      }
+      return { exitCode: 1, stdout: "" };
+    };
+
+    expect(resolvePushRange("main", mockSpawn)).toEqual({
+      base: "main",
+      range: "main..HEAD",
+    });
+  });
+
+  it("prefers @{u} upstream when no explicit base is provided", () => {
+    const mockSpawn = (args: string[]) => {
+      if (args[1] === "rev-parse" && args[2] === "--abbrev-ref") {
+        return { exitCode: 0, stdout: "origin/feat-x\n" };
+      }
+      if (args[1] === "rev-list") {
+        expect(args).toEqual([
+          "git",
+          "rev-list",
+          "--count",
+          "origin/feat-x..HEAD",
+        ]);
+        return { exitCode: 0, stdout: "2\n" };
+      }
+      return { exitCode: 1, stdout: "" };
+    };
+
+    expect(resolvePushRange(undefined, mockSpawn)).toEqual({
+      base: "origin/feat-x",
+      range: "origin/feat-x..HEAD",
+    });
+  });
+
+  it("falls back to origin/main when no upstream exists and returns null when count is 0", () => {
+    const mockSpawn = (args: string[]) => {
+      if (args[1] === "rev-parse") {
+        return { exitCode: 128, stdout: "" };
+      }
+      if (args[1] === "rev-list") {
+        expect(args).toEqual([
+          "git",
+          "rev-list",
+          "--count",
+          "origin/main..HEAD",
+        ]);
+        return { exitCode: 0, stdout: "0\n" };
+      }
+      return { exitCode: 1, stdout: "" };
+    };
+
+    expect(resolvePushRange(undefined, mockSpawn)).toBeNull();
+  });
+});
+
+describe("scanCommitRangeWithTrufflehog", () => {
+  it("invokes trufflehog with CI-parity flags and exclude list", () => {
+    const mockSpawn = (args: string[]) => {
+      expect(args).toEqual([
+        "trufflehog",
+        "git",
+        "file://.",
+        "--since-commit",
+        "origin/main",
+        "--branch",
+        "HEAD",
+        "--fail",
+        "--no-update",
+        "--results=verified,unknown",
+        "--exclude-paths=.github/trufflehog-exclude.txt",
+      ]);
+      return { exitCode: 0, stdout: "", stderr: "" };
+    };
+
+    expect(scanCommitRangeWithTrufflehog("origin/main", mockSpawn)).toBe(0);
+  });
+});
+
+describe("scanCommitRangeFallback", () => {
+  it("detects secrets added in commit patches and commit messages while ignoring binary/suppressed lines", () => {
+    const fakeAws = "AKIAIOSFODNN7EXAMPLE"; // trufflehog:ignore
+    const fakeGhp = "ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"; // trufflehog:ignore
+    const mockSpawn = (args: string[]) => {
+      if (args.includes("-p")) {
+        return {
+          exitCode: 0,
+          stdout: [
+            "diff --git a/src/env.ts b/src/env.ts",
+            "+++ b/src/env.ts",
+            "@@ -1,0 +1,2 @@",
+            `+const key = "${fakeAws}";`,
+            `+const ignored = "${fakeAws}"; // trufflehog:ignore`,
+            "diff --git a/logo.png b/logo.png",
+            "+++ b/logo.png",
+            `+${fakeGhp}`,
+          ].join("\n"),
+        };
+      }
+      return {
+        exitCode: 0,
+        stdout: `commit abc123\nchore: add token ${fakeGhp}\n`,
+      };
+    };
+
+    const findings = scanCommitRangeFallback("origin/main..HEAD", mockSpawn);
+    expect(findings).toHaveLength(2);
+    expect(findings[0]?.file).toBe("src/env.ts");
+    expect(findings[0]?.rule).toBe("AWS Access Key ID");
+    expect(findings[1]?.file).toBe("commit-message");
+    expect(findings[1]?.rule).toBe("GitHub Personal Access Token");
+  });
+});
+
+describe("runRangeScan", () => {
+  it("uses trufflehog when available on PATH and fails closed when secrets are found", () => {
+    const calls: string[][] = [];
+    const mockSpawn = (args: string[]) => {
+      calls.push(args);
+      if (args[0] === "which" && args[1] === "trufflehog") {
+        return { exitCode: 0, stdout: "/usr/local/bin/trufflehog\n" };
+      }
+      if (args[0] === "git" && args[1] === "rev-list") {
+        return { exitCode: 0, stdout: "1\n" };
+      }
+      if (args[0] === "trufflehog") {
+        return { exitCode: 183, stdout: "", stderr: "secret found" };
+      }
+      return { exitCode: 0, stdout: "" };
+    };
+
+    const result = runRangeScan("origin/main", mockSpawn);
+    expect(result.engine).toBe("trufflehog");
+    expect(result.passed).toBe(false);
+    expect(calls.some((c) => c[0] === "trufflehog")).toBe(true);
+  });
+
+  it("falls back to built-in Bun range scanner when trufflehog is not installed", () => {
+    const mockSpawn = (args: string[]) => {
+      if (args[0] === "which" && args[1] === "trufflehog") {
+        return { exitCode: 1, stdout: "" };
+      }
+      if (args[0] === "git" && args[1] === "rev-list") {
+        return { exitCode: 0, stdout: "1\n" };
+      }
+      if (args[0] === "git" && args[1] === "log") {
+        return { exitCode: 0, stdout: "" };
+      }
+      return { exitCode: 0, stdout: "" };
+    };
+
+    const result = runRangeScan("origin/main", mockSpawn);
+    expect(result.engine).toBe("builtin");
+    expect(result.passed).toBe(true);
+  });
+
+  it("handles rev-list failure and zero unpushed commits", () => {
+    expect(
+      resolvePushRange("origin/main", () => ({ exitCode: 1, stdout: "" })),
+    ).toEqual({ base: "origin/main", range: "origin/main..HEAD" });
+
+    const skipped = runRangeScan("origin/main", (args) =>
+      args[1] === "rev-list"
+        ? { exitCode: 0, stdout: "0\n" }
+        : { exitCode: 0, stdout: "" },
+    );
+    expect(skipped).toEqual({ engine: "skipped", passed: true, findings: [] });
+  });
+
+  it("handles deleted file markers in commit patches", () => {
+    const findings = scanCommitRangeFallback("origin/main..HEAD", (args) =>
+      args.includes("-p")
+        ? {
+            exitCode: 0,
+            stdout: "+++ /dev/null\n+sk-proj-ignored\n",
+          }
+        : { exitCode: 0, stdout: "" },
+    );
+    expect(findings).toHaveLength(0);
+  });
+});
+
+describe("run CLI", () => {
+  it("handles --range skipped, passed, and failed outcomes", () => {
+    const logSpy = spyOn(console, "log").mockImplementation(() => {});
+    const errSpy = spyOn(console, "error").mockImplementation(() => {});
+    const { mockExit } = createMockExit();
+    try {
+      run(["--range"], {
+        runRangeScan: () => ({ engine: "skipped", passed: true, findings: [] }),
+      });
+      run(["--range", "origin/main"], {
+        runRangeScan: () => ({ engine: "builtin", passed: true, findings: [] }),
+      });
+      expect(() =>
+        run(["--range"], {
+          runRangeScan: () => ({
+            engine: "trufflehog",
+            passed: false,
+            findings: [],
+          }),
+          exitFn: mockExit,
+        }),
+      ).toThrow("Exit called with 1");
+      expect(() =>
+        run(["--range"], {
+          runRangeScan: () => ({
+            engine: "builtin",
+            passed: false,
+            findings: [
+              { file: "a.ts", line: 1, rule: "Test", token: "secret12345" },
+            ],
+          }),
+          exitFn: mockExit,
+        }),
+      ).toThrow("Exit called with 1");
+    } finally {
+      logSpy.mockRestore();
+      errSpy.mockRestore();
+    }
+  });
+
+  it("handles staged files empty, clean, and secret-detected outcomes", () => {
+    const logSpy = spyOn(console, "log").mockImplementation(() => {});
+    const errSpy = spyOn(console, "error").mockImplementation(() => {});
+    const { mockExit } = createMockExit();
+    try {
+      run([], {
+        getStagedDeletedFiles: () => new Set(),
+        getStagedFiles: () => [],
+      });
+      run(["a.png", "b.ts"], {
+        getStagedDeletedFiles: () => new Set(),
+        readStagedContent: (f) => (f.endsWith(".png") ? null : "const x = 1;"),
+      });
+      const fakeAws = "AKIAIOSFODNN7EXAMPLE"; // trufflehog:ignore
+      expect(() =>
+        run(["bad.ts"], {
+          getStagedDeletedFiles: () => new Set(),
+          readStagedContent: () => `const k = "${fakeAws}";`,
+          exitFn: mockExit,
+        }),
+      ).toThrow("Exit called with 1");
+    } finally {
+      logSpy.mockRestore();
+      errSpy.mockRestore();
     }
   });
 });

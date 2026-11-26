@@ -1,13 +1,35 @@
 {
   "extends": ["../../.oxlintrc.json"],
-  "jsPlugins": ["@shadcn/lint"],
+  "jsPlugins": ["@shadcn/lint", "oxlint-plugin-react-doctor"],
   "rules": {
     "shadcn/no-raw-colors": "error",
     "shadcn/no-restyle": ["error", { "allow": ["layout"] }],
     "shadcn/no-arbitrary-values": "error",
     "shadcn/no-inline-styles": "error",
     "shadcn/require-static-classes": "error",
-    "shadcn/no-unknown-classes": "error"
+    "shadcn/no-unknown-classes": "error",
+    "react-doctor/no-cascading-set-state": "warn",
+    "react-doctor/forwarded-set-state-in-effect": "warn",
+    "react-doctor/hooks-no-nan-in-deps": "warn",
+    "react-doctor/no-impure-call-at-module-scope": "warn",
+    "react-doctor/no-aria-hidden-on-body": "error",
+    "react-doctor/no-duplicate-static-id-reference": "error",
+    "react-doctor/no-array-index-key": "warn",
+    "react-doctor/zod-v4-prefer-top-level-string-formats": "warn",
+    "react-doctor/nextjs-no-img-element": "warn",
+    "react-doctor/nextjs-no-client-fetch-for-server-data": "warn",
+    "react-doctor/jsx-pascal-case": "warn",
+    "react-doctor/jsx-no-useless-fragment": "warn",
+    "react-doctor/no-children-prop": "warn",
+    "react-doctor/no-unescaped-entities": "warn",
+    "react-doctor/base-ui-dialog-popup-requires-title": "warn",
+    "react-doctor/base-ui-field-requires-label": "warn",
+    "react-doctor/base-ui-tabs-tab-requires-list": "warn",
+    "react-doctor/shadcn-dialog-content-requires-title": "warn",
+    "react-doctor/shadcn-icon-button-requires-label": "warn",
+    "react-doctor/effect-listener-cleanup-mismatch": "warn",
+    "react-doctor/effect-observer-needs-disconnect": "warn",
+    "react-doctor/effect-raf-loop-needs-cancel": "warn"
   },
   "overrides": [
     {

@@ -49,24 +49,6 @@ export interface ParsedFrontmatterError extends ParsedFrontmatter {
   errorLine?: number;
 }
 
-/**
- * Schema of the root `skills-lock.json` file tracking vendor-managed skills.
- */
-interface SkillsLock {
-  /** Lockfile schema version. */
-  version?: number;
-  /** Map of skill directory names to upstream source metadata. */
-  skills?: Record<
-    string,
-    {
-      source?: string;
-      sourceType?: string;
-      skillPath?: string;
-      computedHash?: string;
-    }
-  >;
-}
-
 const MACHINE_PATH_REGEX =
   /(?:file:\/\/\/(?!path\/to\/)[a-zA-Z0-9_\-./]+|(?<=^|[\s"'`([<{])(?:\/home\/|\/Users\/)[a-zA-Z0-9_\-./]+)/g;
 const MARKDOWN_LINK_REGEX = /\[([^\]]*)\]\(([^)]+)\)/g;
@@ -129,7 +111,11 @@ export function parseFrontmatter(content: string): ParsedFrontmatterError {
   const body = lines.slice(closingIndex + 1).join("\n");
 
   try {
-    const data = (YAML.parse(frontmatterYaml) as Record<string, unknown>) ?? {};
+    const parsed: unknown = YAML.parse(frontmatterYaml);
+    const data: Record<string, unknown> =
+      typeof parsed === "object" && parsed !== null
+        ? Object.fromEntries(Object.entries(parsed))
+        : {};
     return { exists: true, data, body };
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);
@@ -159,7 +145,7 @@ export function checkCodeFences(content: string, filePath: string): Finding[] {
   let openLine = 0;
 
   for (let i = 0; i < lines.length; i++) {
-    const match = lines[i]!.match(/^(\s*)(`{3,})/);
+    const match = (lines[i] ?? "").match(/^(\s*)(`{3,})/);
     if (!match?.[2]) continue;
 
     const marker = match[2];
@@ -314,7 +300,7 @@ export function checkMarkdownLinks(
   let fenceMarker = "";
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!;
+    const line = lines[i] ?? "";
     const fenceMatch = line.match(/^(\s*)(`{3,}|~{3,})/);
     if (fenceMatch?.[2]) {
       const marker = fenceMatch[2];
@@ -350,7 +336,7 @@ export function checkUnslop(content: string, filePath: string): Finding[] {
   const lines = content.split("\n");
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!;
+    const line = lines[i] ?? "";
     if (line.includes("—")) {
       findings.push({
         file: filePath,
@@ -400,7 +386,7 @@ export function checkSkillPortability(
   const lines = content.split("\n");
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!;
+    const line = lines[i] ?? "";
     for (const match of line.matchAll(HARNESS_TOOL_REGEX)) {
       findings.push({
         file: filePath,
@@ -684,8 +670,16 @@ export function loadVendorSkillNames(
 
   try {
     const raw = readFileSync(lockPath, "utf8");
-    const parsed = JSON.parse(raw) as SkillsLock;
-    return new Set(Object.keys(parsed.skills ?? {}));
+    const parsed: unknown = JSON.parse(raw);
+    const skills =
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "skills" in parsed &&
+      typeof parsed.skills === "object" &&
+      parsed.skills !== null
+        ? Object.fromEntries(Object.entries(parsed.skills))
+        : {};
+    return new Set(Object.keys(skills));
   } catch (err: unknown) {
     console.warn(
       `⚠️ Warning: Failed to parse skills-lock.json: ${err instanceof Error ? err.message : String(err)}`,

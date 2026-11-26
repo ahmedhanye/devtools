@@ -1,58 +1,48 @@
 # lefthook.yml
-# Fast, parallel git pre-commit and commit-msg quality gates
-# https://github.com/evilmartians/lefthook
+# Fast staged pre-commit gate, conventional commit-msg check, and cached full pre-push verification
+# https://lefthook.dev/configuration/
 
 pre-commit:
-  parallel: false
-  commands:
-    lint-and-format:
-      glob: "*.{js,jsx,ts,tsx,mjs,cjs,mts,cts}"
-      run: bunx --bun oxlint --deny-warnings --fix {staged_files} && bunx --bun prettier --write {staged_files}
-      stage_fixed: true
-
-    format-docs:
-      glob: "*.{json,css,md,yml,yaml}"
-      run: bunx --bun prettier --write {staged_files}
-      stage_fixed: true
-
-    react-doctor-frontend:
-      glob: "apps/frontend/**/*.{js,jsx,ts,tsx}"
-      run: CI=true bunx react-doctor --project apps/frontend -y --no-telemetry --no-supply-chain --blocking warning --staged
-
-    react-doctor-site:
-      glob: "site/**/*.{js,jsx,ts,tsx}"
-      run: CI=true bunx react-doctor --project site -y --no-telemetry --no-supply-chain --blocking warning --staged
-
-    test-staged-ui:
-      glob: "apps/frontend/src/**/*.{ts,tsx}"
-      run: bun --filter @devtools/frontend test
-
-    verify-secrets:
-      run: bun scripts/verify-staged-secrets/verify-staged-secrets.ts {staged_files}
-
-    verify-agents-governance:
-      glob: "{.agents/*.md,.agents/**/*.md}"
-      run: bun run lint:agents {staged_files}
-
-    verify-db-migrations:
-      glob: "packages/db/{src/schema/**,drizzle/**,drizzle.config.ts,src/migrator.ts}"
-      run: bun run verify:db-migrations --check-git-status
+  jobs:
+    - name: auto-fix
+      group:
+        piped: true
+        jobs:
+          - name: oxlint-fix
+            glob: "*.{js,jsx,ts,tsx,mjs,cjs}"
+            run: bunx oxlint --deny-warnings --report-unused-disable-directives --fix {staged_files}
+            stage_fixed: true
+          - name: oxfmt-fix
+            run: bunx oxfmt --no-error-on-unmatched-pattern --write {staged_files}
+            stage_fixed: true
+    - name: staged-checks
+      group:
+        parallel: true
+        jobs:
+          - name: staged-secrets
+            run: bun scripts/verify-staged-secrets/verify-staged-secrets.ts {staged_files}
+          - name: lint-agents
+            glob: ".agents/**/*.md"
+            run: bun run lint:agents {staged_files}
+          - name: verify-db-migrations
+            glob: "packages/db/{src/schema/**,drizzle/**,drizzle.config.ts,src/migrator.ts}"
+            run: bun run verify:db-migrations --check-git-status
+          - name: verify-actions-lock
+            glob: ".github/workflows/**"
+            run: bun run verify:actions-lock
 
 commit-msg:
-  commands:
-    conventional-commits:
+  jobs:
+    - name: conventional-commits
       run: bunx --bun commitlint --edit {1}
 
 pre-push:
-  parallel: true
-  commands:
-    typecheck:
-      run: bun run typecheck
-    fallow-dead-code:
-      run: bun run fallow:dead-code
-    fallow-arch:
-      run: bun run fallow:arch
-    fallow-health:
-      run: bun run fallow:health
-    fallow-dupes:
-      run: bun run fallow:dupes
+  jobs:
+    - name: push-checks
+      group:
+        piped: true
+        jobs:
+          - name: verify-push-secrets
+            run: bun run verify:push-secrets
+          - name: verify-full
+            run: bun run verify
