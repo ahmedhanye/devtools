@@ -1,6 +1,7 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
   "ui": "stream",
+  "globalDependencies": ["tsconfig.base.json"],
   "globalEnv": [
     "CI",
     "BASE_REF",
@@ -77,39 +78,43 @@
       "outputs": []
     },
     "test": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["^build", "transit"],
       "outputLogs": "errors-only",
       "outputs": []
     },
     "test:unit": {
+      "dependsOn": ["transit"],
       "outputLogs": "errors-only",
       "outputs": []
     },
     "test:integration": {
+      "dependsOn": ["transit"],
       "outputLogs": "errors-only",
       "outputs": []
     },
     "test:e2e": {
+      "dependsOn": ["transit"],
       "outputLogs": "errors-only",
       "outputs": []
     },
     "test:coverage": {
+      "dependsOn": ["transit"],
       "inputs": ["$TURBO_DEFAULT$", "!coverage/**"],
       "outputLogs": "errors-only",
       "outputs": ["coverage/lcov.info"]
     },
     "@devtools/cli#test": {
-      "dependsOn": ["//#build:bin", "@devtools/frontend#build"],
+      "dependsOn": ["//#build:bin", "@devtools/frontend#build", "transit"],
       "outputLogs": "errors-only",
       "outputs": []
     },
     "@devtools/cli#test:e2e": {
-      "dependsOn": ["//#build:bin", "@devtools/frontend#build"],
+      "dependsOn": ["//#build:bin", "@devtools/frontend#build", "transit"],
       "outputLogs": "errors-only",
       "outputs": []
     },
     "@devtools/cli#test:coverage": {
-      "dependsOn": ["//#build:bin", "@devtools/frontend#build"],
+      "dependsOn": ["//#build:bin", "@devtools/frontend#build", "transit"],
       "inputs": [
         "apps/cli/**",
         "apps/api/**",
@@ -122,6 +127,26 @@
       ],
       "outputLogs": "errors-only",
       "outputs": ["coverage/lcov.info"]
+    },
+    "//#test:scripts": {
+      "inputs": [
+        "scripts/**/*.ts",
+        "scripts/tsconfig.json",
+        "bunfig.toml",
+        "bun.lock"
+      ],
+      "outputLogs": "errors-only",
+      "outputs": []
+    },
+    "//#test:unit:scripts": {
+      "inputs": [
+        "scripts/**/*.ts",
+        "scripts/tsconfig.json",
+        "bunfig.toml",
+        "bun.lock"
+      ],
+      "outputLogs": "errors-only",
+      "outputs": []
     },
     "//#test:coverage:scripts": {
       "inputs": [
