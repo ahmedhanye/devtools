@@ -255,7 +255,9 @@ jobs:
 
       - name: Execute test suites with coverage aggregation
         if: needs.changes.outputs.code == 'true' || needs.changes.outputs.site == 'true'
-        run: bun run test:coverage
+        run: |
+          bunx turbo run test:coverage test:coverage:scripts --concurrency=3
+          bun scripts/merge-coverage/merge-coverage.ts
 
       - name: Verify 100% diff coverage gate
         if: github.event_name == 'pull_request' && (needs.changes.outputs.code == 'true' || needs.changes.outputs.site == 'true')
