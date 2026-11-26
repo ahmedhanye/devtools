@@ -1409,7 +1409,9 @@ describe("CLI Lighthouse Command Surface (Unit)", () => {
         }),
       );
       let capturedEnv:
-        NodeJS.ProcessEnv | Record<string, string | undefined> | undefined;
+        | NodeJS.ProcessEnv
+        | Record<string, string | undefined>
+        | undefined;
       const stdout: string[] = [];
 
       await runLighthouseOpenCommand(

@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import os from "node:os";
 import path from "node:path";
 import react from "@vitejs/plugin-react";
 import { loadCsf } from "storybook/internal/csf-tools";
@@ -107,6 +108,12 @@ export default defineConfig({
   test: {
     environment: "happy-dom",
     globals: true,
+    isolate: false,
+    setupFiles: ["./vitest.setup.ts"],
+    pool: "threads",
+    maxWorkers: process.env.CI
+      ? 4
+      : Math.max(2, Math.min(8, Math.floor(os.availableParallelism() * 0.6))),
     testTimeout: 15_000,
     server: {
       deps: {
@@ -127,6 +134,7 @@ export default defineConfig({
         "**/dist/**",
         "**/.next/**",
         "steiger.config.js",
+        "vitest.setup.ts",
       ],
     },
   },
