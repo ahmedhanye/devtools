@@ -21,12 +21,12 @@ export const Horizontal: Story = {
     <div className="w-80 space-y-4">
       <div>
         <h4 className="text-sm leading-none font-medium">DevTools Header</h4>
-        <p className="text-muted-foreground text-sm">
+        <p className="text-sm text-muted-foreground">
           Navigation bar description
         </p>
       </div>
       <Separator {...args} />
-      <div className="text-muted-foreground text-sm">
+      <div className="text-sm text-muted-foreground">
         Content below separator
       </div>
     </div>

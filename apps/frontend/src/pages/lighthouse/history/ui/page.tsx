@@ -95,20 +95,20 @@ function HistoryLatestStrip({
   }
 
   return (
-    <div className="border-border bg-card flex flex-col justify-between gap-3 rounded-xl border p-4 lg:flex-row lg:items-center">
+    <div className="flex flex-col justify-between gap-3 rounded-xl border border-border bg-card p-4 lg:flex-row lg:items-center">
       <div className="flex min-w-0 items-start gap-3">
         <Badge variant="info" size="md">
           Latest Audit
         </Badge>
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-foreground truncate text-sm font-semibold">
+            <span className="truncate text-sm font-semibold text-foreground">
               {run.url}
             </span>
             <Badge variant="neutral">{run.formFactor}</Badge>
             <Badge variant="outline">{run.throttlingMethod}</Badge>
           </div>
-          <p className="text-muted-foreground mt-0.5 text-xs">
+          <p className="mt-0.5 text-xs text-muted-foreground">
             {formatTimestamp(run.createdAt)} · LCP{" "}
             {formatCwvValue("lcpMs", run.lcpMs)} · CLS{" "}
             {formatCwvValue("cls", run.cls)}
@@ -159,7 +159,7 @@ function HistorySelectionBar({
   }
 
   return (
-    <div className="border-info-border bg-info-subtle text-info-subtle-foreground flex flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-2.5">
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-info-border bg-info-subtle px-4 py-2.5 text-info-subtle-foreground">
       <span className="text-sm">
         <strong>{selectedCount} runs selected</strong> for comparison
       </span>
@@ -169,7 +169,7 @@ function HistorySelectionBar({
         </Button>
         <Link
           href={compareHref}
-          className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium transition-colors"
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
         >
           <GitCompare className="size-3.5" />
           <span>Compare Selected ({selectedCount} Runs)</span>
@@ -287,8 +287,8 @@ function HistoryTableRow({
       </TableCell>
       <TableCell>
         <div className="flex flex-col">
-          <span className="text-foreground font-medium">{run.url}</span>
-          <span className="text-muted-foreground text-xs">
+          <span className="font-medium text-foreground">{run.url}</span>
+          <span className="text-xs text-muted-foreground">
             {formatTimestamp(run.createdAt)} ·{" "}
             <span className="font-mono">{shortRunId(run.id)}</span>
           </span>
@@ -421,7 +421,7 @@ function HistoryPaginationBar({
 
   return (
     <div className="flex items-center justify-between gap-2 border-t pt-3">
-      <span className="text-muted-foreground text-xs tabular-nums">
+      <span className="text-xs text-muted-foreground tabular-nums">
         Showing {offset + 1}–{Math.min(offset + countOnPage, total)} of {total}{" "}
         runs
       </span>

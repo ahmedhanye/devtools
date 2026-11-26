@@ -33,7 +33,7 @@ export function ActiveAuditJobIndicator() {
           }
         >
           <Badge variant="info" size="md">
-            <span className="bg-info size-2 rounded-full" aria-hidden="true" />
+            <span className="size-2 rounded-full bg-info" aria-hidden="true" />
             <span>Running · {pct}%</span>
           </Badge>
         </TooltipTrigger>

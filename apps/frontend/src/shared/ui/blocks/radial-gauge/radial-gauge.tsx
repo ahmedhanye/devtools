@@ -130,7 +130,7 @@ export function RadialGauge({
         ) : null}
       </div>
       {label ? (
-        <span className="text-muted-foreground text-center text-xs font-medium">
+        <span className="text-center text-xs font-medium text-muted-foreground">
           {label}
         </span>
       ) : null}

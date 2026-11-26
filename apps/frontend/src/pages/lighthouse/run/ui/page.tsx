@@ -58,7 +58,7 @@ function BackToLighthouseLink() {
   return (
     <Link
       href={buildHistoryUrl()}
-      className="border-border bg-background text-foreground hover:bg-muted inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-colors"
+      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted"
     >
       <ArrowLeft className="size-3.5" />
       <span>Back to Lighthouse</span>
@@ -109,7 +109,7 @@ function TraceStatusIcon({ state }: { state: StepState }) {
     return <CircleCheck className="text-success" />;
   }
   if (state === "active") {
-    return <LoaderCircle className="text-primary animate-spin" />;
+    return <LoaderCircle className="animate-spin text-primary" />;
   }
   return <Circle className="text-muted-foreground/60" />;
 }
@@ -155,9 +155,9 @@ function FlatActivityRail({
 }) {
   return (
     <div className="flex flex-1 flex-col">
-      <div className="border-border mb-3.5 flex items-center justify-between border-b pb-3">
+      <div className="mb-3.5 flex items-center justify-between border-b border-border pb-3">
         <span className="text-sm font-semibold">Audit Activity</span>
-        <span className="text-muted-foreground text-xs">
+        <span className="text-xs text-muted-foreground">
           Single iteration · {ACTIVE_PROGRESS_STAGE_ORDER.length} steps
         </span>
       </div>
@@ -309,9 +309,9 @@ function NestedActivityRail({
 
   return (
     <div className="flex flex-1 flex-col">
-      <div className="border-border mb-3.5 flex items-center justify-between border-b pb-3">
+      <div className="mb-3.5 flex items-center justify-between border-b border-border pb-3">
         <span className="text-sm font-semibold">Audit Activity</span>
-        <span className="text-muted-foreground text-xs">
+        <span className="text-xs text-muted-foreground">
           {totalRuns} iterations · click any pass to inspect
         </span>
       </div>
@@ -494,8 +494,8 @@ function TargetUrlFooter({ url }: { url: string | null }) {
   const urlParts = url ? parseTargetUrl(url) : null;
 
   return (
-    <div className="border-border bg-muted/15 flex w-full min-w-0 flex-col items-center gap-2 border-t px-5 py-4">
-      <span className="text-muted-foreground text-xs font-semibold tracking-wider uppercase">
+    <div className="flex w-full min-w-0 flex-col items-center gap-2 border-t border-border bg-muted/15 px-5 py-4">
+      <span className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
         Target URL
       </span>
       {url && urlParts ? (
@@ -505,21 +505,21 @@ function TargetUrlFooter({ url }: { url: string | null }) {
             target="_blank"
             rel="noopener noreferrer"
             title={url}
-            className="border-border bg-background text-foreground hover:border-primary/50 inline-flex w-full max-w-full min-w-0 items-center justify-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors"
+            className="inline-flex w-full max-w-full min-w-0 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-primary/50"
           >
             <Globe
-              className="text-muted-foreground size-3.5 shrink-0"
+              className="size-3.5 shrink-0 text-muted-foreground"
               aria-hidden="true"
             />
             <span className="min-w-0 truncate">{urlParts.host}</span>
             <ExternalLink
-              className="text-muted-foreground/70 size-3 shrink-0"
+              className="size-3 shrink-0 text-muted-foreground/70"
               aria-hidden="true"
             />
           </a>
           {urlParts.path ? (
             <span
-              className="text-muted-foreground w-full truncate px-1 font-mono text-xs"
+              className="w-full truncate px-1 font-mono text-xs text-muted-foreground"
               title={url}
             >
               {urlParts.path}
@@ -527,7 +527,7 @@ function TargetUrlFooter({ url }: { url: string | null }) {
           ) : null}
         </>
       ) : (
-        <span className="text-muted-foreground text-xs">
+        <span className="text-xs text-muted-foreground">
           Loading target URL...
         </span>
       )}
@@ -555,20 +555,20 @@ function LiveJobCard({
   const elapsedLabel = useElapsedSeconds(isCompleting);
 
   return (
-    <section className="border-border bg-card text-card-foreground overflow-hidden rounded-xl border shadow-xs">
+    <section className="overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-xs">
       <div className="flex flex-col items-stretch md:flex-row">
-        <aside className="border-border bg-muted/30 flex flex-col justify-between border-b text-center md:w-72 md:shrink-0 md:border-r md:border-b-0">
+        <aside className="flex flex-col justify-between border-b border-border bg-muted/30 text-center md:w-72 md:shrink-0 md:border-r md:border-b-0">
           <div className="flex flex-1 flex-col items-center justify-center gap-4 px-5 py-7">
             <RadialTelemetryDial pct={pct} />
-            <div className="border-border bg-background text-foreground inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-semibold tabular-nums">
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1 text-sm font-semibold text-foreground tabular-nums">
               <Clock
-                className="text-muted-foreground size-3.5 shrink-0"
+                className="size-3.5 shrink-0 text-muted-foreground"
                 aria-hidden="true"
               />
               <span>{elapsedLabel}</span>
             </div>
             <LiveJobMetaBadges activeJob={activeJob} />
-            <p className="text-muted-foreground max-w-56 text-xs leading-relaxed">
+            <p className="max-w-56 text-xs leading-relaxed text-muted-foreground">
               Audit Summary and the interactive Lighthouse HTML Report will open
               automatically on this page when the run completes.
             </p>
@@ -624,7 +624,7 @@ function ExpiredJobNotice({ jobId }: { jobId: string }) {
         action={
           <Link
             href={buildHistoryUrl()}
-            className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex h-8 items-center rounded-lg px-3 text-xs font-medium transition-colors"
+            className="inline-flex h-8 items-center rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
             Return to Audit History
           </Link>
@@ -752,7 +752,7 @@ function RunDetailTopBar({
         <div className="flex flex-wrap items-center gap-2">
           <Link
             href={compareHref}
-            className="border-border bg-background text-foreground hover:bg-muted inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-colors"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted"
           >
             <GitCompare className="size-3.5" />
             <span>Compare Run</span>
@@ -770,7 +770,7 @@ function RunDetailTopBar({
             href={buildRunDetailUrl(runId, activeTab)}
             target="_blank"
             rel="noopener noreferrer"
-            className="border-border bg-background text-foreground hover:bg-muted inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-colors"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted"
           >
             <ExternalLink className="size-3.5" />
             <span>New Window</span>
@@ -790,7 +790,7 @@ function MissingRunSelectionEmptyState() {
       action={
         <Link
           href={buildHistoryUrl()}
-          className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex h-8 items-center rounded-lg px-3 text-xs font-medium transition-colors"
+          className="inline-flex h-8 items-center rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
         >
           Go to Audit History
         </Link>

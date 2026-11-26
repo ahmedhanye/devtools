@@ -503,7 +503,9 @@ async function scanPuppeteerCacheDir(
  * Accepted configuration seam inputs for {@link probeToolCaches}.
  */
 export type ProbeToolCachesOptions =
-  BrowserSeamOptions | BrowserConfigSeam | EnvMap;
+  | BrowserSeamOptions
+  | BrowserConfigSeam
+  | EnvMap;
 
 /**
  * Probes local Playwright and Puppeteer browser cache directories for existing Chromium binaries.

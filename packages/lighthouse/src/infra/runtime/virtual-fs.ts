@@ -196,7 +196,6 @@ function formatReadFileResult(
 
 function createMockDirent(name: string, dirPath = ""): fs.Dirent {
   const isDir = !name.includes(".");
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Node fs.Dirent constructor is private; plain structural object satisfies Lighthouse virtual locales enumeration
   return {
     name,
     parentPath: dirPath,

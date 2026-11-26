@@ -131,7 +131,7 @@ function CategoryScoresCard({ run }: { run: LighthouseRunDetail }) {
           {categoryEntries.map((entry) => (
             <div
               key={entry.label}
-              className="border-border bg-card flex items-center justify-center rounded-lg border py-4"
+              className="flex items-center justify-center rounded-lg border border-border bg-card py-4"
             >
               <RadialGauge
                 value={entry.score}
@@ -201,24 +201,24 @@ function CoreWebVitalsGrid({ run }: { run: LighthouseRunListItem }) {
         return (
           <div
             key={spec.key}
-            className="border-border bg-card text-card-foreground flex flex-col gap-2 rounded-lg border p-3"
+            className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3 text-card-foreground"
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="text-muted-foreground truncate text-xs font-medium">
+              <span className="truncate text-xs font-medium text-muted-foreground">
                 {spec.shortLabel} · {spec.fullLabel}
               </span>
               <Badge variant={TONE_BADGE_MAP[tone]}>
                 {RATING_LABELS[rating]}
               </Badge>
             </div>
-            <div className="text-foreground text-lg font-bold tabular-nums">
+            <div className="text-lg font-bold text-foreground tabular-nums">
               {formatCwvValue(spec.key, value)}
             </div>
             {value !== null ? (
               <div className="relative flex h-1.5 w-full items-center gap-0.5">
-                <div className="bg-success/35 h-full flex-2 rounded-l-full" />
-                <div className="bg-warning/35 h-full flex-1" />
-                <div className="bg-destructive/35 h-full flex-1 rounded-r-full" />
+                <div className="h-full flex-2 rounded-l-full bg-success/35" />
+                <div className="h-full flex-1 bg-warning/35" />
+                <div className="h-full flex-1 rounded-r-full bg-destructive/35" />
                 <svg
                   viewBox="0 0 100 10"
                   preserveAspectRatio="none"
@@ -331,7 +331,7 @@ function buildPhaseSegments(phases: LcpPhaseBreakdown): {
 
 function AttributedLcpElementBox({ element }: { element: AttributedElement }) {
   return (
-    <div className="bg-muted/40 border-border flex flex-col gap-1.5 rounded-lg border p-3 text-xs">
+    <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-muted/40 p-3 text-xs">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <strong className="text-foreground">Attributed LCP DOM Element</strong>
         {element.boundingRect ? (
@@ -354,12 +354,12 @@ function AttributedLcpElementBox({ element }: { element: AttributedElement }) {
         </div>
       ) : null}
       {element.snippet ? (
-        <pre className="bg-background border-border overflow-x-auto rounded border p-2 font-mono text-xs">
+        <pre className="overflow-x-auto rounded border border-border bg-background p-2 font-mono text-xs">
           {element.snippet}
         </pre>
       ) : null}
       {element.path || element.lhId ? (
-        <div className="text-muted-foreground font-mono">
+        <div className="font-mono text-muted-foreground">
           Path: {element.path ?? "—"} · lhId: {element.lhId ?? "—"}
         </div>
       ) : null}
@@ -394,7 +394,7 @@ function LcpBreakdownCard({
               <svg
                 viewBox="0 0 100 4"
                 preserveAspectRatio="none"
-                className="bg-muted h-2.5 w-full overflow-hidden rounded-full"
+                className="h-2.5 w-full overflow-hidden rounded-full bg-muted"
                 aria-label="LCP phase waterfall"
               >
                 {phaseData.rects.map((rect) => (
@@ -417,7 +417,7 @@ function LcpBreakdownCard({
                   return (
                     <div
                       key={item.key}
-                      className="bg-muted/40 flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-xs"
+                      className="flex items-center justify-between gap-2 rounded-lg bg-muted/40 px-3 py-2 text-xs"
                     >
                       <div className="flex items-center gap-2">
                         <span
@@ -445,7 +445,7 @@ function LcpBreakdownCard({
               </div>
             </>
           ) : (
-            <p className="text-muted-foreground text-xs">
+            <p className="text-xs text-muted-foreground">
               No LCP phase timing breakdown recorded.
             </p>
           )}
@@ -472,7 +472,7 @@ function InsightsListCard({
       </CardHeader>
       <CardContent>
         {insights.length === 0 ? (
-          <p className="text-muted-foreground text-xs">
+          <p className="text-xs text-muted-foreground">
             No Insight Audits recorded.
           </p>
         ) : (
@@ -485,12 +485,12 @@ function InsightsListCard({
               return (
                 <div
                   key={insight.id}
-                  className="bg-muted/40 border-border flex flex-col gap-1.5 rounded-lg border p-3"
+                  className="flex flex-col gap-1.5 rounded-lg border border-border bg-muted/40 p-3"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex flex-wrap items-center gap-2">
                       <strong className="text-sm">{insight.title}</strong>
-                      <span className="text-muted-foreground font-mono text-xs">
+                      <span className="font-mono text-xs text-muted-foreground">
                         {insight.id}
                       </span>
                     </div>
@@ -509,12 +509,12 @@ function InsightsListCard({
                       </Badge>
                     </div>
                   </div>
-                  <p className="text-muted-foreground text-xs">
+                  <p className="text-xs text-muted-foreground">
                     {insight.description}
                   </p>
                   {insight.replacesAudits.length > 0 ? (
                     <div className="flex flex-wrap items-center gap-1">
-                      <span className="text-muted-foreground text-xs">
+                      <span className="text-xs text-muted-foreground">
                         Replaces:
                       </span>
                       {insight.replacesAudits.map((auditId) => (
@@ -586,7 +586,7 @@ function DiagnosticsGrid({
         {clsCulprits.map((culprit) => (
           <div
             key={`${culprit.element.selector}-${culprit.score}`}
-            className="bg-muted/40 border-border flex flex-col gap-1.5 rounded-lg border p-3 text-xs"
+            className="flex flex-col gap-1.5 rounded-lg border border-border bg-muted/40 p-3 text-xs"
           >
             <div className="flex items-center justify-between gap-2">
               <code className="font-mono font-semibold">
@@ -595,7 +595,7 @@ function DiagnosticsGrid({
               <Badge variant="warning">Shift {culprit.score}</Badge>
             </div>
             {culprit.element.snippet ? (
-              <pre className="bg-background border-border overflow-x-auto rounded border p-2 font-mono text-xs">
+              <pre className="overflow-x-auto rounded border border-border bg-background p-2 font-mono text-xs">
                 {culprit.element.snippet}
               </pre>
             ) : null}
@@ -620,7 +620,7 @@ function DiagnosticsGrid({
         {failedAudits.map((audit) => (
           <div
             key={audit.id}
-            className="bg-muted/40 border-border flex flex-col gap-1 rounded-lg border p-3"
+            className="flex flex-col gap-1 rounded-lg border border-border bg-muted/40 p-3"
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <strong className="text-xs">{audit.title}</strong>
@@ -631,7 +631,7 @@ function DiagnosticsGrid({
                 <Badge variant="destructive">{audit.category ?? "audit"}</Badge>
               </div>
             </div>
-            <p className="text-muted-foreground text-xs">{audit.description}</p>
+            <p className="text-xs text-muted-foreground">{audit.description}</p>
           </div>
         ))}
       </DiagnosticCard>
@@ -712,7 +712,7 @@ function MedianBatchCard({
                         <span>Representative Run</span>
                       </Badge>
                     ) : (
-                      <span className="text-muted-foreground text-xs">
+                      <span className="text-xs text-muted-foreground">
                         Discarded iteration
                       </span>
                     )}
@@ -801,11 +801,11 @@ function HtmlReportViewer({
   const reportUrl = getLighthouseReportUrl(runId);
 
   return (
-    <div className="border-border bg-card overflow-hidden rounded-xl border">
-      <div className="border-border bg-muted/40 flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2.5">
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/40 px-4 py-2.5">
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="success">Lighthouse v13 Standalone Report</Badge>
-          <span className="text-muted-foreground text-xs">
+          <span className="text-xs text-muted-foreground">
             Sandboxed viewer ({shortUrlLabel(url)})
           </span>
         </div>
@@ -813,7 +813,7 @@ function HtmlReportViewer({
           href={reportUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="border-border bg-background text-foreground hover:bg-muted inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors"
+          className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
         >
           <ExternalLink className="size-3.5" />
           <span>New Window</span>
@@ -823,7 +823,7 @@ function HtmlReportViewer({
         src={reportUrl}
         sandbox="allow-scripts allow-popups allow-downloads"
         title="Lighthouse HTML Report"
-        className="bg-background h-160 min-h-96 w-full border-0"
+        className="h-160 min-h-96 w-full border-0 bg-background"
       />
     </div>
   );
@@ -930,7 +930,7 @@ export function RunDetailBody({
               </Button>
               <Link
                 href={buildHistoryUrl()}
-                className="border-border bg-background text-foreground hover:bg-muted inline-flex h-8 items-center rounded-lg border px-3 text-xs font-medium transition-colors"
+                className="inline-flex h-8 items-center rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted"
               >
                 Back to Audit History
               </Link>
@@ -955,10 +955,10 @@ export function RunDetailBody({
           />
           {variant === "page" ? (
             <>
-              <h1 className="text-foreground text-lg font-semibold tracking-tight">
+              <h1 className="text-lg font-semibold tracking-tight text-foreground">
                 {run.url}
               </h1>
-              <p className="text-muted-foreground text-xs">
+              <p className="text-xs text-muted-foreground">
                 {formatTimestamp(run.createdAt)} · Duration{" "}
                 {formatDurationMs(run.durationMs)} · ID{" "}
                 <span className="font-mono" title={run.id}>
@@ -967,7 +967,7 @@ export function RunDetailBody({
               </p>
             </>
           ) : (
-            <div className="text-muted-foreground text-xs">
+            <div className="text-xs text-muted-foreground">
               Duration {formatDurationMs(run.durationMs)} · ID{" "}
               <span className="font-mono" title={run.id}>
                 {shortRunId(run.id)}

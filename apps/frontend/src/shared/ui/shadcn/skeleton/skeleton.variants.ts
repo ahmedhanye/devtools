@@ -1,6 +1,6 @@
 import { cva } from "class-variance-authority";
 
-export const skeletonVariants = cva("bg-muted animate-pulse", {
+export const skeletonVariants = cva("animate-pulse bg-muted", {
   variants: {
     variant: {
       default: "rounded-md",

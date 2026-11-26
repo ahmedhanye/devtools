@@ -83,7 +83,7 @@ function ComboboxOptionRow({
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm">{option.label}</div>
             {option.description ? (
-              <div className="text-muted-foreground truncate text-xs">
+              <div className="truncate text-xs text-muted-foreground">
                 {option.description}
               </div>
             ) : null}
@@ -91,7 +91,7 @@ function ComboboxOptionRow({
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           {option.count !== undefined ? (
-            <span className="text-muted-foreground text-xs tabular-nums">
+            <span className="text-xs text-muted-foreground tabular-nums">
               {option.count}
             </span>
           ) : null}
@@ -100,7 +100,7 @@ function ComboboxOptionRow({
               type="button"
               onClick={handleOnlyClick}
               onKeyDown={handleActionButtonKeyDown}
-              className="text-muted-foreground hover:text-foreground hover:bg-muted rounded px-1.5 py-0.5 text-xs font-medium opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100"
+              className="rounded px-1.5 py-0.5 text-xs font-medium text-muted-foreground opacity-0 transition-opacity group-hover/row:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100"
             >
               {onlyActionLabel}
             </button>
@@ -167,18 +167,18 @@ function ComboboxFooter({
     return null;
   }
   return (
-    <div className="border-border flex items-center justify-between gap-2 border-t px-2.5 py-2 text-xs">
-      <span className="text-muted-foreground truncate">{footerText ?? ""}</span>
+    <div className="flex items-center justify-between gap-2 border-t border-border px-2.5 py-2 text-xs">
+      <span className="truncate text-muted-foreground">{footerText ?? ""}</span>
       <div className="flex shrink-0 items-center gap-2">
         <FooterActionButton
           label={clearLabel}
           onClick={onClearAll}
-          className="text-muted-foreground hover:text-foreground shrink-0 font-medium"
+          className="shrink-0 font-medium text-muted-foreground hover:text-foreground"
         />
         <FooterActionButton
           label={selectAllLabel}
           onClick={onSelectAll}
-          className="text-primary hover:text-primary/80 shrink-0 font-medium"
+          className="shrink-0 font-medium text-primary hover:text-primary/80"
         />
       </div>
     </div>
@@ -284,7 +284,7 @@ function ComboboxPopoverBody({
   );
 }
 
-interface MultiSelectComboboxProps {
+export interface MultiSelectComboboxProps {
   options: readonly MultiSelectOption[];
   selectedValues: readonly string[];
   onSelectedValuesChange: (nextValues: string[]) => void;
@@ -385,7 +385,7 @@ export function MultiSelectCombobox({
         }
       >
         <span className="truncate font-normal">{state.triggerSummary}</span>
-        <ChevronsUpDown className="text-muted-foreground size-4 shrink-0" />
+        <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />
       </PopoverTrigger>
       <ComboboxPopoverBody
         options={options}

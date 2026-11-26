@@ -38,10 +38,10 @@ export function LighthouseHeader({
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex flex-col gap-1">
-        <h1 className="text-foreground text-xl font-semibold tracking-tight">
+        <h1 className="text-xl font-semibold tracking-tight text-foreground">
           Lighthouse
         </h1>
-        <p className="text-muted-foreground text-sm">
+        <p className="text-sm text-muted-foreground">
           Audit history, Core Web Vitals diagnostics, and multi-run performance
           comparisons.
         </p>
@@ -49,7 +49,7 @@ export function LighthouseHeader({
       <div className="flex flex-wrap items-center gap-2">
         <nav
           aria-label="Lighthouse sections"
-          className="bg-muted text-muted-foreground border-border inline-flex items-center gap-1 rounded-lg border p-1"
+          className="inline-flex items-center gap-1 rounded-lg border border-border bg-muted p-1 text-muted-foreground"
         >
           <Link
             href={buildHistoryUrl()}

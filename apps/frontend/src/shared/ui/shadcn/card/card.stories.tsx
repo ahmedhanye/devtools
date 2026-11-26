@@ -32,12 +32,12 @@ export const Default: Story = {
         </CardAction>
       </CardHeader>
       <CardContent>
-        <p className="text-muted-foreground text-sm">
+        <p className="text-sm text-muted-foreground">
           This is the primary content area inside the card.
         </p>
       </CardContent>
       <CardFooter>
-        <p className="text-muted-foreground text-xs">Card footer information</p>
+        <p className="text-xs text-muted-foreground">Card footer information</p>
       </CardFooter>
     </Card>
   ),
@@ -51,7 +51,7 @@ export const Small: Story = {
         <CardDescription>Small size variant</CardDescription>
       </CardHeader>
       <CardContent>
-        <p className="text-muted-foreground text-xs">Compact card body text.</p>
+        <p className="text-xs text-muted-foreground">Compact card body text.</p>
       </CardContent>
     </Card>
   ),

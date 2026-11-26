@@ -113,7 +113,6 @@ export function Mermaid({
         <div
           ref={containerRef}
           className="flex w-full justify-center [&>svg]:h-auto [&>svg]:max-w-full"
-          // oxlint-disable-next-line react/no-danger, react-doctor/no-danger -- SVG is produced with securityLevel="strict" and sanitized via sanitizeMermaidSvg
           dangerouslySetInnerHTML={innerHtml}
         />
       ) : (

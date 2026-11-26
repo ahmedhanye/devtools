@@ -12,7 +12,12 @@ import type { RadialGaugeTone } from "@/shared/ui";
  * Supported Core Web Vitals keys normalized on {@link LighthouseRunListItem}.
  */
 export type CwvMetricKey =
-  "lcpMs" | "cls" | "tbtMs" | "fcpMs" | "siMs" | "ttfbMs";
+  | "lcpMs"
+  | "cls"
+  | "tbtMs"
+  | "fcpMs"
+  | "siMs"
+  | "ttfbMs";
 
 /**
  * Standardized Google Web Vitals rating band.

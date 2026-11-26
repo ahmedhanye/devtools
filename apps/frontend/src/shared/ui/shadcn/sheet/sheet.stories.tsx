@@ -32,7 +32,7 @@ export const Default: Story = {
             This is a slide-out panel description.
           </SheetDescription>
         </SheetHeader>
-        <div className="text-muted-foreground p-4 text-sm">
+        <div className="p-4 text-sm text-muted-foreground">
           Sheet body content goes here.
         </div>
         <SheetFooter>
@@ -56,7 +56,7 @@ export const LeftSide: Story = {
             Sheet positioned on the left side of the screen.
           </SheetDescription>
         </SheetHeader>
-        <div className="text-muted-foreground p-4 text-sm">
+        <div className="p-4 text-sm text-muted-foreground">
           Left sheet content.
         </div>
       </SheetContent>
@@ -77,7 +77,7 @@ export const Bottom: Story = {
             Sheet positioned at the bottom of the screen.
           </SheetDescription>
         </SheetHeader>
-        <div className="text-muted-foreground p-4 text-sm">
+        <div className="p-4 text-sm text-muted-foreground">
           Bottom sheet content.
         </div>
       </SheetContent>
@@ -98,7 +98,7 @@ export const InteractiveOpenAndClose: Story = {
             Interactive sheet testing description.
           </SheetDescription>
         </SheetHeader>
-        <div className="text-muted-foreground p-4 text-sm">
+        <div className="p-4 text-sm text-muted-foreground">
           Interactive body content.
         </div>
         <SheetFooter>
