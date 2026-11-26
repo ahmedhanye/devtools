@@ -25,6 +25,8 @@
       "inputs": [
         "scripts/**/*.ts",
         "scripts/tsconfig.json",
+        "packages/db/src/schema/**",
+        "packages/db/src/migrator.ts",
         "tsconfig.base.json"
       ],
       "outputLogs": "errors-only",
@@ -132,6 +134,10 @@
       "inputs": [
         "scripts/**/*.ts",
         "scripts/tsconfig.json",
+        "packages/db/src/schema/**",
+        "packages/db/src/migrator.ts",
+        "packages/db/drizzle/**",
+        ".agents/**",
         "bunfig.toml",
         "bun.lock"
       ],
@@ -142,6 +148,10 @@
       "inputs": [
         "scripts/**/*.ts",
         "scripts/tsconfig.json",
+        "packages/db/src/schema/**",
+        "packages/db/src/migrator.ts",
+        "packages/db/drizzle/**",
+        ".agents/**",
         "bunfig.toml",
         "bun.lock"
       ],
@@ -152,6 +162,10 @@
       "inputs": [
         "scripts/**/*.ts",
         "scripts/tsconfig.json",
+        "packages/db/src/schema/**",
+        "packages/db/src/migrator.ts",
+        "packages/db/drizzle/**",
+        ".agents/**",
         "bunfig.toml",
         "bun.lock"
       ],
