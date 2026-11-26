@@ -13,7 +13,7 @@ Look up action versions, commit SHAs, and inputs with the tools below instead of
 
 Script paths are relative to this skill's folder:
 
-- `scripts/pin-action.sh <owner/repo[/path]> [tag]` prints a pinned `uses:` line (`owner/repo@<sha> # vX.Y.Z`) from upstream tags and exits `0`.
+- `bun run pin:actions` (`gh actions-lock --ignore-local-actions`) pins all workflow actions to immutable SHAs in `.github/workflows/actions.lock` and verifies them (`--verify-local` offline, `--verify` online).
 - `scripts/lint.sh [--online]` runs native `actionlint`, `zizmor`, and `shellcheck` on workflows, composite actions, `run:` blocks, and `.github/**/*.sh`, exiting `0` when clean. When missing `PATH` binaries cause a non-zero exit, consult [references/install.md](references/install.md) and recommend installing them instead of skipping linting. `--online` needs a `GH_TOKEN` with public-repo read access and adds `impostor-commit`, `known-vulnerable-actions`, `ref-confusion`, and `stale-action-refs`.
 - Inspect an action's inputs at its pinned SHA via `gh api "repos/OWNER/REPO/contents/action.yml?ref=SHA" --jq .content | base64 -d`.
 
@@ -28,7 +28,7 @@ Script paths are relative to this skill's folder:
 1. **Survey.** Read `.github/`, lockfiles, and runtime version files (such as `package.json`, `.nvmrc`, `pyproject.toml`, or `.tool-versions`). Done when you know the package manager, runtime source of truth, and existing composite actions to reuse.
 2. **Choose triggers.** Run untrusted PR code under `pull_request`; restrict `pull_request_target` and `issue_comment` to metadata-only jobs or split privileged follow-ups via [references/templates.md](references/templates.md). Done when no job combines secrets or write permissions with tainted code.
 3. **Draft and harden.** Start from the closest template and apply every item in the hardening checklist below. Done when every applicable checklist item is satisfied.
-4. **Pin.** Resolve external actions, reusable workflows, images, and binaries per the Supply chain checklist. Done when `scripts/pin-action.sh` exits `0` for every external `uses:`.
+4. **Pin.** Resolve external actions, reusable workflows, images, and binaries per the Supply chain checklist. Done when `bun run pin:actions` updates `.github/workflows/actions.lock` and `gh actions-lock --verify --ignore-local-actions` exits `0`.
 5. **Lint.** Run `scripts/lint.sh` and fix every error. Done when `scripts/lint.sh` exits `0`.
 6. **Verify in CI.** Once pushed, watch the run with `gh run watch <id> --exit-status`. Done when you report a passing run URL or state why CI verification could not run.
 
@@ -69,7 +69,7 @@ Done when the report states the count of audited files and lists all findings wi
 
 ### Supply chain and LTS versions
 
-- [ ] Pin external actions and reusable workflows to 40-char SHAs via `scripts/pin-action.sh`, images to `@sha256:`, and downloaded binaries to SHA-256 checksums.
+- [ ] Pin external actions and reusable workflows to 40-char SHAs via `bun run pin:actions` (`gh actions-lock`), images to `@sha256:`, and downloaded binaries to SHA-256 checksums.
 - [ ] Lock runtimes to Active LTS or repo version files, and install dependencies with frozen lockfiles.
 - [ ] Track current stable major action lines, use `ubuntu-latest` or explicit LTS runners, and set a 7-day `cooldown` for `github-actions` in `.github/dependabot.yml`.
 
