@@ -42,7 +42,7 @@ function isTestableSourceFile(filePath: string): boolean {
     normalized.includes(".stories.") ||
     normalized.includes(".storybook/") ||
     /\.config\.[a-z]+$/.test(normalized) ||
-    normalized.startsWith("scripts/") ||
+    normalized.endsWith("/vitest.setup.ts") ||
     normalized.startsWith(".agents/") ||
     (normalized.startsWith("apps/frontend/src/app/") &&
       /\.next\.(ts|tsx)$/.test(normalized))
@@ -196,8 +196,10 @@ export function parseGitDiff(diffText: string): Map<string, number[]> {
         continue;
       }
       if (line.startsWith("+")) {
-        const list = result.get(currentFile)!;
-        list.push(currentLineInNew);
+        const list = result.get(currentFile);
+        if (list) {
+          list.push(currentLineInNew);
+        }
         currentLineInNew++;
       } else if (line.startsWith("-")) {
         // Line removed from old version; does not advance new file line counter
@@ -491,9 +493,15 @@ export function verifyDiffCoverage(
 /**
  * CLI Runner. Returns a numeric exit code (0 for success, non-zero for failure).
  */
-async function runCli(): Promise<number> {
-  const args = process.argv.slice(2);
-  let baseRef = process.env.BASE_REF || "origin/main";
+export async function runCli(
+  args: readonly string[] = process.argv.slice(2),
+  options: Omit<
+    VerifyDiffCoverageOptions,
+    "baseRef" | "headRef" | "lcovPath" | "threshold" | "outputFile"
+  > & { env?: Record<string, string | undefined> } = {},
+): Promise<number> {
+  const env = options.env ?? process.env;
+  let baseRef = env.BASE_REF || "origin/main";
   let headRef = "HEAD";
   let lcovPath = "coverage/lcov.info";
   let threshold = 100;
@@ -501,20 +509,27 @@ async function runCli(): Promise<number> {
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (arg === "--base" && args[i + 1]) {
-      baseRef = args[++i]!;
-    } else if (arg === "--head" && args[i + 1]) {
-      headRef = args[++i]!;
-    } else if (arg === "--lcov" && args[i + 1]) {
-      lcovPath = args[++i]!;
-    } else if (arg === "--min" && args[i + 1]) {
-      threshold = Number.parseFloat(args[++i]!);
-    } else if (arg === "--output" && args[i + 1]) {
-      outputFile = args[++i]!;
+    const nextArg = args[i + 1];
+    if (arg === "--base" && nextArg) {
+      baseRef = nextArg;
+      i++;
+    } else if (arg === "--head" && nextArg) {
+      headRef = nextArg;
+      i++;
+    } else if (arg === "--lcov" && nextArg) {
+      lcovPath = nextArg;
+      i++;
+    } else if (arg === "--min" && nextArg) {
+      threshold = Number.parseFloat(nextArg);
+      i++;
+    } else if (arg === "--output" && nextArg) {
+      outputFile = nextArg;
+      i++;
     }
   }
 
   return verifyDiffCoverage({
+    ...options,
     baseRef,
     headRef,
     lcovPath,

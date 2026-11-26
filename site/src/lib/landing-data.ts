@@ -12,7 +12,10 @@ export const NAV_LINKS = [
 ] satisfies NavLink[];
 
 export type QuadrantIconName =
-  "GraduationCap" | "Compass" | "BookOpen" | "Layers";
+  | "GraduationCap"
+  | "Compass"
+  | "BookOpen"
+  | "Layers";
 
 export interface DiataxisQuadrant {
   id: "tutorials" | "how-to" | "reference" | "explanation";

@@ -22,7 +22,7 @@ export const Default: Story = {
       <CollapsibleTrigger render={<Button variant="outline" size="sm" />}>
         Toggle details
       </CollapsibleTrigger>
-      <CollapsibleContent className="border-border rounded-md border px-3 py-2 text-xs">
+      <CollapsibleContent className="rounded-md border border-border px-3 py-2 text-xs">
         Expanded diagnostic details
       </CollapsibleContent>
     </Collapsible>
@@ -43,7 +43,7 @@ export const DefaultOpen: Story = {
       <CollapsibleTrigger render={<Button variant="outline" size="sm" />}>
         Hide details
       </CollapsibleTrigger>
-      <CollapsibleContent className="border-border rounded-md border px-3 py-2 text-xs">
+      <CollapsibleContent className="rounded-md border border-border px-3 py-2 text-xs">
         Visible on initial render
       </CollapsibleContent>
     </Collapsible>

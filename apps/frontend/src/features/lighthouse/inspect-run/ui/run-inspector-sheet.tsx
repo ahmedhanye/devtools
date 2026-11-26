@@ -28,7 +28,7 @@ function InspectorHeaderLinks({
       <Link
         href={detailHref}
         onClick={onClose}
-        className="border-border bg-background text-foreground hover:bg-muted inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors"
+        className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
       >
         <Maximize2 className="size-3.5" />
         <span>Open Full Page</span>
@@ -37,7 +37,7 @@ function InspectorHeaderLinks({
         href={detailHref}
         target="_blank"
         rel="noopener noreferrer"
-        className="hover:bg-muted text-foreground inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors"
+        className="inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
       >
         <ExternalLink className="size-3.5" />
         <span>New Window</span>

@@ -109,16 +109,16 @@ function DeviceProfileCard({
       aria-pressed={selected}
       onClick={handleClick}
       className={cn(
-        "border-border bg-card hover:bg-accent/50 flex items-start gap-2.5 rounded-lg border p-3 text-start transition-colors",
-        selected ? "border-primary bg-accent/40 ring-primary/20 ring-2" : "",
+        "flex items-start gap-2.5 rounded-lg border border-border bg-card p-3 text-start transition-colors hover:bg-accent/50",
+        selected ? "border-primary bg-accent/40 ring-2 ring-primary/20" : "",
       )}
     >
-      <Icon className="text-foreground mt-0.5 size-4 shrink-0" />
+      <Icon className="mt-0.5 size-4 shrink-0 text-foreground" />
       <div>
-        <div className="text-foreground text-sm font-semibold">
+        <div className="text-sm font-semibold text-foreground">
           {profile.title}
         </div>
-        <div className="text-muted-foreground text-xs">{profile.subtitle}</div>
+        <div className="text-xs text-muted-foreground">{profile.subtitle}</div>
       </div>
     </button>
   );
@@ -140,16 +140,16 @@ function CategoryCheckboxCard({
   return (
     <label
       className={cn(
-        "border-border bg-card hover:bg-accent/50 flex cursor-pointer items-start gap-2.5 rounded-lg border p-2.5 text-start transition-colors",
+        "flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-card p-2.5 text-start transition-colors hover:bg-accent/50",
         checked ? "border-primary/50 bg-accent/30" : "",
       )}
     >
       <Checkbox checked={checked} onCheckedChange={handleCheckedChange} />
       <div className="min-w-0">
-        <div className="text-foreground text-xs font-medium">
+        <div className="text-xs font-medium text-foreground">
           {CATEGORY_LABELS[categoryId]}
         </div>
-        <div className="text-muted-foreground text-xs">
+        <div className="text-xs text-muted-foreground">
           {CATEGORY_DESCRIPTIONS[categoryId]}
         </div>
       </div>
@@ -241,7 +241,7 @@ function TriggerAuditForm({
           />
           {form.quickTargetUrls.length > 0 ? (
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-muted-foreground text-xs">Recent:</span>
+              <span className="text-xs text-muted-foreground">Recent:</span>
               {form.quickTargetUrls.map((entry) => (
                 <Button
                   key={entry.url}

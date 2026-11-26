@@ -89,14 +89,7 @@ Never open a late layer standalone with `gh pr create`; use `gh stack add <branc
 
 ### Step 2: Verify each layer against its base
 
-Run the matching completion check row from [`REVIEW.md`](../../../REVIEW.md#scope-and-verification-matrix) for the files changed in `git diff --name-only <parent-layer-branch>...HEAD` (`origin/main` once lower layers merge). When running diff-scoped coverage checks, pass `BASE_REF`:
-
-```bash
-BASE_REF="<parent-layer-branch>" bun run test:coverage --changed && \
-BASE_REF="<parent-layer-branch>" bun run verify:diff-coverage
-```
-
-Doc-only layers stop after `bunx prettier --check --log-level warn <files>` per [`REVIEW.md`](../../../REVIEW.md#deduplication-and-overlap-prevention). Re-verify upper layers whenever a lower branch changes.
+Set `BASE_REF="<parent-layer-branch>"` (`origin/main` once lower layers merge) when verifying a layer per [`REVIEW.md`](../../../REVIEW.md). Re-verify upper layers whenever a lower branch changes.
 
 ### Step 3: Submit drafts first, then patch metadata
 

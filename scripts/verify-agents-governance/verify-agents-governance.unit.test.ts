@@ -98,8 +98,8 @@ description: Run tests: generate output
       const content = "```ts\nconst x = 1;\n";
       const findings = checkCodeFences(content, "test.md");
       expect(findings).toHaveLength(1);
-      expect(findings[0].rule).toBe("code-fence/unclosed");
-      expect(findings[0].line).toBe(1);
+      expect(findings[0]?.rule).toBe("code-fence/unclosed");
+      expect(findings[0]?.line).toBe(1);
     });
 
     it("handles quadruple backtick nested blocks", () => {
@@ -118,7 +118,7 @@ const nested = true;
       const content = "Output path is /home/agent/workspace/file.txt";
       const findings = checkMachinePaths(content, "test.md");
       expect(findings).toHaveLength(1);
-      expect(findings[0].rule).toBe(
+      expect(findings[0]?.rule).toBe(
         "path-portability/no-absolute-machine-path",
       );
     });
@@ -165,7 +165,7 @@ const nested = true;
       const content = "See [missing file](does-not-exist-at-all-12345.md)";
       const findings = checkMarkdownLinks(content, ".agents/rules/test.md");
       expect(findings).toHaveLength(1);
-      expect(findings[0].rule).toBe("markdown/broken-link");
+      expect(findings[0]?.rule).toBe("markdown/broken-link");
     });
 
     it("flags relative links that exist at repo root but not from file directory", () => {
@@ -176,7 +176,7 @@ const nested = true;
         ".agents/skills/test/SKILL.md",
       );
       expect(findings).toHaveLength(1);
-      expect(findings[0].rule).toBe("markdown/broken-link");
+      expect(findings[0]?.rule).toBe("markdown/broken-link");
     });
   });
 
@@ -185,7 +185,7 @@ const nested = true;
       const content = "This is a feature—and it works.";
       const findings = checkUnslop(content, "test.md");
       expect(findings).toHaveLength(1);
-      expect(findings[0].rule).toBe("unslop/no-em-dash");
+      expect(findings[0]?.rule).toBe("unslop/no-em-dash");
     });
 
     it("passes spaced hyphens", () => {

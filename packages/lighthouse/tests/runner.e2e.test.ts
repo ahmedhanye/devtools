@@ -50,7 +50,7 @@ describe("Live Lighthouse Headless Chrome Navigation (E2E)", () => {
       const result = await store.runAudit({
         url: fixtureUrl,
         formFactor: "desktop",
-        throttlingMethod: "provided",
+        throttlingMethod: "simulate",
         runs: 1,
         onProgress: (ev) => progressEvents.push(ev),
       });
@@ -60,7 +60,7 @@ describe("Live Lighthouse Headless Chrome Navigation (E2E)", () => {
       expect(result.run.id).toBe(allRows[0]!.id);
       expect(result.previousRun).toBeNull();
       expect(result.run.formFactor).toBe("desktop");
-      expect(result.run.throttlingMethod).toBe("provided");
+      expect(result.run.throttlingMethod).toBe("simulate");
       expect(result.run.performanceScore).toBeGreaterThanOrEqual(0);
       expect(result.run.lcpMs).not.toBeNull();
       expect(result.run.fcpMs).not.toBeNull();

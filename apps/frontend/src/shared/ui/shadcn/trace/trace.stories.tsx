@@ -33,7 +33,7 @@ export const Default: Story = {
       </TraceLine>
       <TraceLine status="running">
         <TraceIcon>
-          <LoaderCircle className="text-primary animate-spin" />
+          <LoaderCircle className="animate-spin text-primary" />
         </TraceIcon>
         <TraceTitle>Navigate Target URL</TraceTitle>
       </TraceLine>

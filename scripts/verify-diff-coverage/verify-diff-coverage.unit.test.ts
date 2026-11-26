@@ -5,6 +5,7 @@ import {
   isTypeOnlySource,
   parseGitDiff,
   parseLcov,
+  runCli,
   verifyDiffCoverage,
 } from "./verify-diff-coverage";
 
@@ -274,23 +275,33 @@ diff --git a/counter.ts b/counter.ts
       expect(result.fileResults).toHaveLength(0);
     });
 
-    it("excludes internal scripts from diff-coverage gate while verifying application workspaces", () => {
+    it("includes repo scripts in diff-coverage gate while excluding .agents scripts", () => {
       const diffMap = new Map<string, number[]>([
         ["scripts/my-script.ts", [10, 11]],
         [".agents/skills/retro/scripts/cluster.ts", [20, 21]],
       ]);
-      const lcovMap = new Map<string, Map<number, number>>();
+      const lcovMap = new Map<string, Map<number, number>>([
+        [
+          "scripts/my-script.ts",
+          new Map([
+            [10, 1],
+            [11, 1],
+          ]),
+        ],
+      ]);
 
       const result = calculateDiffCoverage(diffMap, lcovMap, 100);
       expect(result.passed).toBe(true);
-      expect(result.totalModifiedExecutableLines).toBe(0);
-      expect(result.fileResults).toHaveLength(0);
+      expect(result.totalModifiedExecutableLines).toBe(2);
+      expect(result.fileResults).toHaveLength(1);
+      expect(result.fileResults[0]?.file).toBe("scripts/my-script.ts");
     });
 
-    it("excludes Next.js App Router boundary adapters from diff-coverage gate", () => {
+    it("excludes Next.js App Router boundary adapters and vitest setup from diff-coverage gate", () => {
       const diffMap = new Map<string, number[]>([
         ["apps/frontend/src/app/layout.next.tsx", [15, 16]],
         ["apps/frontend/src/app/dashboard/page.next.tsx", [10]],
+        ["apps/frontend/vitest.setup.ts", [1, 2]],
       ]);
       const lcovMap = new Map<string, Map<number, number>>();
 
@@ -520,6 +531,40 @@ diff --git a/counter.ts b/counter.ts
       });
 
       expect(exitCode).toBe(0);
+    });
+
+    it("runCli parses --base, --head, --lcov, --min, and --output flags", async () => {
+      let writtenPath = "";
+      const code = await runCli(
+        [
+          "--base",
+          "main",
+          "--head",
+          "feature",
+          "--lcov",
+          "custom.info",
+          "--min",
+          "80",
+          "--output",
+          "out/summary.md",
+        ],
+        {
+          fileExists: () => true,
+          readFile: () => "TN:\nSF:src/a.ts\nDA:1,1\nend_of_record\n",
+          mkdir: () => {},
+          writeFile: (p) => {
+            writtenPath = p;
+          },
+          log: () => {},
+          gitCommand: () => ({
+            status: 0,
+            stdout:
+              "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-x\n+y\n",
+          }),
+        },
+      );
+      expect(code).toBe(0);
+      expect(writtenPath).toBe("out/summary.md");
     });
   });
 });

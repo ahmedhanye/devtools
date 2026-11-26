@@ -246,10 +246,10 @@ export function resolveLatestSnapshotPath(
   drizzleDir: string,
   entries: readonly (JournalEntry & { idx?: number })[],
 ): string {
-  if (entries.length === 0) {
+  const latest = entries[entries.length - 1];
+  if (!latest) {
     throw new Error("Drizzle migration journal contains zero entries.");
   }
-  const latest = entries[entries.length - 1]!;
   const prefixIndex = latest.idx ?? entries.length - 1;
   const padded = String(prefixIndex).padStart(4, "0");
   return join(drizzleDir, "meta", `${padded}_snapshot.json`);
@@ -276,9 +276,40 @@ export async function runVerifyDbMigrations(
   const spawnFn = options?.spawnFn ?? defaultSpawn;
 
   const journalPath = join(drizzleDir, "meta", "_journal.json");
-  const journal = JSON.parse(readFileSync(journalPath, "utf8")) as {
-    entries: Array<JournalEntry & { idx?: number }>;
-  };
+  const parsedJournal: unknown = JSON.parse(readFileSync(journalPath, "utf8"));
+  const rawEntries: unknown[] =
+    typeof parsedJournal === "object" &&
+    parsedJournal !== null &&
+    "entries" in parsedJournal &&
+    Array.isArray(parsedJournal.entries)
+      ? parsedJournal.entries
+      : [];
+  const entries: Array<JournalEntry & { idx?: number }> = rawEntries.flatMap(
+    (entry) => {
+      if (
+        typeof entry === "object" &&
+        entry !== null &&
+        "tag" in entry &&
+        typeof entry.tag === "string"
+      ) {
+        return [
+          {
+            tag: entry.tag,
+            when:
+              "when" in entry && typeof entry.when === "number"
+                ? entry.when
+                : 0,
+            idx:
+              "idx" in entry && typeof entry.idx === "number"
+                ? entry.idx
+                : undefined,
+          },
+        ];
+      }
+      return [];
+    },
+  );
+  const journal = { entries };
 
   const errors: string[] = [];
 

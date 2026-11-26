@@ -16,7 +16,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="bg-background text-foreground min-h-dvh antialiased">
+      <body className="min-h-dvh bg-background text-foreground antialiased">
         <QueryProvider>
           <AppShell>{children}</AppShell>
         </QueryProvider>

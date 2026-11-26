@@ -1,6 +1,6 @@
 # GitHub Actions templates
 
-Generic starting baselines. Resolve current SHAs with `scripts/pin-action.sh` before committing.
+Generic starting baselines. Resolve current SHAs with `bun run pin:actions` (`gh actions-lock --ignore-local-actions`) before committing.
 
 ## 1. Minimal CI and security workflow
 

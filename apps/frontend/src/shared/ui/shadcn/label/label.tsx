@@ -5,7 +5,6 @@ import { cn } from "@/shared/lib";
 
 function Label({ className, ...props }: React.ComponentProps<"label">) {
   return (
-    // oxlint-disable-next-line jsx-a11y/label-has-associated-control -- Reusable Label forwards htmlFor and children from consumers.
     <label
       data-slot="label"
       className={cn(

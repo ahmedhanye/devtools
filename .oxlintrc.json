@@ -11,6 +11,7 @@
   },
   "rules": {
     "typescript/no-floating-promises": "deny",
+    "typescript/no-misused-promises": "deny",
     "typescript/await-thenable": "deny",
     "typescript/no-misused-spread": "deny",
     "typescript/no-redundant-type-constituents": "deny",
@@ -191,13 +192,7 @@
     {
       "files": ["scripts/**"],
       "rules": {
-        "typescript/no-explicit-any": "off",
-        "typescript/no-non-null-assertion": "off",
-        "typescript/consistent-return": "off",
-        "typescript/no-unnecessary-type-assertion": "off",
-        "typescript/no-unnecessary-type-conversion": "off",
-        "typescript/no-unsafe-type-assertion": "off",
-        "typescript/no-redundant-type-constituents": "off"
+        "typescript/consistent-return": "off"
       }
     },
     {
@@ -244,6 +239,7 @@
     "**/dist/**",
     "**/.next/**",
     "**/.source/**",
+    "**/.turbo/**",
     "**/coverage/**"
   ]
 }

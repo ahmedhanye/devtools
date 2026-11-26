@@ -71,9 +71,9 @@ describe("verifySchemaMatchesLatestSnapshot", () => {
     const tableV1 = sqliteTable("sample_items", {
       id: text("id").primaryKey(),
     });
-    const snapshotV1 = (await generateSQLiteDrizzleJson({
+    const snapshotV1 = await generateSQLiteDrizzleJson({
       sampleItems: tableV1,
-    })) as DrizzleSQLiteSnapshotJSON;
+    });
 
     const cleanOutcome = await verifySchemaMatchesLatestSnapshot(
       { sampleItems: tableV1 },
@@ -98,9 +98,9 @@ describe("verifySchemaMatchesLatestSnapshot", () => {
     const tableV1 = sqliteTable("sample_items", {
       id: text("id").primaryKey(),
     });
-    const snapshotV1 = (await generateSQLiteDrizzleJson({
+    const snapshotV1 = await generateSQLiteDrizzleJson({
       sampleItems: tableV1,
-    })) as DrizzleSQLiteSnapshotJSON;
+    });
 
     const alteredSnapshot: DrizzleSQLiteSnapshotJSON = {
       ...snapshotV1,
@@ -250,6 +250,17 @@ describe("resolveLatestSnapshotPath & runVerifyDbMigrations", () => {
       expect(
         resolve(import.meta.dir, "../../packages/db").endsWith("packages/db"),
       ).toBe(true);
+
+      writeFileSync(
+        join(tmpDir, "drizzle/meta/_journal.json"),
+        JSON.stringify({ entries: [null] }),
+      );
+      await expect(
+        runVerifyDbMigrations([], {
+          dbPackageDir: tmpDir,
+          spawnFn: mockSpawn,
+        }),
+      ).rejects.toThrow(/zero entries/i);
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
     }

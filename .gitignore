@@ -1,6 +1,7 @@
 # Temporary workspace directories
 tmp/
 .scratch/
+.turbo/
 
 # Dependencies
 node_modules/

@@ -32,7 +32,7 @@ jobs:
     steps:
       - name: Run Release Please
         id: release
-        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        uses: googleapis/release-please-action@v5.0.0
 
   build-binaries:
     name: Build Standalone Binary (${{ matrix.target.name }})
@@ -56,12 +56,12 @@ jobs:
             bun-target: bun-darwin-x64
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
       - name: Set up Bun environment
-        uses: ./.github/actions/setup-bun
+        uses: $/.github/actions/setup-bun
 
       - name: Compile standalone executable
         env:
@@ -72,7 +72,7 @@ jobs:
           bun build apps/cli/bin/devtools.js --compile --minify --bytecode --format=esm --target="$TARGET" --outfile="$OUTFILE"
 
       - name: Upload binary artifact
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: ${{ matrix.target.name }}
           path: dist/${{ matrix.target.name }}
@@ -88,9 +88,11 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write # Required for uploading binary assets and checksums to GitHub Release
+      id-token: write # Required for Sigstore SLSA build provenance signing
+      attestations: write # Required for publishing build provenance attestations
     steps:
       - name: Download binary artifacts
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        uses: actions/download-artifact@v8.0.2
         with:
           pattern: "devtools-*"
           path: dist
@@ -111,3 +113,8 @@ jobs:
           TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
         run: |
           gh release upload "$TAG_NAME" devtools-* SHA256SUMS.txt --clobber
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v4.2.2
+        with:
+          subject-path: "dist/devtools-*"

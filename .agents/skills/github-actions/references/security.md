@@ -38,7 +38,7 @@ Caches cross trust levels in one direction: a cache saved on the default branch 
 
 Tags and branches can be moved. When a maintainer account is compromised, an attacker re-points `v4` at malicious code, and every workflow referencing `@v4` runs it on the next trigger. In March 2025, `tj-actions/changed-files` (CVE-2025-30066) was retagged to dump CI secrets into workflow logs. A 40-character commit SHA cannot be silently moved.
 
-A raw SHA can still point to an attacker's commit. GitHub serves commits from any fork through the parent repository's URL, so `actions/checkout@<sha>` resolves even if `<sha>` lives only in a fork. `pin-action.sh` resolves SHAs from upstream tags only, and `lint.sh --online` runs zizmor's `impostor-commit` audit on existing SHAs. Apply the same discipline to external `workflow_call` targets (`@<sha>`), `container:` / `services:` / `docker://` images (`@sha256:` digests via `unpinned-images`), and downloaded release binaries (verified SHA-256 checksums via `unpinned-tools`).
+A raw SHA can still point to an attacker's commit. GitHub serves commits from any fork through the parent repository's URL, so `actions/checkout@<sha>` resolves even if `<sha>` lives only in a fork. `gh actions-lock` resolves SHAs from upstream refs into `.github/workflows/actions.lock`, and `lint.sh --online` runs zizmor's `impostor-commit` audit on existing SHAs. Apply the same discipline to external `workflow_call` targets (`@<sha>`), `container:` / `services:` / `docker://` images (`@sha256:` digests via `unpinned-images`), and downloaded release binaries (verified SHA-256 checksums via `unpinned-tools`).
 
 ## Persisted checkout credentials
 

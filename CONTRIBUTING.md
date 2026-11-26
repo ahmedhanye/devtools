@@ -20,13 +20,13 @@ bun install
 
 ## Verification workflow
 
-Follow [Review and verification guide](REVIEW.md) to run narrow, path-scoped checks during edits and the matching completion gate (or `bun run verify` for root or multi-workspace changes) before opening a pull request.
+Follow [Review and verification guide](REVIEW.md) before opening a pull request.
 
 ## Contribution lifecycle
 
 1. **Start from a tracking issue.** Claim an open ticket and check out its linked branch per [Issue tracking and management](docs/contributing/issues.md).
 2. **Stage and commit logical changes.** Stage files by path and write Conventional Commits following [Commits](docs/contributing/commits.md). Keep issue references out of commit subjects.
-3. **Verify and push.** Run the path-scoped completion check in [REVIEW.md](REVIEW.md#scope-and-verification-matrix), push commits, and handle post-push review replies per [Pushing changes and review synchronization](docs/contributing/push.md).
+3. **Verify and push.** Run the verification command in [REVIEW.md](REVIEW.md), push commits, and handle post-push review replies per [Pushing changes and review synchronization](docs/contributing/push.md).
 4. **Open, review, and merge the pull request.** Follow [Pull requests](docs/contributing/pull-request.md) for title, template, label, evidence, single-PR, and stacked-PR rules. Squash merge only once all required checks pass and reviewers resolve all threads.
 
 ## Contributing guides

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { extname, isAbsolute, relative, resolve } from "node:path";
 
 interface SecretRule {
@@ -195,7 +196,7 @@ export function scanContentForSecrets(
   const lines = content.split("\n");
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!;
+    const line = lines[i] ?? "";
     if (isIgnoredLine(line)) {
       continue;
     }
@@ -425,13 +426,374 @@ export function readStagedContent(
 }
 
 /**
- * Executes the staged secrets verification workflow.
+ * Resolved unpushed commit range for pre-push secret scanning.
  */
-function run(): void {
+export interface PushRange {
+  /** Base commit/ref used as `--since-commit` for TruffleHog. */
+  base: string;
+  /** Target commit/ref being pushed (defaults to `HEAD`). */
+  head: string;
+  /** Git revision range (`<base>..<head>`). */
+  range: string;
+}
+
+/**
+ * Parsed ref update line passed by Git to the `pre-push` hook on stdin.
+ */
+export interface PrePushRefUpdate {
+  /** Local ref name being pushed. */
+  localRef: string;
+  /** Local commit OID (all-zeros for branch deletion). */
+  localOid: string;
+  /** Remote ref name being updated. */
+  remoteRef: string;
+  /** Remote commit OID (all-zeros for a newly created remote branch). */
+  remoteOid: string;
+}
+
+/**
+ * Result of executing {@link runRangeScan}.
+ */
+export interface RangeScanResult {
+  /** Scanner engine used (`"trufflehog"` or `"builtin"`). */
+  engine: "trufflehog" | "builtin" | "skipped";
+  /** Whether the scan passed with zero detected secrets. */
+  passed: boolean;
+  /** Any findings reported by the built-in scanner. */
+  findings: Finding[];
+  /** Optional diagnostic error when range resolution or scanning fails closed. */
+  error?: string;
+}
+
+/**
+ * Reads Git's `pre-push` ref updates from stdin when stdin is piped (non-TTY).
+ *
+ * @param isTTY - Whether stdin is an interactive TTY.
+ * @param readFn - Injectable stdin reader.
+ * @returns Raw stdin text, or `""` when stdin is a TTY.
+ */
+export function readPrePushStdin(
+  isTTY: boolean = process.stdin.isTTY,
+  readFn: () => string = () => readFileSync(0, "utf8"),
+): string {
+  return isTTY ? "" : readFn();
+}
+
+/**
+ * Parses `<local_ref> <local_oid> <remote_ref> <remote_oid>` lines from Git's `pre-push` stdin.
+ *
+ * @param stdinText - Raw stdin text provided to the `pre-push` hook.
+ * @returns Parsed {@link PrePushRefUpdate} entries.
+ */
+export function parsePrePushRefs(stdinText: string): PrePushRefUpdate[] {
+  const updates: PrePushRefUpdate[] = [];
+  for (const rawLine of stdinText.split("\n")) {
+    const trimmed = rawLine.trim();
+    if (!trimmed) continue;
+    const [localRef, localOid, remoteRef, remoteOid] = trimmed.split(/\s+/);
+    if (!localRef || !localOid || !remoteRef || !remoteOid) continue;
+    updates.push({
+      localRef,
+      localOid,
+      remoteRef,
+      remoteOid,
+    });
+  }
+  return updates;
+}
+
+/**
+ * Resolves the git commit range to scan before pushing (`<explicitBase>..<headRef>`, `@{u}..<headRef>`, or `origin/main..<headRef>`).
+ *
+ * @param explicitBase - Optional explicit base ref override.
+ * @param spawnFn - Injectable subprocess runner.
+ * @param headRef - Target ref/OID being pushed (defaults to `HEAD`).
+ * @returns Resolved {@link PushRange}, or `null` when zero unpushed commits exist.
+ */
+export function resolvePushRange(
+  explicitBase?: string,
+  spawnFn: (args: string[]) => GitRunnerResult = (args) => Bun.spawnSync(args),
+  headRef = "HEAD",
+): PushRange | null {
+  let base = explicitBase;
+  if (!base) {
+    const upstream = spawnFn([
+      "git",
+      "rev-parse",
+      "--abbrev-ref",
+      "--symbolic-full-name",
+      "@{u}",
+    ]);
+    base =
+      upstream.exitCode === 0 && upstream.stdout.toString().trim()
+        ? upstream.stdout.toString().trim()
+        : "origin/main";
+  }
+
+  const range = `${base}..${headRef}`;
+  const countRes = spawnFn(["git", "rev-list", "--count", range]);
+  if (countRes.exitCode !== 0) {
+    throw new Error(
+      `Failed to inspect git commit range "${range}" (exit code ${countRes.exitCode}): ${countRes.stderr?.toString().trim() ?? ""}`,
+    );
+  }
+  const count = Number.parseInt(countRes.stdout.toString().trim(), 10);
+  if (Number.isFinite(count) && count <= 0) {
+    return null;
+  }
+  return { base, head: headRef, range };
+}
+
+/**
+ * Resolves all commit ranges to scan from Git's `pre-push` stdin ref list, falling back to `HEAD` when stdin is empty.
+ *
+ * @param explicitBase - Optional explicit base ref override.
+ * @param spawnFn - Injectable subprocess runner.
+ * @param prePushStdin - Raw stdin passed by Git during `pre-push`.
+ * @returns Non-empty {@link PushRange} entries to scan.
+ */
+export function resolvePushRanges(
+  explicitBase?: string,
+  spawnFn: (args: string[]) => GitRunnerResult = (args) => Bun.spawnSync(args),
+  prePushStdin = "",
+): PushRange[] {
+  if (prePushStdin.trim().length > 0) {
+    const ranges: PushRange[] = [];
+    for (const update of parsePrePushRefs(prePushStdin)) {
+      if (/^0+$/.test(update.localOid)) {
+        continue;
+      }
+      const base = /^0+$/.test(update.remoteOid)
+        ? (explicitBase ?? "origin/main")
+        : update.remoteOid;
+      const resolved = resolvePushRange(base, spawnFn, update.localOid);
+      if (resolved) {
+        ranges.push(resolved);
+      }
+    }
+    return ranges;
+  }
+
+  const single = resolvePushRange(explicitBase, spawnFn);
+  return single ? [single] : [];
+}
+
+/**
+ * Runs TruffleHog against unpushed commits using the repository's exclude file.
+ *
+ * @param baseRef - Base commit/ref passed to `--since-commit`.
+ * @param spawnFn - Injectable subprocess runner.
+ * @param headRef - Target commit/branch passed to `--branch`.
+ * @returns TruffleHog process exit code (`0` means clean).
+ */
+export function scanCommitRangeWithTrufflehog(
+  baseRef: string,
+  spawnFn: (args: string[]) => GitRunnerResult = (args) => Bun.spawnSync(args),
+  headRef = "HEAD",
+): number {
+  const res = spawnFn([
+    "trufflehog",
+    "git",
+    "file://.",
+    "--since-commit",
+    baseRef,
+    "--branch",
+    headRef,
+    "--fail",
+    "--no-update",
+    "--results=verified,unknown",
+    "--exclude-paths=.github/trufflehog-exclude.txt",
+  ]);
+  return res.exitCode;
+}
+
+/**
+ * Scans added lines in commit patches (including merge diffs) and commit messages across a git range using built-in patterns.
+ *
+ * @param range - Git revision range (e.g. `origin/main..HEAD`).
+ * @param spawnFn - Injectable subprocess runner.
+ * @returns Deduplicated array of suspected credential findings.
+ */
+export function scanCommitRangeFallback(
+  range: string,
+  spawnFn: (args: string[]) => GitRunnerResult = (args) => Bun.spawnSync(args),
+): Finding[] {
+  const findings: Finding[] = [];
+  const patchProc = spawnFn(["git", "log", "-m", "-p", "--no-color", range]);
+  if (patchProc.exitCode !== 0) {
+    throw new Error(
+      `Failed to read git patch history for "${range}" (exit code ${patchProc.exitCode}): ${patchProc.stderr?.toString().trim() ?? ""}`,
+    );
+  }
+
+  let currentFile = "unknown";
+  let skipBinary = false;
+  let lineIndex = 0;
+
+  for (const line of patchProc.stdout.toString().split("\n")) {
+    if (line.startsWith("+++ b/")) {
+      currentFile = line.slice(6).trim();
+      skipBinary = BINARY_EXTENSIONS.has(extname(currentFile).toLowerCase());
+      lineIndex = 0;
+      continue;
+    }
+    if (line.startsWith("+++ /dev/null")) {
+      skipBinary = true;
+      continue;
+    }
+    if (skipBinary) continue;
+    if (line.startsWith("+") && !line.startsWith("+++")) {
+      lineIndex++;
+      const added = line.slice(1);
+      const lineFindings = scanContentForSecrets(added, currentFile);
+      for (const f of lineFindings) {
+        findings.push({ ...f, line: lineIndex });
+      }
+    }
+  }
+
+  const msgProc = spawnFn(["git", "log", "--format=%H%n%B", range]);
+  if (msgProc.exitCode !== 0) {
+    throw new Error(
+      `Failed to read git commit messages for "${range}" (exit code ${msgProc.exitCode}): ${msgProc.stderr?.toString().trim() ?? ""}`,
+    );
+  }
+  findings.push(
+    ...scanContentForSecrets(msgProc.stdout.toString(), "commit-message"),
+  );
+
+  const seen = new Set<string>();
+  return findings.filter((f) => {
+    const key = `${f.file}\0${f.rule}\0${f.token}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/**
+ * Runs pre-push secret scanning across unpushed commits using TruffleHog when installed or the built-in scanner otherwise.
+ *
+ * @param explicitBase - Optional explicit base ref override.
+ * @param spawnFn - Injectable subprocess runner.
+ * @param prePushStdin - Optional `pre-push` stdin ref list.
+ * @returns {@link RangeScanResult} describing which engine ran and whether any secrets were detected.
+ */
+export function runRangeScan(
+  explicitBase?: string,
+  spawnFn: (args: string[]) => GitRunnerResult = (args) => Bun.spawnSync(args),
+  prePushStdin = "",
+): RangeScanResult {
+  try {
+    const ranges = resolvePushRanges(explicitBase, spawnFn, prePushStdin);
+    if (ranges.length === 0) {
+      return { engine: "skipped", passed: true, findings: [] };
+    }
+
+    const hasTrufflehog = spawnFn(["which", "trufflehog"]).exitCode === 0;
+    if (hasTrufflehog) {
+      for (const r of ranges) {
+        const code = scanCommitRangeWithTrufflehog(r.base, spawnFn, r.head);
+        if (code !== 0) {
+          return { engine: "trufflehog", passed: false, findings: [] };
+        }
+      }
+      return { engine: "trufflehog", passed: true, findings: [] };
+    }
+
+    const findings = ranges.flatMap((r) =>
+      scanCommitRangeFallback(r.range, spawnFn),
+    );
+    return {
+      engine: "builtin",
+      passed: findings.length === 0,
+      findings,
+    };
+  } catch (error) {
+    return {
+      engine: "builtin",
+      passed: false,
+      findings: [],
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function printFindingsAndExit(
+  findings: Finding[],
+  contextLabel: string,
+  exitFn: (code: number) => never = (code) => process.exit(code),
+): never {
+  console.error(
+    `\n❌ Secret Detection Failure: Found ${findings.length} suspected secret(s) across ${contextLabel}:\n`,
+  );
+  for (const f of findings) {
+    console.error(`  - ${f.file}:${f.line} [${f.rule}] ${maskSecret(f.token)}`);
+  }
+  console.error(
+    "\nTo resolve:\n" +
+      "1. Remove real credentials immediately and rotate compromised keys.\n" +
+      "2. For synthetic unit test fixtures or mock keys, append `// trufflehog:ignore`\n" +
+      "   in `//`-comment files or `# trufflehog:ignore` in `#`-comment files per .agents/AGENTS.md.\n",
+  );
+  return exitFn(1);
+}
+
+/** Injectable dependencies for {@link run}. */
+export interface RunStagedSecretsDeps {
+  runRangeScan?: typeof runRangeScan;
+  readPrePushStdin?: () => string;
+  getStagedDeletedFiles?: typeof getStagedDeletedFiles;
+  getStagedFiles?: typeof getStagedFiles;
+  readStagedContent?: typeof readStagedContent;
+  exitFn?: (code: number) => never;
+}
+
+/**
+ * Executes the staged or commit-range secrets verification workflow.
+ */
+export function run(
+  cliArgs: readonly string[] = process.argv.slice(2),
+  deps: RunStagedSecretsDeps = {},
+): void {
   const startTime = performance.now();
-  const cliArgs = process.argv.slice(2);
-  const deletedFiles = getStagedDeletedFiles();
-  const rawFiles = cliArgs.length > 0 ? cliArgs : getStagedFiles();
+  const exitFn = deps.exitFn ?? ((code) => process.exit(code));
+  const rangeScan = deps.runRangeScan ?? runRangeScan;
+  const readStdinFn = deps.readPrePushStdin ?? readPrePushStdin;
+  const deletedFilesFn = deps.getStagedDeletedFiles ?? getStagedDeletedFiles;
+  const stagedFilesFn = deps.getStagedFiles ?? getStagedFiles;
+  const readStagedFn = deps.readStagedContent ?? readStagedContent;
+
+  if (cliArgs[0] === "--range") {
+    const explicitBase = cliArgs[1];
+    const prePushStdin = readStdinFn();
+    const result = rangeScan(explicitBase, undefined, prePushStdin);
+    const elapsed = (performance.now() - startTime).toFixed(1);
+    if (result.engine === "skipped") {
+      console.log("🔍 No unpushed commits to scan for secrets.");
+      return;
+    }
+    if (!result.passed) {
+      if (result.findings.length > 0) {
+        printFindingsAndExit(result.findings, "unpushed commits", exitFn);
+      }
+      if (result.error) {
+        console.error(`❌ Pre-push secret scan failed: ${result.error}`);
+      } else {
+        console.error(
+          "❌ TruffleHog detected potential secrets in unpushed commits.",
+        );
+      }
+      exitFn(1);
+    }
+    console.log(
+      `✅ Pre-push secret scan passed (${result.engine} engine, ${elapsed}ms).`,
+    );
+    return;
+  }
+
+  const deletedFiles = deletedFilesFn();
+  const rawFiles = cliArgs.length > 0 ? cliArgs : stagedFilesFn();
   const filesToScan = rawFiles
     .map((filePath) => toRepoRelativePath(filePath))
     .filter((filePath) => !deletedFiles.has(filePath));
@@ -445,7 +807,7 @@ function run(): void {
   let scannedCount = 0;
 
   for (const file of filesToScan) {
-    const content = readStagedContent(file);
+    const content = readStagedFn(file);
     if (content === null) {
       continue;
     }
@@ -456,21 +818,7 @@ function run(): void {
   const elapsed = (performance.now() - startTime).toFixed(1);
 
   if (allFindings.length > 0) {
-    console.error(
-      `\n❌ Secret Detection Failure: Found ${allFindings.length} suspected secret(s) across staged files:\n`,
-    );
-    for (const f of allFindings) {
-      console.error(
-        `  - ${f.file}:${f.line} [${f.rule}] ${maskSecret(f.token)}`,
-      );
-    }
-    console.error(
-      "\nTo resolve:\n" +
-        "1. Remove real credentials immediately and rotate compromised keys.\n" +
-        "2. For synthetic unit test fixtures or mock keys, append `// trufflehog:ignore`\n" +
-        "   in `//`-comment files or `# trufflehog:ignore` in `#`-comment files per .agents/AGENTS.md.\n",
-    );
-    process.exit(1);
+    printFindingsAndExit(allFindings, "staged files", exitFn);
   }
 
   console.log(

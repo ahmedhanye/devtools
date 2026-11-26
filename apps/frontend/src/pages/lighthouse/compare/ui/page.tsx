@@ -91,7 +91,10 @@ import {
 
 type CompareChartMode = "scores" | "cwv" | "single";
 type CompareChartMetric =
-  "performanceScore" | "accessibilityScore" | "lcpMs" | "cls";
+  | "performanceScore"
+  | "accessibilityScore"
+  | "lcpMs"
+  | "cls";
 type CompareChartType = "area" | "bar";
 
 type SeriesKey =
@@ -478,7 +481,7 @@ function CompareTrendTooltip({
   const isBaseline = baselineRun !== null && run.id === baselineRun.id;
 
   return (
-    <div className="bg-popover text-popover-foreground border-border w-64 rounded-lg border p-3 text-xs shadow-md">
+    <div className="w-64 rounded-lg border border-border bg-popover p-3 text-xs text-popover-foreground shadow-md">
       <div className="flex items-center justify-between gap-2">
         <span className="font-semibold">{formatTimestamp(run.createdAt)}</span>
         {isBaseline ? (
@@ -488,7 +491,7 @@ function CompareTrendTooltip({
         ) : null}
       </div>
 
-      <div className="text-muted-foreground border-border mt-0.5 mb-2 border-b pb-1.5">
+      <div className="mt-0.5 mb-2 border-b border-border pb-1.5 text-muted-foreground">
         {shortUrlLabel(run.url)} · {run.formFactor} · {run.throttlingMethod}
       </div>
 
@@ -525,7 +528,7 @@ function CompareTrendTooltip({
         </div>
       )}
 
-      <div className="text-muted-foreground border-border mt-2 flex items-center justify-between border-t pt-1.5 tabular-nums">
+      <div className="mt-2 flex items-center justify-between border-t border-border pt-1.5 text-muted-foreground tabular-nums">
         <span>
           {mode === "cwv"
             ? `Perf ${run.performanceScore ?? "—"} · CLS ${formatCwvValue("cls", run.cls)}`
@@ -816,7 +819,7 @@ function CompareTrendSubBar({
 }) {
   if (mode === "single") {
     return (
-      <div className="border-border bg-muted/30 flex flex-wrap items-center justify-between gap-2 border-t px-6 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-muted/30 px-6 py-2.5">
         <Tabs value={singleMetric} onValueChange={onSingleMetricChange}>
           <TabsList>
             {SINGLE_METRICS.map((metric) => (
@@ -826,7 +829,7 @@ function CompareTrendSubBar({
             ))}
           </TabsList>
         </Tabs>
-        <span className="text-muted-foreground text-xs">
+        <span className="text-xs text-muted-foreground">
           Target &amp; baseline guides active
         </span>
       </div>
@@ -834,7 +837,7 @@ function CompareTrendSubBar({
   }
 
   return (
-    <div className="border-border bg-muted/30 flex flex-wrap items-center justify-between gap-2 border-t px-6 py-2.5">
+    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-muted/30 px-6 py-2.5">
       <div className="flex flex-wrap items-center gap-1.5">
         {activeSeriesGroup.map((series) => (
           <SeriesFilterChip
@@ -845,7 +848,7 @@ function CompareTrendSubBar({
           />
         ))}
       </div>
-      <span className="text-muted-foreground text-xs">
+      <span className="text-xs text-muted-foreground">
         Click chips to show or hide series
       </span>
     </div>
@@ -1049,10 +1052,10 @@ function SelectedRunSidebarItem({
         {run.performanceScore ?? "—"}
       </Badge>
       <div className="min-w-0 flex-1">
-        <div className="text-foreground truncate text-xs font-medium">
+        <div className="truncate text-xs font-medium text-foreground">
           {shortUrlLabel(run.url)}
         </div>
-        <div className="text-muted-foreground truncate text-xs">
+        <div className="truncate text-xs text-muted-foreground">
           {formatShortTimestamp(run.createdAt)} · {run.formFactor}
         </div>
       </div>
@@ -1098,10 +1101,10 @@ function AddSpecificRunRow({
     <button
       type="button"
       onClick={handleClick}
-      className="hover:bg-accent flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-start text-xs transition-colors"
+      className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-start text-xs transition-colors hover:bg-accent"
     >
       <div className="min-w-0 flex-1">
-        <div className="text-foreground truncate font-medium">
+        <div className="truncate font-medium text-foreground">
           {shortUrlLabel(run.url)}
         </div>
         <div className="text-muted-foreground">
@@ -1132,7 +1135,7 @@ function QuickPresetsSection({
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-foreground text-xs font-medium">Quick Presets</span>
+      <span className="text-xs font-medium text-foreground">Quick Presets</span>
       <div className="grid grid-cols-2 gap-1.5">
         {topPresetUrls.map((entry) => (
           <Button
@@ -1200,8 +1203,8 @@ function SidebarScrollList({
         <span
           className={
             isPopover
-              ? "text-foreground text-xs font-semibold"
-              : "text-foreground text-xs font-medium"
+              ? "text-xs font-semibold text-foreground"
+              : "text-xs font-medium text-foreground"
           }
         >
           {title}
@@ -1209,13 +1212,13 @@ function SidebarScrollList({
         {count !== undefined ? <Badge variant="neutral">{count}</Badge> : null}
       </div>
       {isEmpty ? (
-        <p className="text-muted-foreground text-xs">{emptyMessage}</p>
+        <p className="text-xs text-muted-foreground">{emptyMessage}</p>
       ) : (
         <div
           className={
             isPopover
-              ? "max-h-56 scrollbar-thin overflow-y-auto pe-2"
-              : "max-h-64 scrollbar-thin overflow-y-auto pe-2"
+              ? "scrollbar-thin max-h-56 overflow-y-auto pe-2"
+              : "scrollbar-thin max-h-64 overflow-y-auto pe-2"
           }
         >
           <div
@@ -1303,12 +1306,12 @@ function CompareBuilderSidebar({ builder }: { builder: CompareBuilderModel }) {
             />
 
             {builder.totalStoredCount > builder.totalAvailableCount ? (
-              <p className="text-muted-foreground text-xs leading-relaxed">
+              <p className="text-xs leading-relaxed text-muted-foreground">
                 Showing the latest {builder.totalAvailableCount} of{" "}
                 {builder.totalStoredCount} runs. Select older runs in{" "}
                 <Link
                   href={buildHistoryUrl()}
-                  className="text-foreground font-medium underline underline-offset-2"
+                  className="font-medium text-foreground underline underline-offset-2"
                 >
                   Audit History
                 </Link>
@@ -1317,7 +1320,7 @@ function CompareBuilderSidebar({ builder }: { builder: CompareBuilderModel }) {
             ) : null}
 
             <div className="flex flex-col gap-1.5">
-              <span className="text-foreground text-xs font-medium">
+              <span className="text-xs font-medium text-foreground">
                 Include by URL
               </span>
               <MultiSelectCombobox
@@ -1416,7 +1419,7 @@ function SortHeaderButton({
     <button
       type="button"
       onClick={handleClick}
-      className="text-foreground hover:text-primary inline-flex items-center font-medium transition-colors"
+      className="inline-flex items-center font-medium text-foreground transition-colors hover:text-primary"
     >
       {label}
       {indicator}
@@ -1463,7 +1466,7 @@ function MetricDeltaCell({
             unit={unit}
           />
         ) : (
-          <span className="text-muted-foreground text-xs">base</span>
+          <span className="text-xs text-muted-foreground">base</span>
         )}
       </div>
     </TableCell>
@@ -1510,10 +1513,10 @@ function CompareMatrixRow({
       </TableCell>
       <TableCell>
         <div className="flex flex-col">
-          <span className="text-foreground font-medium">
+          <span className="font-medium text-foreground">
             {shortUrlLabel(run.url)}
           </span>
-          <span className="text-muted-foreground text-xs">
+          <span className="text-xs text-muted-foreground">
             {formatShortTimestamp(run.createdAt)}
           </span>
         </div>
@@ -1527,7 +1530,7 @@ function CompareMatrixRow({
             {run.performanceScore ?? "—"}
           </Badge>
           {isBase ? (
-            <span className="text-muted-foreground text-xs">base</span>
+            <span className="text-xs text-muted-foreground">base</span>
           ) : (
             <MetricDeltaBadge
               delta={computeDelta(
@@ -1881,10 +1884,10 @@ function DiffVerdictBanner({
       )}
     >
       <div>
-        <div className="text-foreground text-sm font-semibold">
+        <div className="text-sm font-semibold text-foreground">
           {verdict.headline}
         </div>
-        <div className="text-muted-foreground text-xs">{verdict.subline}</div>
+        <div className="text-xs text-muted-foreground">{verdict.subline}</div>
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
         <Badge variant="success">{resolvedCount} fixed</Badge>
@@ -1912,19 +1915,19 @@ function DiffMetricStripCell({
   mono,
 }: DiffMetricStripCellProps) {
   return (
-    <div className="border-border bg-muted/30 flex flex-col gap-1 rounded-lg border px-3 py-2.5">
-      <span className="text-muted-foreground text-xs font-medium">{label}</span>
+    <div className="flex flex-col gap-1 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
       <div
         className={cn(
           "flex flex-wrap items-baseline gap-1 tabular-nums",
           mono && "font-mono text-xs",
         )}
       >
-        <span className="text-muted-foreground text-xs whitespace-nowrap">
+        <span className="text-xs whitespace-nowrap text-muted-foreground">
           {beforeText}
         </span>
-        <span className="text-muted-foreground text-xs">→</span>
-        <span className="text-foreground text-sm font-semibold whitespace-nowrap">
+        <span className="text-xs text-muted-foreground">→</span>
+        <span className="text-sm font-semibold whitespace-nowrap text-foreground">
           {afterText}
         </span>
       </div>
@@ -2003,7 +2006,7 @@ function InsightAuditStatusRow({
     );
 
   return (
-    <div className="border-border bg-card flex flex-col gap-1 rounded-lg border p-3">
+    <div className="flex flex-col gap-1 rounded-lg border border-border bg-card p-3">
       <div className="flex items-center justify-between gap-2">
         <span className="flex min-w-0 items-center gap-1.5 text-xs font-semibold">
           <ItemIcon className={iconClass} />
@@ -2014,10 +2017,10 @@ function InsightAuditStatusRow({
       <div className="font-mono text-xs tabular-nums">
         <span className="text-muted-foreground">{beforeVal}</span>{" "}
         <span className="text-muted-foreground">→</span>{" "}
-        <strong className="text-foreground font-semibold">{afterVal}</strong>
+        <strong className="font-semibold text-foreground">{afterVal}</strong>
       </div>
       {description ? (
-        <p className="text-muted-foreground line-clamp-2 text-xs">
+        <p className="line-clamp-2 text-xs text-muted-foreground">
           {formatInsightDescription(description)}
         </p>
       ) : null}
@@ -2051,15 +2054,15 @@ function InsightAuditStatusCard({
       : "text-destructive size-3.5 shrink-0";
 
   return (
-    <div className="border-border bg-muted/30 flex flex-col gap-2.5 rounded-lg border p-3.5">
+    <div className="flex flex-col gap-2.5 rounded-lg border border-border bg-muted/30 p-3.5">
       <div className="flex items-center justify-between gap-2">
-        <strong className="text-foreground text-xs font-semibold">
+        <strong className="text-xs font-semibold text-foreground">
           {title}
         </strong>
         <Badge variant={badgeTone}>{countText}</Badge>
       </div>
       {items.length === 0 ? (
-        <p className="text-muted-foreground text-xs">{emptyText}</p>
+        <p className="text-xs text-muted-foreground">{emptyText}</p>
       ) : (
         <div className="flex flex-col gap-2">
           {items.map((item) => (
@@ -2274,8 +2277,8 @@ function CompareDiffPanel({
 
   if (!targetRun) {
     return (
-      <div className="border-border bg-muted/40 flex flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-3">
-        <span className="text-muted-foreground text-xs">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-muted/40 px-4 py-3">
+        <span className="text-xs text-muted-foreground">
           Click <strong>Diff Insights</strong> on any row above to compare
           resolved and regressed Insight Audits against Baseline.
         </span>
@@ -2397,7 +2400,7 @@ export function ComparePage() {
         action={
           <Link
             href={buildHistoryUrl()}
-            className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex h-8 items-center rounded-lg px-3 text-xs font-medium transition-colors"
+            className="inline-flex h-8 items-center rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
             Go to Audit History
           </Link>

@@ -1,0 +1,285 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "ui": "stream",
+  "globalDependencies": ["tsconfig.base.json"],
+  "globalEnv": [
+    "CI",
+    "BASE_REF",
+    "NO_COLOR",
+    "DO_NOT_TRACK",
+    "NEXT_TELEMETRY_DISABLED",
+    "STORYBOOK_DISABLE_TELEMETRY",
+    "FALLOW_TELEMETRY_DISABLED",
+    "REACT_DOCTOR_NO_TELEMETRY"
+  ],
+  "tasks": {
+    "transit": {
+      "dependsOn": ["^transit"]
+    },
+    "typecheck": {
+      "dependsOn": ["transit"],
+      "outputLogs": "errors-only",
+      "outputs": []
+    },
+    "//#typecheck:scripts": {
+      "inputs": [
+        "scripts/**/*.ts",
+        "scripts/tsconfig.json",
+        "packages/db/src/schema/**",
+        "packages/db/src/migrator.ts",
+        "tsconfig.base.json"
+      ],
+      "outputLogs": "errors-only",
+      "outputs": []
+    },
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", "!**/*.stories.{tsx,jsx,mdx}"],
+      "outputLogs": "errors-only",
+      "outputs": [
+        "dist/**",
+        "out/**",
+        ".next/**",
+        "!.next/cache/**",
+        "!.next/dev/**",
+        ".source/**"
+      ]
+    },
+    "build-storybook": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!storybook-static/**",
+        "!coverage/**",
+        "!.next/**",
+        "!out/**"
+      ],
+      "outputLogs": "errors-only",
+      "outputs": ["storybook-static/**"]
+    },
+    "//#build:bin": {
+      "inputs": [
+        "apps/cli/**",
+        "apps/api/**",
+        "packages/**",
+        "package.json",
+        "bun.lock",
+        "!**/coverage/**",
+        "!**/dist/**",
+        "!**/.turbo/**",
+        "!**/.next/**",
+        "!**/out/**"
+      ],
+      "outputLogs": "errors-only",
+      "outputs": ["dist/devtools"]
+    },
+    "//#smoke:bin": {
+      "dependsOn": ["//#build:bin"],
+      "inputs": ["dist/devtools"],
+      "outputLogs": "errors-only",
+      "outputs": []
+    },
+    "test": {
+      "dependsOn": ["^build", "transit"],
+      "outputLogs": "errors-only",
+      "outputs": []
+    },
+    "test:unit": {
+      "dependsOn": ["transit"],
+      "outputLogs": "errors-only",
+      "outputs": []
+    },
+    "test:integration": {
+      "dependsOn": ["transit"],
+      "outputLogs": "errors-only",
+      "outputs": []
+    },
+    "test:e2e": {
+      "dependsOn": ["transit"],
+      "outputLogs": "errors-only",
+      "outputs": []
+    },
+    "test:coverage": {
+      "dependsOn": ["transit"],
+      "inputs": ["$TURBO_DEFAULT$", "!coverage/**"],
+      "outputLogs": "errors-only",
+      "outputs": ["coverage/lcov.info"]
+    },
+    "@devtools/cli#test": {
+      "dependsOn": ["//#build:bin", "@devtools/frontend#build", "transit"],
+      "outputLogs": "errors-only",
+      "outputs": []
+    },
+    "@devtools/cli#test:e2e": {
+      "dependsOn": ["//#build:bin", "@devtools/frontend#build", "transit"],
+      "outputLogs": "errors-only",
+      "outputs": []
+    },
+    "@devtools/cli#test:coverage": {
+      "dependsOn": ["//#build:bin", "@devtools/frontend#build", "transit"],
+      "inputs": [
+        "apps/cli/**",
+        "apps/api/**",
+        "packages/**",
+        "dist/devtools",
+        "bunfig.toml",
+        "bun.lock",
+        "!**/coverage/**",
+        "!**/.turbo/**"
+      ],
+      "outputLogs": "errors-only",
+      "outputs": ["coverage/lcov.info"]
+    },
+    "//#test:scripts": {
+      "inputs": [
+        "scripts/**/*.ts",
+        "scripts/tsconfig.json",
+        "packages/db/src/schema/**",
+        "packages/db/src/migrator.ts",
+        "packages/db/drizzle/**",
+        ".agents/**",
+        "bunfig.toml",
+        "bun.lock"
+      ],
+      "outputLogs": "errors-only",
+      "outputs": []
+    },
+    "//#test:unit:scripts": {
+      "inputs": [
+        "scripts/**/*.ts",
+        "scripts/tsconfig.json",
+        "packages/db/src/schema/**",
+        "packages/db/src/migrator.ts",
+        "packages/db/drizzle/**",
+        ".agents/**",
+        "bunfig.toml",
+        "bun.lock"
+      ],
+      "outputLogs": "errors-only",
+      "outputs": []
+    },
+    "//#test:coverage:scripts": {
+      "inputs": [
+        "scripts/**/*.ts",
+        "scripts/tsconfig.json",
+        "packages/db/src/schema/**",
+        "packages/db/src/migrator.ts",
+        "packages/db/drizzle/**",
+        ".agents/**",
+        "bunfig.toml",
+        "bun.lock"
+      ],
+      "outputLogs": "errors-only",
+      "outputs": ["coverage/scripts/lcov.info"]
+    },
+    "//#lint": {
+      "inputs": [
+        "apps/**/*.{ts,tsx,js,jsx,mjs}",
+        "packages/**/*.{ts,tsx,js,jsx,mjs}",
+        "site/**/*.{ts,tsx,js,jsx,mjs}",
+        "scripts/**/*.{ts,tsx,js,jsx,mjs}",
+        ".oxlintrc.json",
+        "apps/frontend/.oxlintrc.json",
+        "site/.oxlintrc.json",
+        "tsconfig.base.json",
+        "package.json",
+        "!**/coverage/**",
+        "!**/.next/**",
+        "!**/out/**",
+        "!**/.source/**",
+        "!**/dist/**",
+        "!**/storybook-static/**",
+        "!**/.turbo/**"
+      ],
+      "outputLogs": "errors-only",
+      "outputs": []
+    },
+    "//#format:check": {
+      "inputs": [
+        "apps/**",
+        "packages/**",
+        "site/**",
+        "scripts/**",
+        "docs/**",
+        ".github/**",
+        "*.md",
+        "*.json",
+        "*.yml",
+        "*.yaml",
+        ".oxfmtrc.json",
+        "!**/coverage/**",
+        "!**/.next/**",
+        "!**/out/**",
+        "!**/.source/**",
+        "!**/dist/**",
+        "!**/storybook-static/**",
+        "!**/.turbo/**"
+      ],
+      "outputLogs": "errors-only",
+      "outputs": []
+    },
+    "//#fallow:check": {
+      "inputs": [
+        "apps/**/*.{ts,tsx}",
+        "packages/**/*.{ts,tsx}",
+        "site/**/*.{ts,tsx}",
+        "scripts/**/*.ts",
+        ".fallowrc.json",
+        "fallow-baselines/**",
+        "package.json",
+        "bun.lock",
+        "tsconfig.base.json",
+        "!**/coverage/**",
+        "!**/.next/**",
+        "!**/out/**",
+        "!**/.source/**",
+        "!**/dist/**",
+        "!**/.turbo/**"
+      ],
+      "outputLogs": "errors-only",
+      "outputs": []
+    },
+    "//#lint:agents": {
+      "inputs": [".agents/**", "scripts/verify-agents-governance/**"],
+      "outputLogs": "errors-only",
+      "outputs": []
+    },
+    "//#verify:db-migrations": {
+      "inputs": [
+        "packages/db/src/schema/**",
+        "packages/db/drizzle/**",
+        "packages/db/drizzle.config.ts",
+        "packages/db/src/migrator.ts",
+        "scripts/verify-db-migrations/**"
+      ],
+      "outputLogs": "errors-only",
+      "outputs": []
+    },
+    "//#verify:actions-lock": {
+      "inputs": [".github/workflows/**"],
+      "outputLogs": "errors-only",
+      "outputs": []
+    },
+    "lint:fsd": {
+      "inputs": ["src/**", "steiger.config.js"],
+      "outputLogs": "errors-only",
+      "outputs": []
+    },
+    "//#react-doctor:design": {
+      "inputs": [
+        "apps/frontend/**/*.{ts,tsx,css}",
+        "site/**/*.{ts,tsx,css}",
+        "doctor.config.json",
+        "!**/coverage/**",
+        "!**/.next/**",
+        "!**/out/**",
+        "!**/.source/**",
+        "!**/dist/**",
+        "!**/storybook-static/**",
+        "!**/.turbo/**"
+      ],
+      "outputLogs": "errors-only",
+      "outputs": []
+    }
+  }
+}

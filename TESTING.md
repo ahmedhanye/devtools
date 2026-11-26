@@ -7,14 +7,14 @@ Testing philosophy, hermetic isolation rules, prohibited anti-patterns, and test
 Compilers and static analyzers enforce structural invariants (`tsc --noEmit`, `oxlint`, `fallow`, `steiger`, `react-doctor`). Reserve runtime test suites for observable runtime behavior, schema boundaries, state transitions, and error handling that static tools cannot verify.
 
 > [!IMPORTANT]
-> Pull requests require **100% LCOV line coverage** (`DA:` hits > 0) on modified executable lines via [REVIEW.md](REVIEW.md#scope-and-verification-matrix). Every function branching on runtime environment state must test both its injected seam and its omitted-argument default path (seam-pair rule).
+> Pull requests require **100% LCOV line coverage** (`DA:` hits > 0) on modified executable lines via [REVIEW.md](REVIEW.md). Every function branching on runtime environment state must test both its injected seam and its omitted-argument default path (seam-pair rule).
 
 ### Hermetic isolation and authoring rules
 
 - **Hermetic resources.** Test suites run concurrently without shared mutable state: Daemons bind ephemeral port `0`, SQLite suites use `:memory:`, Hono API suites use socketless `app.request()`, and file-writing tests use isolated `fs.mkdtempSync()` directories.
 - **Seam-pair rule and call-chain forwarding.** Centralize environment reads in `config.ts` with `env?: Record<string, string | undefined>` per [Monorepo package standards](docs/coding-standards/packages.md) instead of mutating globals (`process.getuid`, `Bun.stdin`, ambient `process.env`). Functions branching on runtime state (`isTTY`, `process.platform`, `process.getuid`, signals) or external boundaries (`spawnCommand`, browser binaries) accept an optional seam with production defaults and test both the injected seam and the default omitted-argument path in separate unit tests. Intermediate helpers must forward the full seam object downstream.
 - **Vertical TDD slices at agreed seams.** Work in vertical red-green-refactor cycles: write one failing test at a public seam, implement the minimal code to pass it, then repeat.
-- **Diff coverage exemptions.** `scripts/verify-diff-coverage/verify-diff-coverage.ts` exempts type-only files (`Bun.Transpiler`), `*.test.*`, `*.spec.*`, `**/tests/**`, `*.stories.*`, `.storybook/**`, `*.d.ts`, `*.config.*`, `scripts/**`, `.agents/**`, and thin App Router boundary adapters (`apps/frontend/src/app/**/*.next.{ts,tsx}`). For coverage command execution and `BASE_REF` flags, see [REVIEW.md](REVIEW.md#deduplication-and-overlap-prevention).
+- **Diff coverage exemptions.** `scripts/verify-diff-coverage/verify-diff-coverage.ts` exempts type-only files (`Bun.Transpiler`), `*.test.*`, `*.spec.*`, `**/tests/**`, `*.stories.*`, `.storybook/**`, `*.d.ts`, `*.config.*`, `.agents/**`, and thin App Router boundary adapters (`apps/frontend/src/app/**/*.next.{ts,tsx}`). For verification commands, see [REVIEW.md](REVIEW.md) (and [Stacked pull requests](docs/contributing/pull-request/stacked-prs.md) for `BASE_REF`).
 
 ### Prohibited testing anti-patterns and false-positive guards
 
@@ -51,7 +51,7 @@ Automated tests are partitioned into three non-overlapping levels by visibility 
 
 **Single-level file rule.** Place one test level per file using its matching suffix (`*.unit.test.ts`, `*.integration.test.ts`, `*.e2e.test.ts`, or `*.stories.tsx`). Keep unit, integration, and end-to-end `describe` blocks in separate files.
 
-**Verification and QA axis commands.** Follow [REVIEW.md](REVIEW.md#scope-and-verification-matrix) for path-scoped checks and [REVIEW.md](REVIEW.md#deduplication-and-overlap-prevention) for three-axis QA command ownership (treat unprovisioned browser binaries during White-box coverage runs as a Black-box environment status finding rather than installing global tools).
+**Verification.** Follow [REVIEW.md](REVIEW.md) for verification commands (treat unprovisioned browser binaries during White-box coverage runs as a Black-box environment status finding rather than installing global tools).
 
 ## Testing guides
 

@@ -38,7 +38,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
@@ -46,15 +46,22 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release download v1.7.7 --repo rhysd/actionlint --pattern 'actionlint_1.7.7_linux_amd64.tar.gz' --pattern 'actionlint_1.7.7_checksums.txt'
-          grep 'actionlint_1.7.7_linux_amd64.tar.gz' actionlint_1.7.7_checksums.txt | sha256sum -c -
+          gh release download v1.7.12 --repo rhysd/actionlint --pattern 'actionlint_1.7.12_linux_amd64.tar.gz' --pattern 'actionlint_1.7.12_checksums.txt'
+          grep 'actionlint_1.7.12_linux_amd64.tar.gz' actionlint_1.7.12_checksums.txt | sha256sum -c -
           mkdir -p "$HOME/.local/bin"
-          tar -xzf actionlint_1.7.7_linux_amd64.tar.gz -C "$HOME/.local/bin" actionlint
-          rm actionlint_1.7.7_linux_amd64.tar.gz actionlint_1.7.7_checksums.txt
+          tar -xzf actionlint_1.7.12_linux_amd64.tar.gz -C "$HOME/.local/bin" actionlint
+          rm actionlint_1.7.12_linux_amd64.tar.gz actionlint_1.7.12_checksums.txt
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Run actionlint with embedded ShellCheck
         run: actionlint -color
+
+      - name: Run ShellCheck on standalone shell scripts
+        run: |
+          mapfile -t scripts < <(git ls-files ':(glob).github/**/*.sh' ':(glob)scripts/**/*.sh' ':(glob).agents/**/*.sh')
+          if [[ ${#scripts[@]} -gt 0 ]]; then
+            shellcheck "${scripts[@]}"
+          fi
 
   zizmor:
     name: Zizmor Security Audit
@@ -65,9 +72,31 @@ jobs:
       contents: read
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
       - name: Run zizmor static analyzer
-        uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd # v0.8.1
+        uses: zizmorcore/zizmor-action@v0.9.2
+
+  actions-lock:
+    name: Verify Actions Lockfile
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install gh-actions-lock
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh extension install github/gh-actions-lock --pin v0.5.1
+
+      - name: Verify .github/workflows/actions.lock
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh actions-lock --verify

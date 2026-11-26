@@ -31,7 +31,7 @@ zizmor_args=(--offline .)
 [[ "${1:-}" == "--online" ]] && zizmor_args=(.)
 zizmor "${zizmor_args[@]}" || status=1
 
-mapfile -t scripts < <(git ls-files -co --exclude-standard ':(glob).github/**/*.sh')
+mapfile -t scripts < <(git ls-files -co --exclude-standard ':(glob).github/**/*.sh' ':(glob)scripts/**/*.sh' ':(glob).agents/**/*.sh')
 if [[ ${#scripts[@]} -gt 0 ]]; then
   echo "== shellcheck"
   shellcheck "${scripts[@]}" || status=1

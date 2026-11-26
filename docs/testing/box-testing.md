@@ -1,6 +1,6 @@
 # Box testing standards
 
-Reference guide for black-box, gray-box, and white-box testing methodologies, machine vs. sensory verification boundaries, static gates, and the monorepo workspace testing matrix. For test level naming, prohibited anti-patterns, and QA axis commands, see [`TESTING.md`](../../TESTING.md) and [`REVIEW.md`](../../REVIEW.md#deduplication-and-overlap-prevention).
+Reference guide for black-box, gray-box, and white-box testing methodologies, machine vs. sensory verification boundaries, static gates, and the monorepo workspace testing matrix. For test level naming, prohibited anti-patterns, and verification commands, see [`TESTING.md`](../../TESTING.md) and [`REVIEW.md`](../../REVIEW.md).
 
 ## Black-box testing
 
