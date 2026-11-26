@@ -1,4 +1,7 @@
 import { describe, expect, it, spyOn } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   computeShannonEntropy,
   scanContentForSecrets,
@@ -9,7 +12,10 @@ import {
   getStagedFiles,
   getStagedDeletedFiles,
   readStagedContent,
+  readPrePushStdin,
+  parsePrePushRefs,
   resolvePushRange,
+  resolvePushRanges,
   scanCommitRangeWithTrufflehog,
   scanCommitRangeFallback,
   run,
@@ -412,6 +418,7 @@ describe("resolvePushRange", () => {
 
     expect(resolvePushRange("main", mockSpawn)).toEqual({
       base: "main",
+      head: "HEAD",
       range: "main..HEAD",
     });
   });
@@ -435,6 +442,7 @@ describe("resolvePushRange", () => {
 
     expect(resolvePushRange(undefined, mockSpawn)).toEqual({
       base: "origin/feat-x",
+      head: "HEAD",
       range: "origin/feat-x..HEAD",
     });
   });
@@ -457,6 +465,101 @@ describe("resolvePushRange", () => {
     };
 
     expect(resolvePushRange(undefined, mockSpawn)).toBeNull();
+  });
+
+  it("throws when git rev-list --count fails", () => {
+    expect(() =>
+      resolvePushRange("missing/ref", () => ({
+        exitCode: 128,
+        stdout: "",
+        stderr: "fatal: bad revision 'missing/ref..HEAD'",
+      })),
+    ).toThrow('Failed to inspect git commit range "missing/ref..HEAD"');
+  });
+});
+
+describe("readPrePushStdin and parsePrePushRefs", () => {
+  it("returns empty string for TTY stdin and reads non-TTY stdin", () => {
+    expect(readPrePushStdin(true, () => "should-not-read")).toBe("");
+    expect(
+      readPrePushStdin(
+        false,
+        () => "refs/heads/feat abc123 refs/heads/feat def456\n",
+      ),
+    ).toBe("refs/heads/feat abc123 refs/heads/feat def456\n");
+  });
+
+  it("parses valid pre-push ref lines and ignores blank or malformed lines", () => {
+    const parsed = parsePrePushRefs(
+      [
+        "",
+        "invalid-line",
+        "refs/heads/other 111111 refs/heads/other 222222",
+        `refs/heads/new 333333 refs/heads/new ${"0".repeat(40)}`,
+      ].join("\n"),
+    );
+    expect(parsed).toEqual([
+      {
+        localRef: "refs/heads/other",
+        localOid: "111111",
+        remoteRef: "refs/heads/other",
+        remoteOid: "222222",
+      },
+      {
+        localRef: "refs/heads/new",
+        localOid: "333333",
+        remoteRef: "refs/heads/new",
+        remoteOid: "0".repeat(40),
+      },
+    ]);
+  });
+
+  it("resolves pushed branch ranges from stdin, handles new branches, skips deletions, and falls back when stdin is empty", () => {
+    const stdinText = [
+      "refs/heads/other local111 refs/heads/other remote000",
+      `refs/heads/new-branch local222 refs/heads/new-branch ${"0".repeat(40)}`,
+      `refs/heads/deleted ${"0".repeat(40)} refs/heads/deleted remote333`,
+    ].join("\n");
+
+    const ranges = resolvePushRanges(
+      undefined,
+      (args) => {
+        if (args[1] === "rev-list" && args[3] === "remote000..local111") {
+          return { exitCode: 0, stdout: "2\n" };
+        }
+        if (args[1] === "rev-list" && args[3] === "origin/main..local222") {
+          return { exitCode: 0, stdout: "1\n" };
+        }
+        return { exitCode: 1, stdout: "" };
+      },
+      stdinText,
+    );
+
+    expect(ranges).toEqual([
+      {
+        base: "remote000",
+        head: "local111",
+        range: "remote000..local111",
+      },
+      {
+        base: "origin/main",
+        head: "local222",
+        range: "origin/main..local222",
+      },
+    ]);
+
+    const fallback = resolvePushRanges(
+      "origin/main",
+      () => ({ exitCode: 0, stdout: "1\n" }),
+      "",
+    );
+    expect(fallback).toEqual([
+      {
+        base: "origin/main",
+        head: "HEAD",
+        range: "origin/main..HEAD",
+      },
+    ]);
   });
 });
 
@@ -516,6 +619,114 @@ describe("scanCommitRangeFallback", () => {
     expect(findings[1]?.file).toBe("commit-message");
     expect(findings[1]?.rule).toBe("GitHub Personal Access Token");
   });
+
+  it("passes -m to git log and deduplicates repeated findings across merge parents", () => {
+    const fakeAws = "AKIAIOSFODNN7EXAMPLE"; // trufflehog:ignore
+    let patchArgs: string[] = [];
+    const findings = scanCommitRangeFallback("origin/main..HEAD", (args) => {
+      if (args.includes("-p")) {
+        patchArgs = args;
+        return {
+          exitCode: 0,
+          stdout: [
+            "diff --git a/src/conflict.ts b/src/conflict.ts",
+            "+++ b/src/conflict.ts",
+            `+const a = "${fakeAws}";`,
+            "diff --git a/src/conflict.ts b/src/conflict.ts",
+            "+++ b/src/conflict.ts",
+            `+const a = "${fakeAws}";`,
+          ].join("\n"),
+        };
+      }
+      return { exitCode: 0, stdout: "" };
+    });
+
+    expect(patchArgs).toContain("-m");
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.file).toBe("src/conflict.ts");
+  });
+
+  it("detects a secret introduced during real git merge conflict resolution", () => {
+    const repoDir = mkdtempSync(join(tmpdir(), "devtools-merge-secret-"));
+    const runGit = (args: string[]) => {
+      const proc = Bun.spawnSync(["git", ...args], { cwd: repoDir });
+      if (proc.exitCode !== 0) {
+        throw new Error(
+          `git ${args.join(" ")} failed: ${proc.stderr.toString()}`,
+        );
+      }
+      return proc.stdout.toString().trim();
+    };
+
+    try {
+      runGit(["init", "-b", "main"]);
+      runGit(["config", "user.email", "test@example.com"]);
+      runGit(["config", "user.name", "Test User"]);
+
+      writeFileSync(
+        join(repoDir, "config.ts"),
+        'export const mode = "base";\n',
+      );
+      runGit(["add", "config.ts"]);
+      runGit(["commit", "-m", "chore: base"]);
+      const baseOid = runGit(["rev-parse", "HEAD"]);
+
+      runGit(["checkout", "-b", "feature"]);
+      writeFileSync(
+        join(repoDir, "config.ts"),
+        'export const mode = "feature";\n',
+      );
+      runGit(["commit", "-am", "feat: feature mode"]);
+
+      runGit(["checkout", "main"]);
+      writeFileSync(
+        join(repoDir, "config.ts"),
+        'export const mode = "main";\n',
+      );
+      runGit(["commit", "-am", "chore: main mode"]);
+
+      const mergeAttempt = Bun.spawnSync(
+        ["git", "merge", "feature", "--no-commit"],
+        { cwd: repoDir },
+      );
+      expect(mergeAttempt.exitCode).not.toBe(0);
+
+      const syntheticAws = ["AKIA", "IOSFODNN7EXAMPLE"].join("");
+      writeFileSync(
+        join(repoDir, "config.ts"),
+        `export const mode = "resolved";\nexport const key = "${syntheticAws}";\n`,
+      );
+      runGit(["add", "config.ts"]);
+      runGit(["commit", "-m", "merge feature with conflict resolution"]);
+
+      const findings = scanCommitRangeFallback(`${baseOid}..HEAD`, (args) =>
+        Bun.spawnSync(args, { cwd: repoDir }),
+      );
+      expect(findings).toHaveLength(1);
+      expect(findings[0]?.file).toBe("config.ts");
+      expect(findings[0]?.rule).toBe("AWS Access Key ID");
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true });
+    }
+  });
+
+  it("throws when git log patch or message commands fail", () => {
+    expect(() =>
+      scanCommitRangeFallback("origin/main..HEAD", (args) =>
+        args.includes("-p")
+          ? { exitCode: 128, stdout: "", stderr: "bad range" }
+          : { exitCode: 0, stdout: "" },
+      ),
+    ).toThrow('Failed to read git patch history for "origin/main..HEAD"');
+
+    expect(() =>
+      scanCommitRangeFallback("origin/main..HEAD", (args) =>
+        args.includes("-p")
+          ? { exitCode: 0, stdout: "" }
+          : { exitCode: 128, stdout: "", stderr: "bad log" },
+      ),
+    ).toThrow('Failed to read git commit messages for "origin/main..HEAD"');
+  });
 });
 
 describe("runRangeScan", () => {
@@ -541,6 +752,59 @@ describe("runRangeScan", () => {
     expect(calls.some((c) => c[0] === "trufflehog")).toBe(true);
   });
 
+  it("scans non-HEAD pushed branch from pre-push stdin with trufflehog and built-in fallback", () => {
+    const stdinLine = "refs/heads/other local123 refs/heads/other remote000\n";
+    const trufflehogCalls: string[][] = [];
+    const trufflehogRes = runRangeScan(
+      undefined,
+      (args) => {
+        if (args[0] === "which" && args[1] === "trufflehog") {
+          return { exitCode: 0, stdout: "/usr/local/bin/trufflehog\n" };
+        }
+        if (args[0] === "git" && args[1] === "rev-list") {
+          return { exitCode: 0, stdout: "1\n" };
+        }
+        if (args[0] === "trufflehog") {
+          trufflehogCalls.push(args);
+          return { exitCode: 0, stdout: "" };
+        }
+        return { exitCode: 0, stdout: "" };
+      },
+      stdinLine,
+    );
+    expect(trufflehogRes).toEqual({
+      engine: "trufflehog",
+      passed: true,
+      findings: [],
+    });
+    expect(trufflehogCalls[0]).toContain("remote000");
+    expect(trufflehogCalls[0]).toContain("local123");
+
+    const fakeAws = "AKIAIOSFODNN7EXAMPLE"; // trufflehog:ignore
+    const builtinRes = runRangeScan(
+      undefined,
+      (args) => {
+        if (args[0] === "which") {
+          return { exitCode: 1, stdout: "" };
+        }
+        if (args[0] === "git" && args[1] === "rev-list") {
+          return { exitCode: 0, stdout: "1\n" };
+        }
+        if (args[0] === "git" && args.includes("-p")) {
+          return {
+            exitCode: 0,
+            stdout: `+++ b/other.ts\n+const k = "${fakeAws}";\n`,
+          };
+        }
+        return { exitCode: 0, stdout: "" };
+      },
+      stdinLine,
+    );
+    expect(builtinRes.engine).toBe("builtin");
+    expect(builtinRes.passed).toBe(false);
+    expect(builtinRes.findings).toHaveLength(1);
+  });
+
   it("falls back to built-in Bun range scanner when trufflehog is not installed", () => {
     const mockSpawn = (args: string[]) => {
       if (args[0] === "which" && args[1] === "trufflehog") {
@@ -560,10 +824,15 @@ describe("runRangeScan", () => {
     expect(result.passed).toBe(true);
   });
 
-  it("handles rev-list failure and zero unpushed commits", () => {
-    expect(
-      resolvePushRange("origin/main", () => ({ exitCode: 1, stdout: "" })),
-    ).toEqual({ base: "origin/main", range: "origin/main..HEAD" });
+  it("fails closed when rev-list fails and skips when zero unpushed commits exist", () => {
+    const failed = runRangeScan("origin/main", () => ({
+      exitCode: 128,
+      stdout: "",
+      stderr: "fatal: bad revision",
+    }));
+    expect(failed.engine).toBe("builtin");
+    expect(failed.passed).toBe(false);
+    expect(failed.error).toContain("Failed to inspect git commit range");
 
     const skipped = runRangeScan("origin/main", (args) =>
       args[1] === "rev-list"
@@ -593,13 +862,16 @@ describe("run CLI", () => {
     const { mockExit } = createMockExit();
     try {
       run(["--range"], {
+        readPrePushStdin: () => "",
         runRangeScan: () => ({ engine: "skipped", passed: true, findings: [] }),
       });
       run(["--range", "origin/main"], {
+        readPrePushStdin: () => "",
         runRangeScan: () => ({ engine: "builtin", passed: true, findings: [] }),
       });
       expect(() =>
         run(["--range"], {
+          readPrePushStdin: () => "",
           runRangeScan: () => ({
             engine: "trufflehog",
             passed: false,
@@ -610,6 +882,19 @@ describe("run CLI", () => {
       ).toThrow("Exit called with 1");
       expect(() =>
         run(["--range"], {
+          readPrePushStdin: () => "",
+          runRangeScan: () => ({
+            engine: "builtin",
+            passed: false,
+            findings: [],
+            error: "Failed to inspect git commit range",
+          }),
+          exitFn: mockExit,
+        }),
+      ).toThrow("Exit called with 1");
+      expect(() =>
+        run(["--range"], {
+          readPrePushStdin: () => "",
           runRangeScan: () => ({
             engine: "builtin",
             passed: false,

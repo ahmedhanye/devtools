@@ -46,6 +46,7 @@ pre-push:
         piped: true
         jobs:
           - name: verify-push-secrets
+            use_stdin: true
             run: bun run verify:push-secrets
           - name: verify-full
             run: bun run verify
