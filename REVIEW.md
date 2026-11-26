@@ -5,7 +5,7 @@ Run `bun run verify` after completing work and before opening a pull request.
 ## Review checklist
 
 - **Run extra checks when touching workflows or dependencies:**
-  - `.github/workflows/**` or `**/*.sh`: `bun run lint:workflows`
+  - `.github/**` or `**/*.sh`: `bun run lint:workflows`
   - `package.json` or `bun.lock`: `bun run audit`
 - **Handle `fallow:check` baselines deliberately:**
   - **Refactor (default):** Simplify or extract logic when new or edited code triggers complexity or duplication findings, or when renaming a baselined function breaks its identity match.

@@ -28,8 +28,11 @@ pre-commit:
             glob: "packages/db/{src/schema/**,drizzle/**,drizzle.config.ts,src/migrator.ts}"
             run: bun run verify:db-migrations --check-git-status
           - name: verify-actions-lock
-            glob: ".github/workflows/**"
+            glob: ".github/{workflows,actions}/**"
             run: bun run verify:actions-lock
+          - name: lint-workflows
+            glob: "{.github/**,**/*.sh}"
+            run: bun run lint:workflows
 
 commit-msg:
   jobs:

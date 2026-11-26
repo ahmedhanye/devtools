@@ -266,6 +266,7 @@ jobs:
         uses: actions/download-artifact@v8.0.2
         with:
           name: ci-build-outputs
+          path: dist
 
       - name: Restore executable permissions on CLI binary
         if: needs.changes.outputs.code == 'true'
