@@ -37,3 +37,12 @@ If you cannot access the GitHub Advisory interface, contact repository maintaine
 - **Assessment and fix.** Maintainers collaborate with the reporter in the private GitHub advisory workspace to evaluate impact, develop a fix, and prepare a release.
 - **Coordinated disclosure.** Advisories and patches follow a 90-day Coordinated Vulnerability Disclosure timeline, or publish earlier by mutual agreement once patches ship.
 - **Credit and attribution.** Reporters receive credit in the published GitHub Security Advisory and release notes unless they request anonymity.
+
+## Release artifact verification
+
+Release workflows publish `SHA256SUMS.txt` checksums and Sigstore SLSA build provenance attestations for standalone binaries. Verify downloaded release binaries using the built-in GitHub CLI attestation command and checksum file:
+
+```bash
+sha256sum -c SHA256SUMS.txt --ignore-missing
+gh attestation verify devtools-linux-x64 --repo AhmedHanye/devtools
+```

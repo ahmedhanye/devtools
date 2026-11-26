@@ -4,9 +4,14 @@ Guidelines for verifying branch readiness, pushing commits, inspecting active pu
 
 ## Pre-push quality gate
 
-Before pushing to `origin`, run the completion check matching your changed paths in [Review and verification guide](../../REVIEW.md#scope-and-verification-matrix) (or `bun run verify` for root configs or executable multi-workspace changes; doc-only changes stop after their matching completion check, and stacked PR branches pass `BASE_REF="<parent-layer-branch>"`).
+Before pushing to `origin`, run the verification steps in [Review and verification guide](../../REVIEW.md).
 
-`lefthook.yml` also runs a parallel `pre-push` hook executing whole-repo `typecheck`, `fallow:dead-code`, `fallow:arch`, `fallow:health`, and `fallow:dupes` automatically on every `git push`.
+`lefthook.yml` runs two sequential `pre-push` jobs automatically on every `git push`:
+
+1. **`verify:push-secrets`** scans unpushed commits and commit messages (`trufflehog` using `.github/trufflehog-exclude.txt` when installed on `PATH`, or the built-in Bun commit-range scanner otherwise).
+2. **`verify`** runs the Turborepo-cached full offline verification suite across all workspaces and `scripts/` (replaying unchanged tasks from `.turbo`).
+
+For repository security hardening, keep GitHub native Push Protection, non-provider pattern scanning, and token validity checks enabled in repository Code Security settings. Optional on-demand GitHub CLI extensions (`gh-codeql` for local CodeQL troubleshooting and `gh-sbom` for SBOM exports) are not required by hooks or CI.
 
 ## Remote push execution
 
