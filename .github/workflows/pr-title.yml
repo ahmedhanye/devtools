@@ -28,7 +28,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Bun environment
-        uses: ./.github/actions/setup-bun
+        uses: $/.github/actions/setup-bun
 
       - name: Validate PR title with commitlint
         env:

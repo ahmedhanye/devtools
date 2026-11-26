@@ -81,7 +81,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Bun environment
-        uses: ./.github/actions/setup-bun
+        uses: $/.github/actions/setup-bun
 
       - name: Run transitive lockfile audit (Bun)
         run: bun run audit

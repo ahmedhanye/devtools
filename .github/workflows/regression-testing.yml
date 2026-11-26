@@ -93,7 +93,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Bun environment
-        uses: ./.github/actions/setup-bun
+        uses: $/.github/actions/setup-bun
 
       - name: Verify formatting (Oxfmt)
         run: bun run format:check
@@ -124,7 +124,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Bun environment
-        uses: ./.github/actions/setup-bun
+        uses: $/.github/actions/setup-bun
 
       - name: Verify dead code, boundaries, private type leaks, health, and duplication (Fallow)
         run: bun run fallow:check
@@ -161,7 +161,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Bun environment
-        uses: ./.github/actions/setup-bun
+        uses: $/.github/actions/setup-bun
 
       - name: Restore Turborepo cache
         uses: actions/cache@v5.0.5
@@ -190,7 +190,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Bun environment
-        uses: ./.github/actions/setup-bun
+        uses: $/.github/actions/setup-bun
 
       - name: Restore Turborepo cache
         uses: actions/cache@v5.0.5
@@ -250,7 +250,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Bun environment
-        uses: ./.github/actions/setup-bun
+        uses: $/.github/actions/setup-bun
 
       - name: Restore Turborepo cache
         uses: actions/cache@v5.0.5
