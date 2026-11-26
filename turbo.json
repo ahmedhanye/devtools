@@ -99,17 +99,17 @@
       "outputs": ["coverage/lcov.info"]
     },
     "@devtools/cli#test": {
-      "dependsOn": ["//#build:bin"],
+      "dependsOn": ["//#build:bin", "@devtools/frontend#build"],
       "outputLogs": "errors-only",
       "outputs": []
     },
     "@devtools/cli#test:e2e": {
-      "dependsOn": ["//#build:bin"],
+      "dependsOn": ["//#build:bin", "@devtools/frontend#build"],
       "outputLogs": "errors-only",
       "outputs": []
     },
     "@devtools/cli#test:coverage": {
-      "dependsOn": ["//#build:bin"],
+      "dependsOn": ["//#build:bin", "@devtools/frontend#build"],
       "inputs": [
         "apps/cli/**",
         "apps/api/**",
