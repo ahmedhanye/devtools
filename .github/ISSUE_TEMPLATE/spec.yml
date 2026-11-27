@@ -16,8 +16,7 @@ body:
       label: Expected outcome and acceptance criteria
       description: Observable outcomes that prove this spec is complete.
       placeholder: |
-        - [ ] Automated verification passes
-        - [ ] All child tickets delivered and verified
+        - [ ] <Observable user or system outcome proving this capability is complete>
     validations:
       required: true
   - type: textarea
