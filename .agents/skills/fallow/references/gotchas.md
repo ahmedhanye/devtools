@@ -324,7 +324,7 @@ A next-line marker removes each clone instance that touches the next line. A clo
 
 Wrap the whole block or function in the range, not the line range that `fallow dupes` reports. The reported ranges of neighbor clones share border lines. Put each range marker on its own line: a marker after code on the same line has no effect and shows as `not_own_line`. Ranges support only `code-duplication`: `fallow dupes` reports a range marker with another kind, with no kind, an end with no start, a nested start, and a start with no end in `range_marker_problems`, and such a marker has no effect. A cut neighbor clone has new lines and content, so it can show as a new clone in a baseline gate and needs a new `ignoredClones` key. Save the baseline again after you add a range.
 
-This is separate from the dead code suppression tokens. See the full list of valid tokens in the [CLI Reference](cli-reference.md#inline-suppression-comments).
+This is separate from the dead code suppression tokens. See the full list of valid tokens in the [inline suppression reference](cli/inline-suppression.md).
 
 ---
 
@@ -362,7 +362,7 @@ The skip above applies only to generic `unused-class-member` detection. The dedi
 
 ## JSDoc Visibility Tags Keep Exports Alive
 
-Exports annotated with `/** @public */`, `/** @internal */`, `/** @beta */`, `/** @alpha */`, or `/** @api public */` are never reported as unused. This is designed for library authors whose exports are consumed by external projects not visible to fallow.
+By default, exports annotated with `/** @public */`, `/** @internal */`, `/** @beta */`, `/** @alpha */`, or `/** @api public */` are never reported as unused. This is designed for library authors whose exports are consumed by external projects not visible to fallow.
 
 ```typescript
 // NOT flagged: @public annotation
@@ -391,6 +391,16 @@ export const notProtected = () => {};
 ```
 
 Only `/** */` JSDoc block comments are recognized. Line comments (`// @public`) are ignored.
+
+The `keepExportTags` config key selects the tags that keep an export. The default is all four tags. When a project uses `@internal`, `@alpha` or `@beta` for code that no consumer outside the project uses (for example `/** @internal Exported for tests. */`), set the key to `["public"]`. fallow then checks those exports like untagged exports:
+
+```jsonc
+{
+  "keepExportTags": ["public"]
+}
+```
+
+`fallow dead-code --trace <file>:<export>` names the tag when a tag keeps an export with no consumer (`kept_by_tag` in JSON). When you remove an export that the strict setting reports, also remove its stale `@internal` comment.
 
 ---
 
