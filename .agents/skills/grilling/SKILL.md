@@ -22,17 +22,20 @@ Interview the user in rounds along a design tree until every open decision has a
 
 ## Round format
 
-````markdown
+Include **Big picture** only when a visual adds clarity beyond **Goal**.
+
+- Use a small `mermaid` diagram (`flowchart TD` or `stateDiagram-v2`, at most 8 nodes, quoted 2 to 5 word labels, bare `(Q1)` tags) when the round covers a connected flow, state machine, or component boundary.
+- Use a compact Markdown table (`# | Trigger | Affected area | Decision`) when the round covers independent scenarios or edge cases.
+- Omit **Big picture** when **Goal** already frames the round.
+- Keep full question sentences out of diagram nodes and avoid multi-column horizontal text arrows.
+
+```markdown
 # Grilling Round <N>: <Topic>
 
 ## Context and terms
 
 - **Goal:** <2 to 3 short plain sentences on the problem, what changed since last round, and what this round decides.>
-- **Big picture:**
-
-```text
-<simple visual arrow flow or diagram showing how the pieces connect, never a prose paragraph>
-```
+- **Big picture:** <optional `mermaid` diagram or compact Markdown table; omit when Goal is enough>
 
 - **Terms used below:**
   - **<term>:** <1-line plain-English definition>
@@ -57,4 +60,4 @@ Interview the user in rounds along a design tree until every open decision has a
 > - **Why:** <key reason and cost/risk, without repeating Option A verbatim>
 > - **Based on:** <specific ADR, repo file, tool check, user constraint, or "General practice (not verified in repo)">
 > - **Code refs:** <optional file links; omit when not needed>
-````
+```
