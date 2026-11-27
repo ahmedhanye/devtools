@@ -20,7 +20,7 @@ Diagnose command bugs, slow detours, and unhelpful file reads across targeted co
 
 ### 1. Gather targeted session signals
 
-Default to the active session when no target is named. When targeting specific sessions, a branch, a PR, or a time window, narrow candidate logs by matching workspace path, branch, or modification time with `find` or `rg --hidden -l` (since transcript directories may live under hidden folders) before opening any transcript, excluding unrelated workspaces. Inspect compact transcript views first, and read exact line ranges from full logs only for steps with failures, truncation, or stalled subagents.
+Stop and ask the user to name a target when none is provided. When targeting specific sessions, a branch, a PR, or a time window, narrow candidate logs by matching workspace path, branch, or modification time with `find` or `rg --hidden -l` (since transcript directories may live under hidden folders) before opening any transcript, excluding unrelated workspaces. Inspect compact transcript views first, and read exact line ranges from full logs only for steps with failures, truncation, or stalled subagents.
 
 Filter JSON, JSONL, or exported session logs in one `jq` or `rg` pass to extract five metadata slices while skipping file-read bodies, internal reasoning traces, and passing output noise:
 
@@ -57,6 +57,4 @@ Completion criterion: Full report saved and concise summary shared in chat witho
 
 ### 4. Settle open decisions
 
-Ask the user which proposed changes to apply. When multi-branch design trade-offs remain before editing, follow [the grilling skill](../grilling/SKILL.md) when present to settle them without duplicating report tables. Wait for explicit approval before editing repository files.
-
-Completion criterion: Open decisions are settled and approved before any repository edit begins.
+Wait for the user's feedback on the report, then follow [the grilling skill](../grilling/SKILL.md) when present to grill through all open problems and get explicit approval before editing repository files.
