@@ -1,0 +1,5 @@
+interface:
+  display_name: "Changes Summary"
+  short_description: "Summarize changes in a visual Markdown artifact with diagrams and decisions"
+policy:
+  allow_implicit_invocation: false
