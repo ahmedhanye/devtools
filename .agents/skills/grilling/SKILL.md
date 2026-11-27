@@ -44,13 +44,13 @@ Interview the user in rounds along a design tree until every open decision has a
 <1 to 2 short plain sentences framing the single decision.>
 
 - **Option A: <short option name>**
-  - *What happens:* <1 short sentence on user-visible behavior>
-  - *Upside:* <main benefit, or None>
-  - *Downside:* <main cost or risk, or None>
+  - _What happens:_ <1 short sentence on user-visible behavior>
+  - _Upside:_ <main benefit, or None>
+  - _Downside:_ <main cost or risk, or None>
 - **Option B: <short option name>**
-  - *What happens:* <1 short sentence on user-visible behavior>
-  - *Upside:* <main benefit, or None>
-  - *Downside:* <main cost or risk, or None>
+  - _What happens:_ <1 short sentence on user-visible behavior>
+  - _Upside:_ <main benefit, or None>
+  - _Downside:_ <main cost or risk, or None>
 
 > ➡️ **Recommended:** Option A (reply "yes" to accept)
 >

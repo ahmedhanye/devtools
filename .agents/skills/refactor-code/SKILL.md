@@ -40,14 +40,14 @@ Completion criterion: `refactor_code_<scope>.md` is written to the session artif
 
 ## Report format
 
-````markdown
+```markdown
 # Refactor code: <repo or scope>
 
 **Date:** <YYYY-MM-DD> | **Scope:** <files or areas> | **Findings:** <count>
 
-| # | Improvement | Category | Impact | Effort |
-| :-: | :--- | :--- | :---: | :---: |
-| 1 | [<Short title>](#1-title-slug) | Simplification \| Pattern \| Package \| Lint \| Debt | High | Low |
+|  #  | Improvement                    | Category                                             | Impact | Effort |
+| :-: | :----------------------------- | :--------------------------------------------------- | :----: | :----: |
+|  1  | [<Short title>](#1-title-slug) | Simplification \| Pattern \| Package \| Lint \| Debt |  High  |  Low   |
 
 ---
 
@@ -63,4 +63,4 @@ Completion criterion: `refactor_code_<scope>.md` is written to the session artif
 
 > [!TIP]
 > **Top recommendation:** Start with **#1 (<Short title>)** because <1 concise sentence on impact vs. effort>.
-````
+```

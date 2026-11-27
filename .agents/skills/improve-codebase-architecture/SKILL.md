@@ -67,9 +67,9 @@ flowchart LR
   class M2 hotspot
 ```
 
-| # | Candidate | Strength | Dependency | Area |
-| --- | --- | --- | --- | --- |
-| 1 | [<Plain title>](#1-title-slug) | Strong | Ports & adapters | <Subsystem> |
+| #   | Candidate                      | Strength | Dependency       | Area        |
+| --- | ------------------------------ | -------- | ---------------- | ----------- |
+| 1   | [<Plain title>](#1-title-slug) | Strong   | Ports & adapters | <Subsystem> |
 
 ---
 
