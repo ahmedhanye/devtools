@@ -2,43 +2,40 @@
 
 Follow [the shared protocol](subagent-protocol.md) and these steps to create `<out_dir>/black-box-testing.md`.
 
-**Axis inspection boundary.** Audit external observable behavior, public entrypoints, CLIs, standalone binaries, end-to-end workflows, and interactive UI components where applicable from an external caller perspective. Leave in-process module integration seams and database internals to Gray-box, and leave internal control-flow branches, static analyzers, unit suites, and mutation tracing to White-box.
+**Strict outside-in boundary.** Read only `<out_dir>/black-box-context.md`, user-facing documentation, and public CLI `--help` or rendered UI outputs. Never read production source files, build configurations, ADRs, or test source files. Write strictly in plain user-visible terms: never mention internal file paths, config filenames, cookie or storage keys, CSS/DOM selectors, internal schema names, or ADR numbers in the report. Leave test-file code quality to White-box and module/wire contracts to Gray-box.
 
 ## Black-box workflow
 
-### 1. Map specification partitions
+### 1. Map user-facing behavior partitions
 
-Map modified specifications and public entrypoints using specification-based test design techniques:
+From `<out_dir>/black-box-context.md` and public CLI `--help` or UI entrypoints, map expected external behavior using specification-based techniques:
 
-- **Equivalence partitioning.** Group flags, arguments, environment variables, API inputs, and UI controls into valid and invalid partitions. Test invalid partitions individually so one early rejection never hides another parser or validation bug.
-- **Three-value boundary value analysis.** For ordered integer ranges bounded by `min` and `max`, identify boundary points at `min - 1`, `min`, `min + 1`, `max - 1`, `max`, and `max + 1`. For continuous decimals or non-unit steps, test the smallest valid precision step around each edge.
-- **Decision tables.** Map combinations of options, flags, and runtime conditions against expected outcomes and exit codes to expose missing or contradictory rules.
-- **State transitions.** Model long-lived services, CLIs, workflows, and stateful UI widgets as finite state machines. Verify valid transitions, confirm rejected invalid events produce clear diagnostics, and confirm dismissible UI components handle state completion safely per specification.
-- **Process and output lifecycle.** Verify end-to-end happy and recovery paths, termination signals such as `SIGINT` and `SIGTERM` where supported, non-zero error exit codes, and stream separation keeping program output on `stdout` and diagnostics on `stderr`.
+- **Equivalence partitioning:** Group flags, arguments, environment variables, and UI controls into valid and invalid partitions, testing invalid partitions individually so early rejection does not mask another validation bug.
+- **Three-value boundary analysis:** For integer bounds `min` and `max`, check `min - 1`, `min`, `min + 1`, `max - 1`, `max`, and `max + 1`; for decimals, check the smallest precision step around each edge.
+- **Decision tables and state transitions:** Map combinations of flags and runtime conditions against expected outcomes, exit codes, and UI states.
+- **Process and stream contracts:** Verify happy and recovery paths, termination signals (`SIGINT`, `SIGTERM`) where supported, non-zero exit codes, and `stdout` vs. `stderr` separation.
 
-Completion criterion: Specification partitions, boundaries, state transitions, and lifecycle expectations mapped for every modified public entrypoint.
+Completion criterion: User-facing partitions, boundaries, and state expectations mapped for every modified public entrypoint.
 
-### 2. Audit assigned end-to-end and UI suites
+### 2. Run assigned external suites
 
-Review assigned end-to-end, workflow, and UI interaction suites and completed runs against `TESTING.md` and its linked E2E and UI testing guides:
+Execute only the assigned end-to-end, UI story, and binary smoke commands. Record user-visible pass/fail outcomes, interactive state behaviors, and any environment blockers without inspecting test source code.
 
-- Confirm tests exercise real public binaries, subprocesses, rendered workflows, or interactive component harnesses rather than mocking internal module helpers inside end-to-end files.
-- Verify assertions check observable external contracts including exit codes, `stderr` diagnostics, structured output schemas, accessible semantics, keyboard navigation where UI applies, and completed state transitions.
-- Record behaviors already verified by passing automated suites so step 3 probes only uncovered external gaps.
+Completion criterion: Assigned external suites executed and uncovered user-facing gaps listed for probing.
 
-Completion criterion: Suite audit complete with uncovered external behaviors listed for probing.
+### 3. Probe uncovered external gaps
 
-### 3. Run delta-only exploratory probes
+Run delta-only outside-in exploratory probes on public boundaries and adversarial inputs missing from automated runs:
 
-Probe uncovered external inputs and workflows missing from passing automated suites without provisioning global tooling or probing private module internals:
+- **Boundary edges:** Probe numeric flags, limits, and environment variables near modified bounds.
+- **Adversarial inputs:** Probe partial numeric strings, wrong types, malformed numbers, empty strings, and invalid paths to confirm clean rejection exit codes and plain-language diagnostics without raw validation dumps or unhandled tracebacks.
 
-- **Uncovered boundary edges.** Probe boundary inputs around modified numeric flags, limits, and environment variables lacking automated tests.
-- **Adversarial input parsing.** Probe partial numeric strings, wrong numeric types, malformed numbers, empty strings, and invalid paths to confirm clean rejection exit codes and human-readable diagnostics without raw validation dumps or unhandled tracebacks.
+Completion criterion: Uncovered external gaps probed and minimal user-level reproductions captured for any failures.
 
-Completion criterion: Uncovered external gaps probed and minimal reproductions captured for any failures.
+### 4. Surface UX hints and write report
 
-### 4. Write report
+Identify any **Worth a second look** UX or messaging smells within the outside-in lens (confusing workflows, inconsistent CLI flags or UI labels, or overly technical error messages shown to end users).
 
-Verify uncertain findings per [the shared protocol](subagent-protocol.md), then write `<out_dir>/black-box-testing.md` using these Section 4 categories: `Defect`, `Spec mismatch`, `Missing E2E test`, `Missing UI test`, `Test anti-pattern`, or `Standards violation`.
+Write `<out_dir>/black-box-testing.md` per [the shared protocol](subagent-protocol.md) using these `Proven issues` categories: `Defect`, `Spec mismatch`, `Missing E2E coverage`, `Missing UI coverage`. Return the full technical handoff (exact commands, exit codes, and probe transcripts) to the coordinator.
 
-Completion criterion: `<out_dir>/black-box-testing.md` written and completion confirmation sent to the coordinator.
+Completion criterion: `<out_dir>/black-box-testing.md` written cleanly in plain user terms and full handoff returned.
