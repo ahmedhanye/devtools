@@ -55,10 +55,11 @@ Automated tests are partitioned into three non-overlapping levels by visibility 
 
 ## Testing guides
 
-| Guide                                                    | Read when                                                                                                      |
-| :------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------- |
-| [Box testing standards](docs/testing/box-testing.md)     | Auditing black-, gray-, or white-box coverage, adversarial wire/CLI probes, static gates, or workspace matrix. |
-| [Unit testing](docs/testing/unit-tests.md)               | Writing `*.unit.test.ts` suites for schemas, errors, seam-pair branches, invariants, or React hooks.           |
-| [Integration testing](docs/testing/integration-tests.md) | Writing `*.integration.test.ts` suites for Hono routes, ephemeral Daemons, `:memory:` SQLite, or adapters.     |
-| [End-to-end testing](docs/testing/e2e-tests.md)          | Writing `*.e2e.test.ts` suites for `Bun.spawn` CLI binaries, stream separation, and signal teardown.           |
-| [Storybook component testing](docs/testing/stories.md)   | Running Vitest portable stories or writing `play()` interaction tests in `apps/frontend`.                      |
+| Guide                                                        | Read when                                                                                                                          |
+| :----------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------- |
+| [Box testing standards](docs/testing/box-testing.md)         | Auditing black-, gray-, or white-box coverage, adversarial wire/CLI probes, static gates, or workspace matrix.                     |
+| [Unit testing](docs/testing/unit-tests.md)                   | Writing `*.unit.test.ts` suites for schemas, errors, seam-pair branches, invariants, or React hooks.                               |
+| [Integration testing](docs/testing/integration-tests.md)     | Writing `*.integration.test.ts` suites for Hono routes, ephemeral Daemons, `:memory:` SQLite, or adapters.                         |
+| [Test quality and refactoring](docs/testing/test-quality.md) | Refactoring existing test suites, promoting overmocked unit tests, fixing additional test smells, or verifying mutation baselines. |
+| [End-to-end testing](docs/testing/e2e-tests.md)              | Writing `*.e2e.test.ts` suites for `Bun.spawn` CLI binaries, stream separation, and signal teardown.                               |
+| [Storybook component testing](docs/testing/stories.md)       | Running Vitest portable stories or writing `play()` interaction tests in `apps/frontend`.                                          |
