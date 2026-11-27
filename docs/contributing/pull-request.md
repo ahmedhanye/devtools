@@ -21,7 +21,7 @@ External pull requests are not treated as feature requests; new capabilities beg
 - **Check-run polling.** `gh pr checks <number>` exits `8` while checks are pending; pass `--watch` to await completion.
 
 > [!NOTE]
-> On `gh 2.46.0`, bare `gh pr view <number>` and `gh pr edit <number>` fail on deprecated `projectCards` GraphQL queries. Pass explicit `--json` fields to inspect PRs and use REST `gh api --method PATCH` to update titles, bodies, labels, or assignees.
+> On `gh 2.46.0`, bare `gh pr view <number>` and `gh pr edit <number>` fail on deprecated `projectCards` GraphQL queries, and `gh pr checks` does not support `--json`. Pass explicit `--json` fields on `pr view`, use plain `gh pr checks <number>` (or `gh api repos/{owner}/{repo}/commits/<sha>/check-runs`), and use REST `gh api --method PATCH` to update titles, bodies, labels, or assignees.
 
 ## Shared pull request rules
 

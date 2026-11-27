@@ -51,10 +51,17 @@ Route each verified finding to the smallest-context, most reliable fix, favoring
 3. **Context pointers and scoped rules.** Prune or scope broad always-on rules, repair misleading pointers, and add missing navigation links at entry docs instead of duplicating content.
 4. **Canonical docs and cleanup.** Update wrong command references once at their canonical doc, and delete obsolete or no-op instructions.
 
-Save the full report to `.scratch/retro/retrospective-<YYYYMMDD-HHMMSS>.md`, or to a temporary file outside tracked paths when `.scratch/` is absent, covering scope, inspected session IDs, verified findings with attributed instructions or commands, `P0` to `P3` prioritized actions, and open trade-offs. Summarize only the top `P0` and `P1` findings with a link to the report in chat.
+Save a single human-readable report to `.scratch/retro/retrospective-<YYYYMMDD-HHMMSS>.md`, or to a temporary file outside tracked paths when `.scratch/` is absent. Format it for fast scanning:
 
-Completion criterion: Full report saved and concise summary shared in chat without modifying tracked files.
+- **At-a-Glance & Priority Roadmap tables** up top, followed by a short checklist of already-resolved items excluded from the backlog.
+- **Plain-English callout cards** per unresolved issue (`What happened`, `Why it keeps happening`, `Suggested fix`) with zero raw session IDs or step numbers in the main prose.
+- **Crisp numbered decisions** at the bottom ready for user feedback.
+- **Collapsed `<details>` traceability appendix** at the end holding all raw session IDs, step indices, and aggregate counts.
+
+Summarize only the top `P0` and `P1` findings with a link to the report in chat.
+
+Completion criterion: Single human-readable report saved and concise summary shared in chat without modifying tracked files.
 
 ### 4. Settle open decisions
 
-Wait for the user's feedback on the report, then follow [the grilling skill](../grilling/SKILL.md) when present to grill through all open problems and get explicit approval before editing repository files.
+Wait for the user's feedback or confirmation on the report, then immediately start [the grilling skill](../grilling/SKILL.md) when present to settle every remaining open decision and obtain explicit approval before editing repository files. Never negotiate open trade-offs inline in chat instead of grilling.
