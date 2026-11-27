@@ -43,7 +43,7 @@ Completion criterion: Observed mastery or progression is persisted in `tracks.js
 
 Write one self-contained Markdown lesson to `.scratch/teach/<topic-slug>/lessons/<NNNN>-<lesson-slug>.md` (4-digit zero-padded `<NNNN>` matching `Next numbers: lesson=` and kebab-case `<lesson-slug>`) using the template below, or write durable lookup material to `.scratch/teach/<topic-slug>/reference/<name>.md`. Keep `<br>` at the end of every non-final `Eyebrow`/`Source` header line as shown below:
 
-````markdown
+```markdown
 # Lesson <NNNN>: <Title>
 
 > **Eyebrow**: Teach Workspace · Topic: <Topic Title> · Lesson <NNNN> · ~<M> min read<br>
@@ -68,9 +68,9 @@ Test your recall from memory before expanding each answer.
 
 <Question testing application or cross-lesson synthesis>
 
-* **A)** <Option A>
-* **B)** <Option B>
-* **C)** <Option C>
+- **A)** <Option A>
+- **B)** <Option B>
+- **C)** <Option C>
 
 <details>
 <summary>Reveal Answer & Explanation</summary>
@@ -78,12 +78,13 @@ Test your recall from memory before expanding each answer.
 > **Correct Answer: <A|B|C>**
 >
 > **Why:** <Explain why the correct answer holds and why each distractor fails.>
+
 </details>
 
 ## Primary sources
 
-* [<Source Title>](<URL or verified absolute file:// URI>)
-````
+- [<Source Title>](<URL or verified absolute file:// URI>)
+```
 
 Include two or three drill questions per lesson, match option lengths across choices, and vary the correct answer letter across questions. Add an image in `.scratch/teach/<topic-slug>/assets/<name>.<ext>` embedded by absolute path directly below `---`, or a Mermaid diagram (`flowchart TD`, `flowchart LR`, `sequenceDiagram`, `stateDiagram-v2`, `classDiagram`) directly below `---` or under `## Visual workflow: <Title>`, only when visual structure clarifies the concept. Leave Mermaid nodes unstyled for theme contrast or specify high-contrast fill and text colors such as `#14532d` or `#7f1d1d` with `#ffffff`.
 

@@ -75,21 +75,21 @@ delimiter="$(openssl rand -hex 16)"
 ## 4. OIDC deploy job
 
 ```yaml
-  deploy:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    environment: production
-    permissions:
-      contents: read
-      id-token: write # Mint OIDC token for role assumption
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
-        with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION }}
+deploy:
+  runs-on: ubuntu-latest
+  timeout-minutes: 20
+  environment: production
+  permissions:
+    contents: read
+    id-token: write # Mint OIDC token for role assumption
+  steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+      with:
+        role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+        aws-region: ${{ vars.AWS_REGION }}
 ```
 
 ## 5. Two-workflow `workflow_run` pattern for fork PRs

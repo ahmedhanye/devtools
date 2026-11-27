@@ -13,7 +13,14 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+} from "node:path";
 import { pathToFileURL } from "node:url";
 
 /** Track metadata stored inside `.scratch/teach/tracks.json`. */
@@ -423,9 +430,7 @@ function inspectTrackSummary(
     currentLesson,
     highestLessonNumber,
     highestRecordNumber,
-    nextLessonNumber: pad4(
-      Math.max(highestLessonNumber, completedLessons) + 1,
-    ),
+    nextLessonNumber: pad4(Math.max(highestLessonNumber, completedLessons) + 1),
     nextRecordNumber: pad4(highestRecordNumber + 1),
     pendingLesson,
     files: {
@@ -717,7 +722,10 @@ function scanFencesAndBlocks(lines: string[]): {
   fences: ParsedFenceBlock[];
   unclosedFenceLine: number | null;
 } {
-  const fenceMask: boolean[] = Array.from({ length: lines.length }, () => false);
+  const fenceMask: boolean[] = Array.from(
+    { length: lines.length },
+    () => false,
+  );
   const fences: ParsedFenceBlock[] = [];
   let openMarker = "";
   let currentBlock: ParsedFenceBlock | null = null;
@@ -846,7 +854,8 @@ function validateMetadataBlock(
     if (!ml.text.endsWith("<br>")) {
       issues.push({
         line: ml.lineNumber,
-        message: "Header metadata lines before the last line must end with '<br>'.",
+        message:
+          "Header metadata lines before the last line must end with '<br>'.",
       });
     }
   }
@@ -854,7 +863,8 @@ function validateMetadataBlock(
   if (dividerIdx === -1) {
     issues.push({
       line: firstNonEmpty + 2,
-      message: "Missing horizontal rule ('---') directly below header metadata.",
+      message:
+        "Missing horizontal rule ('---') directly below header metadata.",
     });
   }
 
@@ -967,7 +977,9 @@ function validateDrillSection(
       });
     }
 
-    const ansMatch = detailsBody.match(/>\s*\*\*Correct Answer:\s*([A-D])\*\*/i);
+    const ansMatch = detailsBody.match(
+      />\s*\*\*Correct Answer:\s*([A-D])\*\*/i,
+    );
     if (!ansMatch?.[1]) {
       issues.push({
         line: qLine,
@@ -1151,7 +1163,9 @@ export function validateLesson(
   const lessonsDir = dirname(absPath);
   const trackDir = dirname(lessonsDir);
   const slug = basename(trackDir);
-  const rootDir = options.rootDir ? resolve(options.rootDir) : dirname(trackDir);
+  const rootDir = options.rootDir
+    ? resolve(options.rootDir)
+    : dirname(trackDir);
   const repoRoot = resolveRepoRoot(rootDir);
   const relToRepo = relative(repoRoot, absPath).replace(/\\/g, "/");
   const workspaceFile =
@@ -1208,7 +1222,11 @@ export function validateLesson(
     `${slug}/lessons/${fileName}`,
     issues,
   );
-  if (lessonNumber !== null && titleNumber !== -1 && titleNumber !== lessonNumber) {
+  if (
+    lessonNumber !== null &&
+    titleNumber !== -1 &&
+    titleNumber !== lessonNumber
+  ) {
     issues.push({
       line: 1,
       message: `Lesson heading number (${pad4(titleNumber)}) does not match filename prefix (${pad4(lessonNumber)}).`,

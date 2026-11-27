@@ -19,11 +19,11 @@ Completion criterion: Review scope, exact target file list, base ref, and `<out_
 
 Assign candidate source and test files plus non-overlapping test-level commands by inspection lens (following `REVIEW.md` / `TESTING.md` deduplication rules so only one axis owns shared artifact-mutating steps such as full coverage or binary builds, while leaving `references/` playbooks unread by the coordinator unless running axes sequentially):
 
-| Axis | Playbook | Focus and report path |
-| :--- | :--- | :--- |
-| **Black-box** | [references/black-box-testing.md](references/black-box-testing.md) | Public interfaces, CLIs, binaries, and end-to-end or user workflows; writes `<out_dir>/black-box-testing.md` |
-| **Gray-box** | [references/gray-box-testing.md](references/gray-box-testing.md) | Module seams, API and wire contracts, persistence, security boundaries, and architecture checks; writes `<out_dir>/gray-box-testing.md` |
-| **White-box** | [references/white-box-testing.md](references/white-box-testing.md) | Internal branches, unit suites, static analyzers, complexity, coverage, and mutation checks; writes `<out_dir>/white-box-testing.md` |
+| Axis          | Playbook                                                           | Focus and report path                                                                                                                   |
+| :------------ | :----------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------- |
+| **Black-box** | [references/black-box-testing.md](references/black-box-testing.md) | Public interfaces, CLIs, binaries, and end-to-end or user workflows; writes `<out_dir>/black-box-testing.md`                            |
+| **Gray-box**  | [references/gray-box-testing.md](references/gray-box-testing.md)   | Module seams, API and wire contracts, persistence, security boundaries, and architecture checks; writes `<out_dir>/gray-box-testing.md` |
+| **White-box** | [references/white-box-testing.md](references/white-box-testing.md) | Internal branches, unit suites, static analyzers, complexity, coverage, and mutation checks; writes `<out_dir>/white-box-testing.md`    |
 
 Launch all three subagents in parallel, or run each playbook sequentially if parallel delegation is unavailable. Pass each subagent [the shared protocol](references/subagent-protocol.md), its axis playbook, the scope summary and `<out_dir>/context.md` path, base ref, candidate files, owned commands, and the exact target report path `<out_dir>/<axis>-testing.md`. Wait for all three subagents to finish, verify all three `<out_dir>/<axis>-testing.md` files exist (resuming any interrupted subagent that lacks its report file), and run any sequential post-coverage binary smoke check once parallel subagents finish.
 

@@ -2,7 +2,7 @@
 
 ADRs live in `docs/adr/` using sequential numbering (`0001-slug.md`, `0002-slug.md`, etc.) and are indexed in `ARCHITECTURE.md`.
 
-The ADR owns *what* and *why*; the code and `docs/architecture/` own *how*. Focus on why the decision was made and what alternatives were rejected rather than duplicating schemas, tables, file layouts, symbol inventories, or timeouts from `docs/architecture/`. Record **one decision per ADR** so future reversals supersede cleanly without partial edits.
+The ADR owns _what_ and _why_; the code and `docs/architecture/` own _how_. Focus on why the decision was made and what alternatives were rejected rather than duplicating schemas, tables, file layouts, symbol inventories, or timeouts from `docs/architecture/`. Record **one decision per ADR** so future reversals supersede cleanly without partial edits.
 
 ## Template
 

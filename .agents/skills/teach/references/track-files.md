@@ -10,15 +10,19 @@ Captures why the user is learning this topic and anchors every lesson. Keep `MIS
 # Mission: <Topic>
 
 ## Why
+
 <One to three sentences stating the concrete real-world outcome.>
 
 ## Success looks like
+
 - <Observable capability the user will gain>
 
 ## Constraints
+
 - <Time, prior knowledge, pacing, or environment limits>
 
 ## Out of scope
+
 - <Adjacent topics excluded to preserve focus>
 ```
 
@@ -36,7 +40,7 @@ Curates verified high-trust sources, including official documentation, specifica
 
 ## Wisdom (Communities)
 
-- [<Community or Forum>](<URL>)
+- [<Community or Forum>](URL)
   <Moderation signal. Use for: critique or troubleshooting.>
 
 ## Gaps
