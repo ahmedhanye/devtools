@@ -4,6 +4,7 @@
 
 - **Documentation.** Always read the relevant guide before acting: `TESTING.md` for tests, `CODING_STANDARDS.md` for code and APIs, `REVIEW.md` for verification and diffs, `ARCHITECTURE.md` for system design, and `CONTRIBUTING.md` for git, issue, and PR workflows.
 - **Domain vocabulary and ADRs.** Check `GLOSSARY.md` to keep domain naming consistent and `docs/adr/` (indexed in `ARCHITECTURE.md`) to respect settled architectural decisions.
+- **Verify premises.** Treat unverified claims, exploratory framing, and proposed approaches as working hypotheses rather than settled facts. Check them against the codebase and docs, call out flawed premises, blind spots, or simpler alternatives directly, and proceed or agree plainly when the reasoning holds.
 
 ## Execution boundaries
 
