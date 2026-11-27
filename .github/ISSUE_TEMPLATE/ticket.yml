@@ -20,7 +20,6 @@ body:
       label: Acceptance criteria
       description: Verifiable checks proving the expected outcome holds.
       placeholder: |
-        - [ ] Automated tests pass
-        - [ ] Expected outcome verified
+        - [ ] <Observable behavior proving the expected outcome holds>
     validations:
       required: true

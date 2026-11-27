@@ -14,7 +14,8 @@ Break a spec, plan, or conversation into vertical tracer-bullet tickets with exp
 
 2. **Slice the work cleanly.** Split work into vertical tracer-bullet tickets across affected layers, each independently verifiable and sized for one focused task, with explicit `Blocked by` edges.
 
-   - Frame each ticket around the problem and observable expected outcome across public interfaces, omitting internal file paths, helper names, and implementation recipes documented elsewhere.
+   - Frame each ticket strictly around the problem and observable expected outcome across public interfaces, omitting internal file paths, helper names, implementation or tooling mechanics, and existing codebase patterns not explicitly requested by the user.
+   - Keep every acceptance criterion specific and observable for the slice, omitting generic test, lint, or build boilerplate already enforced by repository standards.
    - Sequence wide cross-cutting refactors as expand, migrate in bounded batches, and contract when a single vertical slice is impractical.
    - Match each ticket's label from the live repository labels (such as feature, bug, refactor, test, docs, infra, or research) rather than assuming one type for every ticket.
 
