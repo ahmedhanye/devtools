@@ -39,7 +39,7 @@ Milestones are public shipping commitments rather than backlog folders. Each mil
 
 ### Naming and cadence
 
-Name each milestone with a target version and a short user-facing theme, such as `v0.1.0: Core & Lighthouse` or `0.2.x: Image Compression`. Avoid vague or permanent bucket names such as `MVP`, `Phase 2`, `Polish`, `Backlog`, or `Future`.
+Name each milestone after its user-facing theme or deliverable (such as `Core & Lighthouse` or `Image Compression`) rather than a SemVer number, since Release Please determines the actual release version from merged commits. Only include a version when the version itself is an explicit stability commitment (such as a `v1.0.0` stability gate). Avoid vague or permanent bucket names such as `MVP`, `Phase 2`, `Polish`, `Backlog`, or `Future`.
 
 Follow a sequential **Now, Next, Horizon** cadence:
 
@@ -61,7 +61,7 @@ Avoid running parallel feature milestones. Only run parallel milestones when mai
 
 ### How milestones pair with Release Please
 
-Milestones and Release Please handle two separate halves of shipping, and Release Please does not read GitHub Milestones:
+Milestones and Release Please handle two separate halves of shipping, and Release Please does not read GitHub Milestones. Keeping milestones theme-only avoids version drift when Release Please bumps versions from merged commits:
 
 | Mechanism            | Direction                  | Trigger                                     | Answers                                                                 |
 | :------------------- | :------------------------- | :------------------------------------------ | :---------------------------------------------------------------------- |
