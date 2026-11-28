@@ -1,7 +1,7 @@
 import type * as React from "react";
 import { useEffect, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 import { updateNativeSearchParams } from "@/shared/lib";
 import { TriggerAuditSheet } from "./trigger-audit-sheet";

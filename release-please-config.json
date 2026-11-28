@@ -23,7 +23,14 @@
       "release-type": "node",
       "initial-version": "0.1.0",
       "include-component-in-tag": false,
-      "exclude-paths": [".agents", ".github", "docs", "scripts", "site"]
+      "exclude-paths": [".agents", ".github", "docs", "scripts", "site"],
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "packages/core/package.json",
+          "jsonpath": "$.version"
+        }
+      ]
     }
   }
 }

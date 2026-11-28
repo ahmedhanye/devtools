@@ -6,7 +6,7 @@ import type {
   LighthouseRunListItem,
 } from "@devtools/lighthouse/schemas";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { expect, fireEvent, userEvent, waitFor, within } from "storybook/test";
 import { formatTimestamp } from "@/entities/lighthouse-run";
 import { updateNativeSearchParams } from "@/shared/lib";

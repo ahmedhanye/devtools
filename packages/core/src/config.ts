@@ -1,8 +1,8 @@
-import pkg from "../../../package.json";
+import pkg from "../package.json";
 import { z } from "zod";
 
 /**
- * Canonical semantic version for the DevTools runtime, API, and CLI derived from the root manifest.
+ * Canonical semantic version for the DevTools runtime, API, and CLI derived from the synced `@devtools/core` manifest.
  */
 export const APP_VERSION: string = pkg.version;
 

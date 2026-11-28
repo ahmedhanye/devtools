@@ -1,5 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { Command } from "commander";
+import { APP_VERSION } from "@devtools/core";
 import {
   createBufferOutput,
   createMemorySignalSource,
@@ -7,13 +8,12 @@ import {
 import { createProgram, executeCliMain, runCli } from "../src/app";
 import { createLazyLighthouseStore } from "../src/app/program";
 import { registerWebCommand, runWebCommand } from "../src/commands/web";
-import pkg from "../../../package.json";
 
 describe("CLI Program Configuration & Seam Tests (Unit)", () => {
   test("createProgram initializes command options and metadata", () => {
     const program = createProgram();
     expect(program.name()).toBe("devtools");
-    expect(program.version()).toBe(pkg.version);
+    expect(program.version()).toBe(APP_VERSION);
 
     const webCommand = program.commands.find((cmd) => cmd.name() === "web");
     expect(webCommand).toBeDefined();
