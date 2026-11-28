@@ -3,7 +3,7 @@
   "compilerOptions": {
     "lib": ["ES2023", "DOM"],
     "rootDir": ".",
-    "declaration": true
+    "erasableSyntaxOnly": false
   },
   "include": ["src/**/*", "tests/**/*"]
 }
