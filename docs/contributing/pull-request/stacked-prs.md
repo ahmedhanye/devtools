@@ -84,7 +84,7 @@ Never open a late layer standalone with `gh pr create`; use `gh stack add <branc
 
 ### Step 2: Verify each layer against its base
 
-Set `BASE_REF="<parent-layer-branch>"` (`origin/main` once lower layers merge) when verifying a layer per [`REVIEW.md`](../../../REVIEW.md). Re-verify upper layers whenever a lower branch changes.
+Set `BASE_REF="<parent-layer-branch>"` (`origin/main` once lower layers merge) when verifying a layer per [`REVIEW.md`](../../../REVIEW.md). Confirm the top layer matches the original pre-split branch with zero diff (`git diff <original-branch>..<top-layer>`), and re-verify upper layers whenever a lower branch changes.
 
 ### Step 3: Submit drafts first, then patch metadata
 
