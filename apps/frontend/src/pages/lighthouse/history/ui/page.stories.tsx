@@ -5,7 +5,7 @@ import type {
   LighthouseRunListItem,
 } from "@devtools/lighthouse/schemas";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { expect, userEvent, within } from "storybook/test";
 import { HistoryPage } from "./page";
 

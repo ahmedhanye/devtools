@@ -1,0 +1,41 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build:bin": {
+      "description": "Compile the standalone devtools CLI binary",
+      "dependsOn": ["transit"],
+      "inputs": ["$TURBO_DEFAULT$", "!coverage/**"],
+      "outputLogs": "errors-only",
+      "outputs": ["$TURBO_ROOT$/dist/devtools"]
+    },
+    "smoke:bin": {
+      "description": "Smoke-test the compiled devtools binary (--help and --version)",
+      "dependsOn": ["build:bin"],
+      "inputs": ["$TURBO_ROOT$/dist/devtools"],
+      "outputLogs": "errors-only",
+      "outputs": []
+    },
+    "test": {
+      "dependsOn": ["build:bin", "@devtools/frontend#build", "transit"],
+      "outputLogs": "errors-only",
+      "outputs": []
+    },
+    "test:e2e": {
+      "dependsOn": ["build:bin", "@devtools/frontend#build", "transit"],
+      "outputLogs": "errors-only",
+      "outputs": []
+    },
+    "test:coverage": {
+      "dependsOn": ["build:bin", "@devtools/frontend#build", "transit"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/dist/devtools",
+        "$TURBO_ROOT$/bunfig.toml",
+        "!coverage/**"
+      ],
+      "outputLogs": "errors-only",
+      "outputs": ["coverage/lcov.info"]
+    }
+  }
+}

@@ -7,6 +7,8 @@
     "devtools": "./bin/devtools.js"
   },
   "scripts": {
+    "build:bin": "bun build bin/devtools.js --compile --minify --bytecode --format=esm --outfile ../../dist/devtools",
+    "smoke:bin": "../../dist/devtools --help && ../../dist/devtools --version",
     "test": "bun test --parallel=4 --only-failures",
     "test:unit": "bun test tests/*.unit.test.ts",
     "test:integration": "bun test tests/*.integration.test.ts",
