@@ -21,19 +21,14 @@ Stack pull requests when a changeset exceeds **5,000 LOC** or **80 modified file
 3. **Layer 3 (backend applications).** API routes, CLI commands, or Daemon endpoints.
 4. **Layer 4 (frontend or documentation).** Web UI components, Portable Stories, or cross-cutting repository docs (`docs/**`, root `*.md`, and `.agents/**` belong in their own top layer rather than inside a `cli` or `api` layer).
 
-> [!WARNING]
-> **Prevent Git ref prefix collisions.** Name stack branches `<issue>-<topic>/<layer-number>-<layer-name>` (for example, `102-audit/01-schemas-and-core`). Never create `<branch>/<layer>` while `<branch>` exists locally or on `origin`, because Git cannot store both a branch ref and a folder prefix with the same name. Delete or rename any initial single tracking branch first, or choose a distinct prefix before `gh stack init`.
+Name stack branches using a distinct prefix to prevent Git ref prefix collisions per [Creating and naming branches](../branches.md#creating-and-naming-branches).
 
 ## 2. Prerequisites, git config, and non-interactive safety
 
-Install `gh-stack` (`v0.3.0+`) and configure Git once:
+Install `gh-stack` (`v0.3.0+`) and apply the one-time settings in [Local Git setup](../branches.md#local-git-setup):
 
 ```bash
 gh extension install github/gh-stack
-git config rerere.enabled true
-git config rerere.autoupdate true
-git config remote.pushDefault origin
-git config push.autoSetupRemote true
 ```
 
 In non-interactive shells, export `GH_STACK_NO_UPDATE_NOTIFIER=1` and run `gh stack <command> --help` (not `gh stack help <command>`). Many `gh stack` commands open TUIs when a PTY is attached even with `PAGER=cat`; always use these safe forms:
@@ -158,4 +153,4 @@ gh stack merge [<stack-number> | <pr-number>] --yes --squash
   ```bash
   git checkout main && git pull && gh stack sync --prune
   ```
-  Delete any leftover initial tracking branch locally (`git branch -D <branch>`) and remotely (`git push origin --delete <branch>`).
+  Delete any leftover initial tracking branch locally (`git branch -D <branch>`) and remotely (`gh api --method DELETE repos/{owner}/{repo}/git/refs/heads/<branch>`), or audit all stale branches per [Branches](../branches.md#auditing-and-cleaning-up-stale-branches).
