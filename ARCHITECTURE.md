@@ -2,7 +2,7 @@
 
 High-level entry map to system topology, subsystem internals, and Architecture Decision Records across the DevTools monorepo.
 
-DevTools separates deployable applications (`apps/*`), shared headless packages (`packages/*`), and the documentation site (`site/`). A single Bun Daemon (`devtools web`) mounts the Hono API (`/api/*`) and static Next.js frontend assets on one loopback port, lazily opens embedded SQLite (`@devtools/db`) with automatic idle-close, passes borrowed `DbSession` handles into domain stores, and runs deterministic LIFO teardown via `createTeardown()`.
+DevTools separates deployable applications (`apps/*`) and shared headless packages (`packages/*`). A single Bun Daemon (`devtools web`) mounts the Hono API (`/api/*`) and static Next.js frontend assets on one loopback port, lazily opens embedded SQLite (`@devtools/db`) with automatic idle-close, passes borrowed `DbSession` handles into domain stores, and runs deterministic LIFO teardown via `createTeardown()`.
 
 > [!IMPORTANT]
 > Headless packages (`packages/*`) never import from applications (`apps/*`) or `site/`. Application composition roots (`apps/cli/src/app/**`, `apps/cli/src/commands/web/**`, `apps/api/src/app/**`) own `@devtools/db` `DbHandle` lifecycles (`openDb`, `close()`), while route modules (`apps/api/src/modules/*`) and feature CLI commands (`apps/cli/src/commands/lighthouse`, `apps/cli/src/commands/browser`) stay DB-free and consume `@devtools/lighthouse` (`createLighthouseStore` over `DbSession`), enforced by `.fallowrc.json`.

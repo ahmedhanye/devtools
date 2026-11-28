@@ -1,11 +1,11 @@
 ---
 name: writing-docs
-description: "Write, structure, and update project documentation across root *.md and docs/**. Use when writing, editing, restructuring, or syncing READMEs, guides, coding standards, architecture, testing, contributing, review, or security docs, including doc updates after code, CI, or workflow changes."
+description: "Write, structure, and update Engineering Docs across root *.md and docs/**. Use when writing, editing, restructuring, or syncing READMEs, guides, coding standards, architecture, testing, contributing, review, or security docs, including doc updates after code, CI, or workflow changes."
 ---
 
 # Writing documentation
 
-Authoring guide for repository documentation across `docs/**`, package and app READMEs, and root `*.md` files (`README.md`, `ARCHITECTURE.md`, `CODE_OF_CONDUCT.md`, `CODING_STANDARDS.md`, `CONTRIBUTING.md`, `GLOSSARY.md`, `REVIEW.md`, `SECURITY.md`, and `TESTING.md`).
+Authoring guide for **Engineering Docs** across `docs/**`, package and app READMEs, and root `*.md` files (`README.md`, `ARCHITECTURE.md`, `CODE_OF_CONDUCT.md`, `CODING_STANDARDS.md`, `CONTRIBUTING.md`, `GLOSSARY.md`, `REVIEW.md`, `SECURITY.md`, and `TESTING.md`).
 
 Apply [`/unslop`](../unslop/SKILL.md) to all prose. For Architecture Decision Records (`docs/adr/`) and the domain glossary (`GLOSSARY.md`), read and follow [`domain-modeling`](../domain-modeling/SKILL.md) and obtain explicit maintainer confirmation before authoring or editing any ADR.
 

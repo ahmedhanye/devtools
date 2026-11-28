@@ -13,7 +13,7 @@ Developer tooling monorepo providing local workflows across CLI, Daemon, HTTP AP
 | `packages/db`         | `@devtools/db`         | Embedded SQLite (`bun:sqlite`) handle pool, Drizzle ORM schemas, and bundled baseline migrations.    |
 | `packages/browser`    | `@devtools/browser`    | Chromium Browser Resolution Waterfall, Managed Browser Cache, and headless Chrome session ownership. |
 | `packages/lighthouse` | `@devtools/lighthouse` | In-process Lighthouse audit engine, Representative Run selection, diffing, and 3-tier persistence.   |
-| `site`                | `@devtools/site`       | Public documentation platform built with Fumadocs.                                                   |
+| `site`                | `@devtools/site`       | Product Docs platform built with Fumadocs.                                                           |
 
 ## Quick start
 
@@ -30,14 +30,14 @@ bun install
 # Start the web dashboard (:3000) and API dev server (:4000) together
 bun run dev
 
-# Start the Fumadocs documentation site (:3001)
+# Start the Product Docs site (:3001)
 bun run dev:site
 
 # Run linters, boundary checks, typechecks, architecture gates, coverage, and binary smoke checks
 bun run verify
 ```
 
-## Engineering documentation
+## Engineering Docs
 
 | Document                                   | Read when                                                                              |
 | :----------------------------------------- | :------------------------------------------------------------------------------------- |
