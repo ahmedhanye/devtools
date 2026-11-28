@@ -2,7 +2,7 @@ import type {
   LighthouseRunListRecord,
   LighthouseRunRecord,
   NormalizedLighthouseRun,
-} from "@devtools/lighthouse";
+} from "@devtools/lighthouse/contracts";
 import {
   type ColorOptions,
   type TerminalColors,

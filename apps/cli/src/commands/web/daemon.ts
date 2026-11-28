@@ -13,7 +13,7 @@ import {
 } from "@devtools/core";
 import { createTeardown } from "@devtools/core/node";
 import type { DbSession } from "@devtools/db";
-import type { LighthouseStore } from "@devtools/lighthouse";
+import type { LighthouseStore } from "@devtools/lighthouse/application";
 import type { Server } from "bun";
 
 /**

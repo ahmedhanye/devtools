@@ -13,13 +13,13 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { API_ERROR_CODES, ApiErrorResponseSchema } from "@devtools/core";
-import {
-  EMPTY_LIGHTHOUSE_RUN_SUMMARY,
-  createLighthouseStore,
-  type LighthouseBatchExecutionResult,
-  type LighthouseStore,
-  type NewLighthouseRunRecord,
-} from "@devtools/lighthouse";
+import type { LighthouseStore } from "@devtools/lighthouse/application";
+import type {
+  LighthouseBatchExecutionResult,
+  NewLighthouseRunRecord,
+} from "@devtools/lighthouse/contracts";
+import { EMPTY_LIGHTHOUSE_RUN_SUMMARY } from "@devtools/lighthouse/domain";
+import { createLighthouseStore } from "@devtools/lighthouse/wiring";
 import {
   ActiveAuditJobResponseSchema,
   LighthouseDiffResponseSchema,

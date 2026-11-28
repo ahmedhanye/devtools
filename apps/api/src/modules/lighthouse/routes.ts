@@ -1,16 +1,20 @@
 import { API_ERROR_CODES, type EnvMap } from "@devtools/core";
+import type {
+  AuditJobStreamEvent,
+  LighthouseAuditRunner,
+  LighthouseStore,
+} from "@devtools/lighthouse/application";
+import { resolveCanonicalArtifactsDir } from "@devtools/lighthouse/config";
 import {
   AmbiguousRunIdError,
-  createAuditJobManager,
   LighthouseRunNotFoundError,
-  resolveCanonicalArtifactsDir,
+  type LighthouseRunRecord,
+} from "@devtools/lighthouse/contracts";
+import {
   serializeLighthouseRunDetail,
   serializeLighthouseRunListItem,
-  type AuditJobStreamEvent,
-  type LighthouseAuditRunner,
-  type LighthouseRunRecord,
-  type LighthouseStore,
-} from "@devtools/lighthouse";
+} from "@devtools/lighthouse/serializers";
+import { createAuditJobManager } from "@devtools/lighthouse/wiring";
 import {
   ActiveAuditJobResponseSchema,
   LighthouseDiffQuerySchema,

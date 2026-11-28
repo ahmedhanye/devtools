@@ -4,17 +4,18 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type {
+  AuditJobStreamEvent,
+  LighthouseAuditRunner,
+  LighthouseStore,
+} from "../src/application";
 import {
   AuditCancelledError,
-  EMPTY_LIGHTHOUSE_RUN_SUMMARY,
-  createAuditJobManager,
-  createLighthouseStore,
-  type AuditJobStreamEvent,
-  type LighthouseAuditRunner,
   type LighthouseBatchExecutionResult,
-  type LighthouseStore,
   type NormalizedLighthouseAuditRequest,
-} from "../src";
+} from "../src/contracts";
+import { EMPTY_LIGHTHOUSE_RUN_SUMMARY } from "../src/domain";
+import { createAuditJobManager, createLighthouseStore } from "../src/wiring";
 
 const DEFAULT_REQUEST: NormalizedLighthouseAuditRequest = {
   url: "https://example.com/",

@@ -1,9 +1,9 @@
-import {
-  EMPTY_LIGHTHOUSE_RUN_SUMMARY,
-  type LighthouseFormFactor,
-  type LighthouseRunRecord,
-  type NormalizedLighthouseRun,
-} from "@devtools/lighthouse";
+import type {
+  LighthouseFormFactor,
+  LighthouseRunRecord,
+  NormalizedLighthouseRun,
+} from "@devtools/lighthouse/contracts";
+import { EMPTY_LIGHTHOUSE_RUN_SUMMARY } from "@devtools/lighthouse/domain";
 
 /**
  * ANSI escape code pattern used as a safety-net filter to guarantee zero terminal codes.
