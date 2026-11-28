@@ -1,10 +1,8 @@
-import {
-  DiataxisSection,
-  LandingFooter,
-  LandingHeader,
-  LandingHero,
-  PlatformFeaturesSection,
-} from "../components/landing";
+import { DiataxisSection } from "../components/landing/diataxis-quadrants";
+import { LandingFooter } from "../components/landing/footer";
+import { LandingHeader } from "../components/landing/header";
+import { LandingHero } from "../components/landing/hero";
+import { PlatformFeaturesSection } from "../components/landing/platform-features";
 
 export default function HomePage() {
   return (

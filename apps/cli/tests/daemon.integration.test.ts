@@ -22,7 +22,7 @@ import {
   type StartDaemonOptions,
   serveStaticAsset,
   startDaemon,
-} from "../src/commands/web/daemon";
+} from "../src/daemon/daemon";
 
 interface GatedAuditControl {
   started: Promise<void>;

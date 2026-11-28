@@ -12,8 +12,6 @@ import type {
   LighthouseOpenCommandOptions,
 } from "./types";
 
-export type * from "./types";
-
 /**
  * Injectable action handlers and composition-root host dependencies for testing
  * Commander argument parsing and DB/signal wiring.

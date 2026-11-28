@@ -78,7 +78,7 @@ export function resolveStaticDir(
     return resolve(process.cwd(), explicit);
   }
 
-  const cliRoot = resolve(import.meta.dir, "../../..");
+  const cliRoot = resolve(import.meta.dir, "../..");
   const candidates = [
     resolve(cliRoot, "static"),
     resolve(cliRoot, "../frontend/dist"),

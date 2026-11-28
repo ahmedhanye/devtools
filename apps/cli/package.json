@@ -3,6 +3,10 @@
   "description": "Developer tooling command-line interface",
   "private": true,
   "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "bin": {
     "devtools": "./bin/devtools.js"
   },
