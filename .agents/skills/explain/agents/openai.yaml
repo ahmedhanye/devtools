@@ -1,0 +1,5 @@
+interface:
+  display_name: "Explain"
+  short_description: "Explain a concept, codebase area, or question in a visual Markdown artifact with diagrams"
+policy:
+  allow_implicit_invocation: false
