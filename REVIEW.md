@@ -2,6 +2,12 @@
 
 Run `bun run verify` after completing work and before opening a pull request.
 
+## Targeted Turborepo inspection and runs
+
+- **Inspect affected workspaces:** `bunx turbo ls --affected --output=json`
+- **Run targeted tasks with structured JSON logs:** `bunx turbo run typecheck test --affected --json`
+- **Check workspace package boundaries:** `bun run boundaries`
+
 ## Review checklist
 
 - **Run extra checks when touching workflows or dependencies:**

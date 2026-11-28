@@ -2,47 +2,52 @@
 
 Follow [the shared protocol](subagent-protocol.md) and these steps to create `<out_dir>/white-box-testing.md`.
 
-**Axis inspection boundary.** Audit internal control-flow branches, statement and condition coverage, diff-scoped mutation sensitivity, dependency and environment isolation, algebraic invariants, unit oracle quality, complexity, and code health across non-exempt executable source files paired with unit suites. Leave integration contracts to Gray-box and external workflow checks to Black-box.
+**Axis inspection boundary.** Audit internal control-flow branches, statement/branch/diff coverage, tool-driven mutation testing, dependency and environment seams, algebraic invariants, complexity/dead-code/duplication, and test-code quality across modified unit, E2E, and UI story test files. Leave integration seams and integration mock fidelity to Gray-box, and external user workflows to Black-box.
 
 ## White-box workflow
 
-### 1. Audit control-flow branches, invariants, and test oracle quality
+### 1. Run static health, unit, and coverage checks
 
-Audit five white-box dimensions across non-exempt modified executable source and unit test files, honoring test exemptions in `TESTING.md` and coverage configuration before flagging missing tests:
+Execute assigned typecheck, lint, unit suites, coverage, diff-coverage, and code-health checks (complexity, dead code, duplication). Honor test exemptions in `TESTING.md` and coverage configuration before flagging missing tests.
 
-1. **Statement, branch, and condition coverage.** Catalog executable statements, conditional branches, ternaries, switch arms, short-circuit expressions like `&&`, `||`, and nullish coalescing, loop counts of `0`, `1`, and `N`, and error cleanup blocks. Line-hit coverage reports alone do not verify both outcomes of short-circuit conditions.
-2. **Dependency seams and global isolation.** Check injected configuration, time, filesystem, and environment seams per `CODING_STANDARDS.md` and `TESTING.md` (and their linked unit testing and standards guides), and confirm unit tests avoid mutating process or global runtime state across test cases.
-3. **Property-based and metamorphic invariants.** Check whether pure parsers, path normalizers, sorters, and calculators verify algebraic properties such as round-trip invertibility, idempotence, and predictable metamorphic transformations.
-4. **Unit test anti-pattern scan.** Audit unit suites against six oracle failure modes:
-   - **Tautological assertions.** Recomputing expected values with the production formula instead of asserting independent known-good literals.
-   - **Implementation-coupled mocking.** Mocking owned internal collaborators, testing private helpers directly, or asserting internal call ordering over observable outcomes.
-   - **Bypassing the system under test.** Replacing target logic with a mock or verifying state solely through unrelated side channels.
-   - **Weak coverage padding.** Guarding assertions inside conditionals or asserting only type presence or definedness without checking exact domain values and error types.
-   - **Boundary and negative-path blindness.** Testing only interior happy paths while omitting empty inputs, zero, negative bounds, edge values, and expected error paths.
-   - **Unverified snapshot abuse.** Locking in large unverified snapshots or asserting decorative formatting over behavior.
-5. **Complexity, dead-code, and duplication triage.** Inspect static analyzer findings for elevated complexity, unused exports, and semantic duplication while filtering idiomatic boilerplate permitted by `TESTING.md` and its linked testing guides.
+Completion criterion: Typecheck, lint, unit, coverage, and static code-health outputs collected.
 
-Completion criterion: Branch catalog, isolation review, invariant checks, oracle scan, and static code-health triage complete.
+### 2. Audit branches, seams, and test-code quality
 
-### 2. Run or trace diff-scoped mutation analysis
+Audit non-exempt modified source files and modified unit, E2E, and UI story test files across these dimensions:
 
-Apply mutation analysis strictly to non-exempt executable source code, excluding documentation, markdown content, and non-executable fixtures.
+- **Branch and condition coverage:** Check conditional branches, ternaries, switch arms, short-circuit expressions (`&&`, `||`, `??`), loop counts (`0`, `1`, `N`), and error cleanup blocks.
+- **Dependency seams and isolation:** Check injected configuration, time, filesystem, and environment seams per `CODING_STANDARDS.md` and `TESTING.md`, and confirm tests avoid mutating global runtime state across cases.
+- **Algebraic invariants:** Check whether pure parsers, normalizers, sorters, and calculators verify round-trip invertibility, idempotence, and metamorphic invariants.
+- **Test-code anti-patterns:** Audit unit, E2E, and UI story test files against `TESTING.md` and `docs/testing/test-quality.md` (tautological assertions, implementation-coupled mocks, brittle CSS/prose selectors, weak coverage padding, boundary/negative-path blindness, and unverified snapshots).
+- **Complexity and duplication triage:** Inspect static analyzer findings while filtering idiomatic boilerplate permitted by `TESTING.md`.
 
-Run any repository-configured mutation testing runner against modified source first and inspect surviving or uncovered mutants. Otherwise trace these mutation classes manually across conditionals, boundary comparisons, early guards, input normalizers, and option pass-through objects:
+Completion criterion: Branch catalog, seam isolation, invariant checks, and test-code anti-pattern audit complete.
 
-- **Relational operator replacement, known as `ROR`.** Mutate `<` to `<=` or `>`, `>` to `>=` or `<`, and equality checks to inequality checks.
-- **Logical connector, unary, and boolean literal mutations.** Swap `&&` and `||` under `LCR`, insert unary negation under `UOI`, delete unary negation under `UOD`, and flip boolean literals.
-- **Arithmetic, statement deletion, call, and object mutations.** Mutate arithmetic operators under `AOR`, delete early `return` or `throw` guards under `SDL`, omit string or input normalizers such as whitespace trimming or case folding, and drop forwarded object fields.
+### 3. Run tool-driven mutation testing
 
-For each mutant:
+Detect any mutation testing runner installed in the repository (such as `fallow mutation`, consulting [the fallow skill](../../fallow/SKILL.md) when present, or a configured project runner like Stryker or `cargo-mutants`). Never perform manual mental mutation tracing.
 
-1. **Filter equivalent mutants.** Confirm at least one valid input causes the mutated code to produce a different observable return value, state change, or error. Discard equivalent mutants whose fallback paths produce identical observable output for all inputs.
-2. **Isolate surviving mutants.** Identify the exact unit test and assertion line that kills each non-equivalent mutant. When all unit tests pass despite a non-equivalent mutant, record it as a `Surviving mutant` with the concrete distinguishing input.
+- **If no mutation runner is configured:** Record `Skipped (no mutation tool configured)` in the report scorecard and proceed to step 4.
+- **If a mutation runner is installed:** Run it diff-scoped against non-exempt modified source code with bounded defaults, then inspect only open (`survived` or `no_coverage`) mutants. For example, with Fallow:
 
-Completion criterion: Every modified executable conditional, guard, normalizer, and forwarded field checked by automated or manual mutation analysis, with all surviving mutants verified.
+```bash
+fallow mutation --base <base-ref> --allow-dirty --time-budget 90s --mutants-per-line 2 --format json --quiet
+fallow mutation tasks --format json --quiet
+```
 
-### 3. Write report
+Triage each open mutant as a **Test gap**, **Dead code**, **Production defect**, or **Equivalent mutant**, and record non-equivalent gaps as `Surviving mutant` under `Proven issues`.
 
-Verify uncertain findings and surviving mutants per [the shared protocol](subagent-protocol.md), then write `<out_dir>/white-box-testing.md` using these Section 4 categories: `Surviving mutant`, `Uncovered branch`, `Test anti-pattern`, `Seam violation`, `Complexity or duplication smell`, or `Standards violation`.
+Completion criterion: Mutation runner executed (or explicitly recorded as skipped) and all returned open mutants triaged.
 
-Completion criterion: `<out_dir>/white-box-testing.md` written and completion confirmation sent to the coordinator.
+### 4. Surface logic and brittle-test hints, then write report
+
+Identify **Worth a second look** items that pass tests today yet smell off:
+
+- Comments or docstrings whose explanation contradicts the code or feels wrong.
+- Brittle change-detector tests (such as asserting arbitrary magic constants like `x = 0` or internal identifiers that break on harmless refactors).
+- Convoluted or fragile control flow that warrants a human sanity check.
+
+Write `<out_dir>/white-box-testing.md` per [the shared protocol](subagent-protocol.md) using these `Proven issues` categories: `Surviving mutant`, `Uncovered branch`, `Test anti-pattern`, `Seam violation`, `Complexity or duplication smell`, `Standards violation`. Return the full technical handoff (including mutant IDs, coverage numbers, and exact line references) to the coordinator.
+
+Completion criterion: `<out_dir>/white-box-testing.md` written cleanly and full handoff returned.

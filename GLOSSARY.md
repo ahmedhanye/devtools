@@ -56,8 +56,19 @@ _Avoid_: Browser detection chain, chrome locator pipeline, browser discovery fal
 The local directory where DevTools downloads and stores Chrome for Testing binaries.
 _Avoid_: Download cache, browser store, local chromium dir
 
+### Documentation
+
+**Engineering Docs**:
+Internal repository documentation for contributors and maintainers covering system architecture, coding standards, testing, review, contribution workflows, and domain vocabulary.
+_Avoid_: Codebase docs, repo docs, internal docs, developer docs
+
+**Product Docs**:
+Public, user-facing documentation for developers installing, configuring, and operating DevTools, including tutorials, how-to guides, references, and user-facing explanations.
+_Avoid_: Site docs, public docs, user-facing docs, Fumadocs docs
+
 ## Flagged ambiguities
 
 - **Audit Job vs. Audit Run**: An Audit Job is the transient, single-flight daemon execution that persists nothing if cancelled or failed early; an Audit Run is a completed audit batch persisted with its own identifier.
 - **Iteration vs. Audit Run**: An Iteration is one isolated navigation pass inside a multi-iteration batch; an Audit Run is the single persisted record saved for that batch.
 - **Representative Run vs. Per-Metric Median**: Computing independent medians per metric creates a synthetic result that contradicts the saved Report Artifact, so DevTools selects one real Representative Run.
+- **Engineering Docs vs. Product Docs**: Engineering Docs document internal architecture, standards, and workflows for contributors working on DevTools; Product Docs document installation, configuration, and usage for developers running DevTools, and must not duplicate internal contributor guides.

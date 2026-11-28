@@ -1,11 +1,11 @@
 ---
 name: writing-docs
-description: "Write, structure, and update project documentation across root *.md and docs/**. Use when writing, editing, restructuring, or syncing READMEs, guides, coding standards, architecture, testing, contributing, review, or security docs, including doc updates after code, CI, or workflow changes."
+description: "Write, structure, and update Engineering Docs across root *.md and docs/**. Use when writing, editing, restructuring, or syncing READMEs, guides, coding standards, architecture, testing, contributing, review, or security docs, including doc updates after code, CI, or workflow changes."
 ---
 
 # Writing documentation
 
-Authoring guide for repository documentation across `docs/**`, package and app READMEs, and root `*.md` files (`README.md`, `ARCHITECTURE.md`, `CODE_OF_CONDUCT.md`, `CODING_STANDARDS.md`, `CONTRIBUTING.md`, `GLOSSARY.md`, `REVIEW.md`, `SECURITY.md`, and `TESTING.md`).
+Authoring guide for **Engineering Docs** across `docs/**`, package and app READMEs, and root `*.md` files (`README.md`, `ARCHITECTURE.md`, `CODE_OF_CONDUCT.md`, `CODING_STANDARDS.md`, `CONTRIBUTING.md`, `GLOSSARY.md`, `REVIEW.md`, `SECURITY.md`, and `TESTING.md`).
 
 Apply [`/unslop`](../unslop/SKILL.md) to all prose. For Architecture Decision Records (`docs/adr/`) and the domain glossary (`GLOSSARY.md`), read and follow [`domain-modeling`](../domain-modeling/SKILL.md) and obtain explicit maintainer confirmation before authoring or editing any ADR.
 
@@ -14,7 +14,7 @@ Apply [`/unslop`](../unslop/SKILL.md) to all prose. For Architecture Decision Re
 - **Lead with a summary.** Open every file with one or two sentences stating what the document covers and when it applies.
 - **Write human-first engineering prose.** Author root `*.md`, `docs/**`, and READMEs uniformly so humans and coding agents follow the exact same procedures. Omit agent-harness mechanics such as `subagent`, `coordinator`, `prompt`, `token`, `turn`, or "run in another session" from project documentation.
 - **Verify facts against live code first.** Read live source files, manifests, configs, and CLI `--help` output before writing or updating claims. Ban volatile literals that silently rot, such as patch version strings, hardcoded CI check counts, terminal directory listings, or file-by-file ASCII trees.
-- **Keep one source of truth.** Record each contract, table, diagram, or procedure in one canonical file and link to it elsewhere. Maintain clear folder ownership: architecture docs own topology, data flow, and lifecycles (*how it works*); coding standards own authoring rules and checklists (*how to write it*); testing and contributing docs own verification and workflow procedures.
+- **Keep one source of truth.** Record each contract, table, diagram, or procedure in one canonical file and link to it elsewhere. Maintain clear folder ownership: architecture docs own topology, data flow, and lifecycles (_how it works_); coding standards own authoring rules and checklists (_how to write it_); testing and contributing docs own verification and workflow procedures.
 - **Point to code instead of copying it.** Reference repository-relative paths (`path/to/file.ext#L10-L25`) and exported symbol names (`ClassName.method`) instead of pasting full files or functions. Keep inline snippets to short 5 to 12 line syntax or pattern skeletons.
 - **Use canonical domain language.** Reuse exact terms from `GLOSSARY.md` and replace synonyms listed under `_Avoid_`.
 

@@ -10,7 +10,9 @@ Interview the user in rounds along a design tree until every open decision has a
 1. **Await prerequisites and gather facts.** Complete all pending tasks, file reads, tool calls, and background investigations before thinking about questions and decisions. Gather every discoverable fact from the codebase or tools (checking actual call sites, not just package manifests) so no question asks for a fact or relies on a guess.
 2. **Compute the round frontier.** Model the problem as a design tree where each decision unlocks dependent decisions. Select every unsettled decision whose prerequisites are already answered as the frontier for this round. Settle who uses it, core actions, inputs, and outputs in initial rounds before asking about storage, architecture, or internals in later rounds, and defer any question that depends on another question open in this round. When an answer adds a new surface such as a UI, API, or package, follow that branch until its user-facing behavior and edge cases are settled.
 3. **Author the round artifact.** Write the round as a non-executable discussion draft (never mark round artifacts for one-click plan execution) to `grilling_round_<N>_<topic>.md` in the session artifact directory using the visual round format below.
-4. **Point to the round in chat.** Link the round artifact in chat with a brief, easy-to-scan overview of what this round covers so the user knows what is inside before opening it. Keep answers to follow-up questions concise in chat (moving detailed diagrams or breakdowns into the round artifact), ask for replies in normal chat text, and end your turn. Never ask grilling questions through interactive multiple-choice prompt tools, dialogs, or popup widgets.
+   Completion criterion: `grilling_round_<N>_<topic>.md` is written to the session artifact directory and repository files remain untouched.
+4. **Point to the round in chat.** Link the round artifact with a brief, easy-to-scan overview of what this round covers, answer any follow-up questions concisely in chat (moving detailed diagrams or breakdowns into the round artifact), and end your turn. Omit reply-format boilerplate, internal artifact filenames, and previews of upcoming rounds or summaries. Never ask grilling questions through interactive multiple-choice prompt tools, dialogs, or popup widgets.
+   Completion criterion: The chat reply links the round artifact in the session artifact directory without pasting the round inline.
 5. **Iterate until settled, then confirm.** Update the design tree from each reply and repeat steps 1 to 4 until the frontier is empty. Write the settled decisions to `grilling_summary_<topic>.md` in the session artifact directory, link it in chat, and wait for explicit user confirmation before implementing.
 
 ## Plain language and question rules
@@ -22,17 +24,20 @@ Interview the user in rounds along a design tree until every open decision has a
 
 ## Round format
 
-````markdown
+Include **Big picture** only when a visual adds clarity beyond **Goal**.
+
+- Use a small `mermaid` diagram (`flowchart TD` or `stateDiagram-v2`, at most 8 nodes, quoted 2 to 5 word labels, bare `(Q1)` tags) when the round covers a connected flow, state machine, or component boundary.
+- Use a compact Markdown table (`# | Trigger | Affected area | Decision`) when the round covers independent scenarios or edge cases.
+- Omit **Big picture** when **Goal** already frames the round.
+- Keep full question sentences out of diagram nodes and avoid multi-column horizontal text arrows.
+
+```markdown
 # Grilling Round <N>: <Topic>
 
 ## Context and terms
 
 - **Goal:** <2 to 3 short plain sentences on the problem, what changed since last round, and what this round decides.>
-- **Big picture:**
-
-```text
-<simple visual arrow flow or diagram showing how the pieces connect, never a prose paragraph>
-```
+- **Big picture:** <optional `mermaid` diagram or compact Markdown table; omit when Goal is enough>
 
 - **Terms used below:**
   - **<term>:** <1-line plain-English definition>
@@ -44,17 +49,17 @@ Interview the user in rounds along a design tree until every open decision has a
 <1 to 2 short plain sentences framing the single decision.>
 
 - **Option A: <short option name>**
-  - *What happens:* <1 short sentence on user-visible behavior>
-  - *Upside:* <main benefit, or None>
-  - *Downside:* <main cost or risk, or None>
+  - _What happens:_ <1 short sentence on user-visible behavior>
+  - _Upside:_ <main benefit, or None>
+  - _Downside:_ <main cost or risk, or None>
 - **Option B: <short option name>**
-  - *What happens:* <1 short sentence on user-visible behavior>
-  - *Upside:* <main benefit, or None>
-  - *Downside:* <main cost or risk, or None>
+  - _What happens:_ <1 short sentence on user-visible behavior>
+  - _Upside:_ <main benefit, or None>
+  - _Downside:_ <main cost or risk, or None>
 
 > ➡️ **Recommended:** Option A (reply "yes" to accept)
 >
 > - **Why:** <key reason and cost/risk, without repeating Option A verbatim>
 > - **Based on:** <specific ADR, repo file, tool check, user constraint, or "General practice (not verified in repo)">
 > - **Code refs:** <optional file links; omit when not needed>
-````
+```

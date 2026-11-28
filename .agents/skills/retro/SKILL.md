@@ -20,7 +20,7 @@ Diagnose command bugs, slow detours, and unhelpful file reads across targeted co
 
 ### 1. Gather targeted session signals
 
-Default to the active session when no target is named. When targeting specific sessions, a branch, a PR, or a time window, narrow candidate logs by matching workspace path, branch, or modification time with `find` or `rg --hidden -l` (since transcript directories may live under hidden folders) before opening any transcript, excluding unrelated workspaces. Inspect compact transcript views first, and read exact line ranges from full logs only for steps with failures, truncation, or stalled subagents.
+Stop and ask the user to name a target when none is provided. When targeting specific sessions, a branch, a PR, or a time window, narrow candidate logs by matching workspace path, branch, or modification time with `find` or `rg --hidden -l` (since transcript directories may live under hidden folders) before opening any transcript, excluding unrelated workspaces. Inspect compact transcript views first, and read exact line ranges from full logs only for steps with failures, truncation, or stalled subagents.
 
 Filter JSON, JSONL, or exported session logs in one `jq` or `rg` pass to extract five metadata slices while skipping file-read bodies, internal reasoning traces, and passing output noise:
 
@@ -42,7 +42,7 @@ Verify each signal against current files, recent `git log -n 20 --oneline` histo
 
 Completion criterion: Every retained finding links session step evidence to an unresolved root cause in current repository truth.
 
-### 3. Propose fixes and report
+### 3. Summarize findings and start grilling
 
 Route each verified finding to the smallest-context, most reliable fix, favoring deterministic enforcement and instruction removal over adding prose:
 
@@ -51,12 +51,6 @@ Route each verified finding to the smallest-context, most reliable fix, favoring
 3. **Context pointers and scoped rules.** Prune or scope broad always-on rules, repair misleading pointers, and add missing navigation links at entry docs instead of duplicating content.
 4. **Canonical docs and cleanup.** Update wrong command references once at their canonical doc, and delete obsolete or no-op instructions.
 
-Save the full report to `.scratch/retro/retrospective-<YYYYMMDD-HHMMSS>.md`, or to a temporary file outside tracked paths when `.scratch/` is absent, covering scope, inspected session IDs, verified findings with attributed instructions or commands, `P0` to `P3` prioritized actions, and open trade-offs. Summarize only the top `P0` and `P1` findings with a link to the report in chat.
+Do not write a standalone retrospective report file. Immediately start [the grilling skill](../grilling/SKILL.md) with Round 1 covering every unresolved decision, placing raw session IDs, step indices, and aggregate counts in a collapsed `<details>` traceability appendix at the bottom of the Round 1 artifact. In chat, open with a brief plain-English summary of what went wrong and link the Round 1 artifact. Complete grilling to obtain explicit user approval before editing any repository files.
 
-Completion criterion: Full report saved and concise summary shared in chat without modifying tracked files.
-
-### 4. Settle open decisions
-
-Ask the user which proposed changes to apply. When multi-branch design trade-offs remain before editing, follow [the grilling skill](../grilling/SKILL.md) when present to settle them without duplicating report tables. Wait for explicit approval before editing repository files.
-
-Completion criterion: Open decisions are settled and approved before any repository edit begins.
+Completion criterion: Brief summary of findings shared in chat with Grilling Round 1 started and no tracked files modified.

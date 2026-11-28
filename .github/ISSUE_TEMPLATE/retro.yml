@@ -1,0 +1,38 @@
+name: Retrospective
+description: Track periodic refinements to documentation, agent skills, tooling, and codebase ergonomics
+title: "Refine documentation, agent skills, tooling, and codebase ergonomics"
+type: Task
+labels: ["type:infra", "area:docs", "area:tooling", "priority:p2-medium"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Recurring workflow friction, documentation drift, or maintenance gaps surfaced in recent work.
+      value: |
+        Across recent delivery cycles and engineering conversations, recurring workflow friction and small maintenance gaps accumulate across four areas:
+
+        - **Documentation drift and missing operational guidance.** Contributor and release workflows can lag behind real repository practices, leaving room for inconsistent milestone scoping, release alignment, or process ambiguity.
+        - **Agent skill and instruction friction.** Skills and governance instructions occasionally need tightening, deduplication, or clearer boundaries based on real session outcomes.
+        - **Tooling and workflow ergonomics.** Local verification, automation, and repository configuration accumulate small rough edges that slow down day-to-day contribution.
+        - **Targeted cleanup and refactoring opportunities.** Minor structural or maintenance debt surfaced during recent work needs a dedicated, low-risk place to be addressed without bloating feature tickets.
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Expected outcome
+      description: Observable repository state when this retrospective cycle is complete.
+      value: |
+        Documentation, agent skills, developer tooling, and targeted maintenance improvements identified during this retrospective cycle are refined, aligned with current repository conventions, and verified cleanly on a dedicated branch.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance criteria
+      description: Verifiable checks proving the expected outcome holds.
+      value: |
+        - [ ] Identified documentation gaps and workflow conventions are updated with a single source of truth and passing link and format checks
+        - [ ] Any scoped agent skill, tooling, or refactoring refinements pass repository verification gates
+        - [ ] All changes are reviewed and merged cleanly without unrelated feature scope
+    validations:
+      required: true

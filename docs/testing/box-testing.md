@@ -35,7 +35,7 @@ Gray-box testing ([`integration-tests.md`](integration-tests.md)) pairs specific
 
 ### Architectural boundaries and security gates
 
-- **Workspace dependency boundaries.** Run `bun run fallow:arch` to verify `.fallowrc.json` unidirectional import zones.
+- **Workspace dependency boundaries.** Run `bun run boundaries` (`turbo boundaries`) for package-level import and undeclared-dependency checks, and `bun run fallow:arch` to verify `.fallowrc.json` intra-package import zones.
 - **Feature-Sliced Design layers.** Run `bun run lint:fsd` (`steiger ./src`) in `apps/frontend` to verify top-down layer imports without cross-slice leakage.
 - **Security candidate analysis.** Run `bun run fallow:security` on modified boundary files to catch unsanitized HTML/SVG sinks, unvalidated `Host` headers, or unescaped path traversals, filtering developer-controlled build scripts and test fixtures during triage.
 

@@ -12,7 +12,10 @@ Turn decisions already made in conversation and repository context into a clear 
 
    Completion criterion: Available repository issue rules, live labels and milestones, and affected context read.
 
-2. **Draft and confirm the proposal.** Write the draft spec to a Markdown session artifact (such as `spec_proposal_<slug>.md`) matching the repository's spec template when present, or the minimal fallback below. Include planned metadata (clean title, matching label, and active milestone if applicable) plus any open assumptions, link the artifact in chat, and wait for user confirmation.
+2. **Draft and confirm the proposal.** Write the draft spec to a Markdown session artifact (such as `spec_proposal_<slug>.md`) matching the repository's spec template when present, or the minimal fallback below. Include planned metadata (clean title, matching label, and an active milestone only when the spec is a user-facing release deliverable rather than internal DX or tooling) plus any open assumptions, link the artifact in chat, and wait for user confirmation.
+
+   - Frame the spec strictly around the problem and observable user or system outcomes, leaving out technical implementation choices, tooling or workflow mechanics, and existing codebase patterns unless the user explicitly made them part of the requirement.
+   - Keep every acceptance criterion specific and observable for the capability, omitting meta-checklist items (such as "all child tickets delivered") and generic lint, test, or build gates already governed by repository standards.
 
    Completion criterion: Proposal artifact shared in chat and explicitly approved by the user.
 

@@ -4,13 +4,13 @@ Embedded SQLite foundation, `DbSession` vs. `DbHandle` ownership, automatic idle
 
 ## Module responsibilities
 
-| Path                          | Responsibility                                                                                      | Entrypoint                          |
-| :---------------------------- | :-------------------------------------------------------------------------------------------------- | :---------------------------------- |
-| `packages/db/drizzle/`        | Versioned Drizzle SQL migration files and `meta/_journal.json`.                                     | Statically bundled by `migrator.ts` |
-| `packages/db/src/schema/`     | Drizzle tables (`system.ts` for `system_metadata`, `lighthouse.ts` for `lighthouse_runs`).          | `packages/db/src/schema/index.ts`   |
-| `packages/db/src/client.ts`   | Lazy `openDb` (`DbSession` / `DbHandle`), 30 s idle-close, `BEGIN IMMEDIATE`, savepoints.           | `packages/db/src/index.ts`          |
-| `packages/db/src/config.ts`   | Multi-environment path resolution (`resolveDatabaseTargetPath`, `resolveDatabasePath`).             | `packages/db/src/index.ts`          |
-| `packages/db/src/migrator.ts` | Bundled SHA-256 SQL lazy schema initialization (`initializeBaselineSchema`, `EMBEDDED_SQL_BY_TAG`). | `packages/db/src/index.ts`          |
+| Path                          | Responsibility                                                                                                     | Entrypoint                          |
+| :---------------------------- | :----------------------------------------------------------------------------------------------------------------- | :---------------------------------- |
+| `packages/db/drizzle/`        | Versioned Drizzle SQL migration files and `meta/_journal.json`.                                                    | Statically bundled by `migrator.ts` |
+| `packages/db/src/schema/`     | Drizzle tables (`system.ts` for `system_metadata`, `lighthouse.ts` for `lighthouse_runs`, `schema.ts` aggregator). | `packages/db/src/schema/schema.ts`  |
+| `packages/db/src/client.ts`   | Lazy `openDb` (`DbSession` / `DbHandle`), 30 s idle-close, `BEGIN IMMEDIATE`, savepoints.                          | `packages/db/src/index.ts`          |
+| `packages/db/src/config.ts`   | Multi-environment path resolution (`resolveDatabaseTargetPath`, `resolveDatabasePath`).                            | `packages/db/src/index.ts`          |
+| `packages/db/src/migrator.ts` | Bundled SHA-256 SQL lazy schema initialization (`initializeBaselineSchema`, `EMBEDDED_SQL_BY_TAG`).                | `packages/db/src/index.ts`          |
 
 ## Lazy handle ownership and idle-close lifecycle
 

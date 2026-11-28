@@ -8,7 +8,7 @@ For workspace dependency topology and enforced `.fallowrc.json` zones, see [Mono
 
 - **Framework independence.** Keep packages free of React, Next.js, and Hono. Domain models and logic remain independent of UI and HTTP delivery layers.
 - **No internal process orchestration.** Packages are programmatic libraries, not process supervisors. Do not spawn worker scripts (`Bun.spawn`) to manage internal control flow; leave job concurrency and supervision to `apps/api` and `apps/cli` per [ADR 0005](../adr/0005-in-process-lighthouse-execution.md).
-- **Direct source exports.** Declare direct TypeScript entrypoints in `package.json` `exports` (`"."`, `"./node"`, `"./schema"`, `"./schemas"`) pointing to `./src/*.ts` rather than `dist/`. Consuming workspaces import only public subpath exports, never internal paths such as `@devtools/db/src/client`.
+- **Direct source exports.** Declare direct TypeScript entrypoints in `package.json` `exports` (`"."`, `"./node"`, `"./schemas"`, or concern subpaths) pointing to `./src/*.ts` rather than `dist/`. Declare `"sideEffects": false` on pure packages (`"sideEffects": ["*.css"]` on CSS-importing apps). Consuming workspaces import only public subpath exports, never internal paths such as `@devtools/db/src/client`.
 
 ## Configuration seams
 
