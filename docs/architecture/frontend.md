@@ -31,7 +31,7 @@ flowchart LR
 `apps/frontend/next.config.ts` sets `output: "export"`, `distDir: "dist"`, and `pageExtensions: ["next.tsx", "next.ts"]`:
 
 - `bun --filter @devtools/frontend build` compiles static HTML, CSS, and client JS bundles into `apps/frontend/dist`.
-- `startDaemon` (`apps/cli/src/commands/web/daemon.ts`) serves these static files on `/*` while mounting `@devtools/api` on `/api/*`, avoiding a separate production Next.js server process.
+- `startDaemon` (`apps/cli/src/daemon/daemon.ts`) serves these static files on `/*` while mounting `@devtools/api` on `/api/*`, avoiding a separate production Next.js server process.
 - Runtime entity views route through flat static paths paired with query parameters (`?id=`, `?job=`, `?tab=`, `?runs=`, `?baseline=`) instead of dynamic `[id]` segments, per [ADR 0007](../adr/0007-static-export-query-param-routing.md).
 - Frontend requests use relative `/api/*` paths (including SSE `EventSource` and `<iframe sandbox="allow-scripts allow-popups allow-downloads">` report views), and `apps/frontend` imports only browser-safe workspace packages (`@devtools/core` and `@devtools/lighthouse/schemas`), enforced by `.fallowrc.json`.
 

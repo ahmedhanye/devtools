@@ -4,13 +4,14 @@ Command routing, programmatic CLI seams, Daemon hosting, scoped LIFO teardown, a
 
 ## Module responsibilities
 
-| Path                       | Responsibility                                                                             | Entrypoint                         |
-| :------------------------- | :----------------------------------------------------------------------------------------- | :--------------------------------- |
-| `apps/cli/bin/devtools.js` | 4-line executable shebang delegating to `executeCliMain(import.meta.main)`.                | `apps/cli/bin/devtools.js`         |
-| `apps/cli/src/app/`        | Commander tree + `createLazyLighthouseStore()` (`program.ts`) and host runner (`main.ts`). | `apps/cli/src/app/index.ts`        |
-| `apps/cli/src/commands/`   | Isolated vertical slices for `browser`, `lighthouse`, and `web` (Daemon + port).           | `apps/cli/src/commands/*/index.ts` |
-| `apps/cli/src/shared/`     | `NO_COLOR` / `FORCE_COLOR` / TTY color guards (`colors.ts`) and embedded asset types.      | `apps/cli/src/shared/terminal/`    |
-| `apps/cli/src/index.ts`    | Curated programmatic CLI seam (`createProgram`, `runCli`, `startDaemon`).                  | `apps/cli/src/index.ts`            |
+| Path                       | Responsibility                                                                               | Entrypoint                         |
+| :------------------------- | :------------------------------------------------------------------------------------------- | :--------------------------------- |
+| `apps/cli/bin/devtools.js` | 4-line executable shebang delegating to `executeCliMain(import.meta.main)`.                  | `apps/cli/bin/devtools.js`         |
+| `apps/cli/src/app/`        | Commander tree + `createLazyLighthouseStore()` (`program.ts`) and host runner (`main.ts`).   | `apps/cli/src/app/index.ts`        |
+| `apps/cli/src/commands/`   | Isolated DB-free vertical slices for `browser`, `lighthouse`, and `web` (port + CLI prompt). | `apps/cli/src/commands/*/index.ts` |
+| `apps/cli/src/daemon/`     | Unified loopback Daemon (`startDaemon`, static asset serving, API mounting).                 | `apps/cli/src/daemon/index.ts`     |
+| `apps/cli/src/shared/`     | `NO_COLOR` / `FORCE_COLOR` / TTY color guards (`colors.ts`) and embedded asset types.        | `apps/cli/src/shared/terminal/`    |
+| `apps/cli/src/index.ts`    | Curated programmatic CLI seam (`createProgram`, `runCli`, `startDaemon`).                    | `apps/cli/src/index.ts`            |
 
 ## Command tree
 
@@ -74,7 +75,7 @@ sequenceDiagram
 
 ### Scoped LIFO teardown
 
-`apps/cli/src/app/main.ts`, `apps/cli/src/commands/web/command.ts`, and `apps/cli/src/commands/web/daemon.ts` pair `attachHostSignals` with per-instance `createTeardown()` scopes from `@devtools/core/node`:
+`apps/cli/src/app/main.ts`, `apps/cli/src/commands/web/command.ts`, and `apps/cli/src/daemon/daemon.ts` pair `attachHostSignals` with per-instance `createTeardown()` scopes from `@devtools/core/node`:
 
 1. **Host Process Boundary and signal abort.** Intercepts `SIGINT` and `SIGTERM` and triggers `teardown.run()`, which aborts `teardown.signal` immediately before running deferred steps so `POST /api/lighthouse/audits` rejects new jobs with `503 SERVICE_UNAVAILABLE` (a second signal force-exits with `130` or `143`).
 2. **Ingress stop.** Runs the last-deferred step `server.stop(true)` (`bindManagedServer`) to stop accepting connections and close open sockets.
