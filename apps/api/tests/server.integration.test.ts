@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { HealthResponseSchema } from "@devtools/core";
 import { createTeardown } from "@devtools/core/node";
 import { openDb } from "@devtools/db";
-import { createLighthouseStore } from "@devtools/lighthouse";
+import { createLighthouseStore } from "@devtools/lighthouse/wiring";
 import {
   ActiveAuditJobResponseSchema,
   ListLighthouseRunsResponseSchema,

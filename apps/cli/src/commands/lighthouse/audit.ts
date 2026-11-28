@@ -1,8 +1,8 @@
+import type { RunLighthouseAuditOptions } from "@devtools/lighthouse/application";
 import type {
   LighthouseAuditExecutionResult,
   LighthouseProgressEvent,
-  RunLighthouseAuditOptions,
-} from "@devtools/lighthouse";
+} from "@devtools/lighthouse/contracts";
 import {
   evaluateBudgets,
   formatBudgetEvaluationMarkdown,

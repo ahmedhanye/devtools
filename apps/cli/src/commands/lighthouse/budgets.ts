@@ -1,7 +1,7 @@
 import type {
   LighthouseCategoryScores,
   LighthouseCoreWebVitals,
-} from "@devtools/lighthouse";
+} from "@devtools/lighthouse/contracts";
 import { type ColorOptions, getColors } from "../../shared/terminal";
 import { InvalidBudgetRuleError } from "./errors";
 import type {

@@ -4,11 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { API_ERROR_CODES, ApiErrorResponseSchema } from "@devtools/core";
 import { openDb, type DbHandle } from "@devtools/db";
-import {
-  createLighthouseStore,
-  type LighthouseBatchExecutionResult,
-  type LighthouseStore,
-} from "@devtools/lighthouse";
+import type { LighthouseStore } from "@devtools/lighthouse/application";
+import type { LighthouseBatchExecutionResult } from "@devtools/lighthouse/contracts";
+import { createLighthouseStore } from "@devtools/lighthouse/wiring";
 import {
   AuditSseCompleteEventSchema,
   AuditSseErrorEventSchema,

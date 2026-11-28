@@ -18,7 +18,7 @@ import type { DbSession } from "@devtools/db";
 import type {
   LighthouseAuditRunner,
   LighthouseStore,
-} from "@devtools/lighthouse";
+} from "@devtools/lighthouse/application";
 import type { Server } from "bun";
 import type { Hono } from "hono";
 import type { ApiBindings } from "../shared/security";

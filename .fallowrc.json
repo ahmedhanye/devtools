@@ -108,8 +108,7 @@
         "name": "lighthouse-wiring",
         "patterns": [
           "packages/lighthouse/src/wiring.ts",
-          "packages/lighthouse/src/serializers.ts",
-          "packages/lighthouse/src/index.ts"
+          "packages/lighthouse/src/serializers.ts"
         ]
       },
       {

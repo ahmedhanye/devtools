@@ -9,13 +9,13 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDb, sql, type DbHandle } from "@devtools/db";
+import type { LighthouseStore } from "../src/application";
 import {
   AmbiguousRunIdError,
   LighthouseRunNotFoundError,
-  createLighthouseStore,
-  type LighthouseStore,
   type NewLighthouseRunRecord,
-} from "../src";
+} from "../src/contracts";
+import { createLighthouseStore } from "../src/wiring";
 import { MIN_PREFIX_LENGTH } from "../src/infra/persistence/sqlite-runs";
 
 const DEFAULT_SAMPLE_ROW: NewLighthouseRunRecord = {

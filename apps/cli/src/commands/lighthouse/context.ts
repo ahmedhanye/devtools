@@ -1,5 +1,5 @@
 import type { EnvMap } from "@devtools/core";
-import type { LighthouseStore } from "@devtools/lighthouse";
+import type { LighthouseStore } from "@devtools/lighthouse/application";
 import { getColors, isStreamTTY } from "../../shared/terminal";
 import type { LighthouseCliContextDeps } from "./types";
 

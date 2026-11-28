@@ -1,10 +1,10 @@
 import { API_ERROR_CODES, type EnvMap } from "@devtools/core";
 import { openDb, type DbHandle, type DbSession } from "@devtools/db";
-import {
-  createLighthouseStore,
-  type LighthouseAuditRunner,
-  type LighthouseStore,
-} from "@devtools/lighthouse";
+import type {
+  LighthouseAuditRunner,
+  LighthouseStore,
+} from "@devtools/lighthouse/application";
+import { createLighthouseStore } from "@devtools/lighthouse/wiring";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { createHealthRoutes } from "../modules/health";

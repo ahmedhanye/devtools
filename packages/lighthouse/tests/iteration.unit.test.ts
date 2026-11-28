@@ -4,7 +4,7 @@ import type {
   BrowserResolution,
   ResolveBrowserOptions,
 } from "@devtools/browser";
-import { AuditCancelledError } from "../src";
+import { AuditCancelledError } from "../src/contracts";
 import {
   executeBatchWithPorts,
   type ExecuteIterationParams,

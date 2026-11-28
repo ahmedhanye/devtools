@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { openDb } from "@devtools/db";
-import { createLighthouseStore } from "@devtools/lighthouse";
+import { createLighthouseStore } from "@devtools/lighthouse/wiring";
 
 const binPath = resolve(__dirname, "../bin/devtools.js");
 

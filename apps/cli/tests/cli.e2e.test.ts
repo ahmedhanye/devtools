@@ -14,7 +14,7 @@ import {
   HealthResponseSchema,
 } from "@devtools/core";
 import { openDb } from "@devtools/db";
-import { createLighthouseStore } from "@devtools/lighthouse";
+import { createLighthouseStore } from "@devtools/lighthouse/wiring";
 import {
   AuditSseErrorEventSchema,
   AuditSseProgressEventSchema,

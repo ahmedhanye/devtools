@@ -11,10 +11,8 @@ import { join } from "node:path";
 import { ApiErrorResponseSchema, HealthResponseSchema } from "@devtools/core";
 import { createTeardown } from "@devtools/core/node";
 import { openDb } from "@devtools/db";
-import {
-  AuditCancelledError,
-  createLighthouseStore,
-} from "@devtools/lighthouse";
+import { AuditCancelledError } from "@devtools/lighthouse/contracts";
+import { createLighthouseStore } from "@devtools/lighthouse/wiring";
 import {
   ListLighthouseRunsResponseSchema,
   TriggerLighthouseAuditResponseSchema,

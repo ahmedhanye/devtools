@@ -11,16 +11,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InvalidBrowserPathError } from "@devtools/browser";
 import { openDb, type DbHandle } from "@devtools/db";
+import type {
+  ExecuteIterationParams,
+  LighthouseStore,
+} from "../src/application";
 import {
   AuditCancelledError,
-  createLighthouseStore,
-  executeLighthouseBatch,
   InvalidAuditOptionsError,
-  type ExecuteIterationParams,
   type LighthouseProgressEvent,
-  type LighthouseStore,
   type SingleIterationResult,
-} from "../src";
+} from "../src/contracts";
+import { createLighthouseStore, executeLighthouseBatch } from "../src/wiring";
 import { executeIteration } from "../src/infra/runtime/iteration";
 
 function makeMockIterationResult(

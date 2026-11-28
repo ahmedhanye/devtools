@@ -9,19 +9,21 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { resolveCanonicalArtifactsDir } from "../src/config";
 import {
   AuditCancelledError,
-  EMPTY_LIGHTHOUSE_RUN_SUMMARY,
   InvalidAuditOptionsError,
   LighthouseRunNotFoundError,
   WorkerExecutionError,
-  resolveCanonicalArtifactsDir,
+  type LighthouseRunListRecord,
+  type LighthouseRunRecord,
+} from "../src/contracts";
+import { EMPTY_LIGHTHOUSE_RUN_SUMMARY } from "../src/domain";
+import {
   serializeAuditError,
   serializeLighthouseRunDetail,
   serializeLighthouseRunListItem,
-  type LighthouseRunListRecord,
-  type LighthouseRunRecord,
-} from "../src";
+} from "../src/serializers";
 
 function makeRecord(
   artifactsDir: string,

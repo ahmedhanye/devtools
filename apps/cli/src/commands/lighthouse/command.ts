@@ -1,5 +1,5 @@
 import type { EnvMap } from "@devtools/core";
-import type { LighthouseStore } from "@devtools/lighthouse";
+import type { LighthouseStore } from "@devtools/lighthouse/application";
 import { InvalidArgumentError, Option, type Command } from "commander";
 import type {
   LighthouseAuditCommandDeps,

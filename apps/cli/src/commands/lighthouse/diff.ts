@@ -1,4 +1,4 @@
-import type { LighthouseStore } from "@devtools/lighthouse";
+import type { LighthouseStore } from "@devtools/lighthouse/application";
 import {
   connectRequiredLighthouseStore,
   createLighthouseCliContext,
