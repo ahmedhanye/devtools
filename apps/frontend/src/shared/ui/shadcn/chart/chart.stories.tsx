@@ -1,6 +1,6 @@
 import { Component, lazy, type ReactNode, Suspense } from "react";
 import type * as RechartsModule from "recharts";
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { Activity } from "lucide-react";
 import { expect, within } from "storybook/test";
 import {

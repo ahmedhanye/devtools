@@ -14,14 +14,22 @@
   ],
   "tasks": {
     "transit": {
+      "description": "Internal cache-invalidation node for buildless JIT workspace dependencies",
       "dependsOn": ["^transit"]
     },
+    "dev": {
+      "description": "Run workspace development server",
+      "cache": false,
+      "persistent": true
+    },
     "typecheck": {
+      "description": "Typecheck workspace TypeScript sources via tsgo",
       "dependsOn": ["transit"],
       "outputLogs": "errors-only",
       "outputs": []
     },
     "//#typecheck:scripts": {
+      "description": "Typecheck repository tooling scripts under scripts/",
       "inputs": [
         "scripts/**/*.ts",
         "scripts/tsconfig.json",
@@ -33,6 +41,7 @@
       "outputs": []
     },
     "build": {
+      "description": "Build deployable applications and documentation site",
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", "!**/*.stories.{tsx,jsx,mdx}"],
       "outputLogs": "errors-only",
@@ -46,6 +55,7 @@
       ]
     },
     "build-storybook": {
+      "description": "Build static Storybook component catalog",
       "dependsOn": ["^build"],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -57,80 +67,39 @@
       "outputLogs": "errors-only",
       "outputs": ["storybook-static/**"]
     },
-    "//#build:bin": {
-      "inputs": [
-        "apps/cli/**",
-        "apps/api/**",
-        "packages/**",
-        "package.json",
-        "bun.lock",
-        "!**/coverage/**",
-        "!**/dist/**",
-        "!**/.turbo/**",
-        "!**/.next/**",
-        "!**/out/**"
-      ],
-      "outputLogs": "errors-only",
-      "outputs": ["dist/devtools"]
-    },
-    "//#smoke:bin": {
-      "dependsOn": ["//#build:bin"],
-      "inputs": ["dist/devtools"],
-      "outputLogs": "errors-only",
-      "outputs": []
-    },
     "test": {
+      "description": "Run workspace test suites",
       "dependsOn": ["^build", "transit"],
       "outputLogs": "errors-only",
       "outputs": []
     },
     "test:unit": {
+      "description": "Run workspace unit tests",
       "dependsOn": ["transit"],
       "outputLogs": "errors-only",
       "outputs": []
     },
     "test:integration": {
+      "description": "Run workspace integration tests",
       "dependsOn": ["transit"],
       "outputLogs": "errors-only",
       "outputs": []
     },
     "test:e2e": {
+      "description": "Run workspace end-to-end tests",
       "dependsOn": ["transit"],
       "outputLogs": "errors-only",
       "outputs": []
     },
     "test:coverage": {
+      "description": "Run workspace tests with LCOV coverage output",
       "dependsOn": ["transit"],
       "inputs": ["$TURBO_DEFAULT$", "!coverage/**"],
       "outputLogs": "errors-only",
       "outputs": ["coverage/lcov.info"]
     },
-    "@devtools/cli#test": {
-      "dependsOn": ["//#build:bin", "@devtools/frontend#build", "transit"],
-      "outputLogs": "errors-only",
-      "outputs": []
-    },
-    "@devtools/cli#test:e2e": {
-      "dependsOn": ["//#build:bin", "@devtools/frontend#build", "transit"],
-      "outputLogs": "errors-only",
-      "outputs": []
-    },
-    "@devtools/cli#test:coverage": {
-      "dependsOn": ["//#build:bin", "@devtools/frontend#build", "transit"],
-      "inputs": [
-        "apps/cli/**",
-        "apps/api/**",
-        "packages/**",
-        "dist/devtools",
-        "bunfig.toml",
-        "bun.lock",
-        "!**/coverage/**",
-        "!**/.turbo/**"
-      ],
-      "outputLogs": "errors-only",
-      "outputs": ["coverage/lcov.info"]
-    },
     "//#test:scripts": {
+      "description": "Run tests for repository scripts",
       "inputs": [
         "scripts/**/*.ts",
         "scripts/tsconfig.json",
@@ -145,6 +114,7 @@
       "outputs": []
     },
     "//#test:unit:scripts": {
+      "description": "Run unit tests for repository scripts",
       "inputs": [
         "scripts/**/*.ts",
         "scripts/tsconfig.json",
@@ -159,6 +129,7 @@
       "outputs": []
     },
     "//#test:coverage:scripts": {
+      "description": "Run repository script tests with LCOV coverage output",
       "inputs": [
         "scripts/**/*.ts",
         "scripts/tsconfig.json",
@@ -172,7 +143,31 @@
       "outputLogs": "errors-only",
       "outputs": ["coverage/scripts/lcov.info"]
     },
+    "//#boundaries": {
+      "description": "Verify Turborepo workspace import boundaries and undeclared dependencies",
+      "inputs": [
+        "apps/**/*.{ts,tsx,js,jsx,mjs}",
+        "packages/**/*.{ts,tsx,js,jsx,mjs}",
+        "site/**/*.{ts,tsx,js,jsx,mjs}",
+        "apps/*/package.json",
+        "packages/*/package.json",
+        "site/package.json",
+        "package.json",
+        "turbo.json",
+        "apps/*/turbo.json",
+        "!**/coverage/**",
+        "!**/.next/**",
+        "!**/out/**",
+        "!**/.source/**",
+        "!**/dist/**",
+        "!**/storybook-static/**",
+        "!**/.turbo/**"
+      ],
+      "outputLogs": "errors-only",
+      "outputs": []
+    },
     "//#lint": {
+      "description": "Lint repository source files with oxlint",
       "inputs": [
         "apps/**/*.{ts,tsx,js,jsx,mjs}",
         "packages/**/*.{ts,tsx,js,jsx,mjs}",
@@ -195,6 +190,7 @@
       "outputs": []
     },
     "//#format:check": {
+      "description": "Check formatting across repository files with oxfmt",
       "inputs": [
         "apps/**",
         "packages/**",
@@ -219,6 +215,7 @@
       "outputs": []
     },
     "//#fallow:check": {
+      "description": "Check dead code, duplication, complexity, and architectural boundaries with fallow",
       "inputs": [
         "apps/**/*.{ts,tsx}",
         "packages/**/*.{ts,tsx}",
@@ -240,11 +237,13 @@
       "outputs": []
     },
     "//#lint:agents": {
+      "description": "Verify agent governance rules and skill manifests",
       "inputs": [".agents/**", "scripts/verify-agents-governance/**"],
       "outputLogs": "errors-only",
       "outputs": []
     },
     "//#verify:db-migrations": {
+      "description": "Verify Drizzle schema matches generated SQLite migrations",
       "inputs": [
         "packages/db/src/schema/**",
         "packages/db/drizzle/**",
@@ -256,16 +255,19 @@
       "outputs": []
     },
     "//#verify:actions-lock": {
+      "description": "Verify GitHub Actions workflow pins via actions-lock",
       "inputs": [".github/workflows/**"],
       "outputLogs": "errors-only",
       "outputs": []
     },
     "lint:fsd": {
+      "description": "Verify Feature-Sliced Design v2.1 rules with Steiger",
       "inputs": ["src/**", "steiger.config.js"],
       "outputLogs": "errors-only",
       "outputs": []
     },
     "//#react-doctor:design": {
+      "description": "Run react-doctor design and accessibility checks on frontend and site",
       "inputs": [
         "apps/frontend/**/*.{ts,tsx,css}",
         "site/**/*.{ts,tsx,css}",

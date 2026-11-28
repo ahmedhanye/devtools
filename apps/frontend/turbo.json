@@ -1,0 +1,12 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "dev": {
+      "description": "Start Next.js frontend dev server alongside the local API sidecar",
+      "with": ["@devtools/api#dev"],
+      "cache": false,
+      "persistent": true
+    }
+  }
+}
