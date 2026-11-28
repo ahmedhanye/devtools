@@ -31,11 +31,12 @@ Follow [Review and verification guide](REVIEW.md) before opening a pull request.
 
 ## Contributing guides
 
-| Guide                                                                   | Read when                                                                                             |
-| :---------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------- |
-| [Issue tracking and management](docs/contributing/issues.md)            | Creating Specs or Tickets, claiming work, linking sub-issues, or updating project board statuses.     |
-| [Commits](docs/contributing/commits.md)                                 | Choosing commit types and scopes, formatting headers or bodies, or splitting logical changes.         |
-| [Pull requests](docs/contributing/pull-request.md)                      | Opening, updating, stacking, or merging pull requests (routes to single-PR, stacked-PR, and replies). |
-| [Pull request comments](docs/contributing/pull-request/comments.md)     | Inspecting, classifying, and replying to unresolved pull request review threads.                      |
-| [Pushing changes and review synchronization](docs/contributing/push.md) | Running pre-push gates, pushing branches or stacks, inspecting active PRs, and replying to reviews.   |
-| [Releases and distribution](docs/contributing/releases.md)              | Managing milestones, release cadence, Release Please triggers, version bumps, and binary artifacts.   |
+| Guide                                                                   | Read when                                                                                                  |
+| :---------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------- |
+| [Issue tracking and management](docs/contributing/issues.md)            | Creating Specs or Tickets, claiming work, linking sub-issues, or updating project board statuses.          |
+| [Branches](docs/contributing/branches.md)                               | Configuring local Git defaults, naming branches, and auditing or deleting stale local and remote branches. |
+| [Commits](docs/contributing/commits.md)                                 | Choosing commit types and scopes, formatting headers or bodies, or splitting logical changes.              |
+| [Pull requests](docs/contributing/pull-request.md)                      | Opening, updating, stacking, or merging pull requests (routes to single-PR, stacked-PR, and replies).      |
+| [Pull request comments](docs/contributing/pull-request/comments.md)     | Inspecting, classifying, and replying to unresolved pull request review threads.                           |
+| [Pushing changes and review synchronization](docs/contributing/push.md) | Running pre-push gates, pushing branches or stacks, inspecting active PRs, and replying to reviews.        |
+| [Releases and distribution](docs/contributing/releases.md)              | Managing milestones, release cadence, Release Please triggers, version bumps, and binary artifacts.        |
