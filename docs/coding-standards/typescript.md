@@ -15,6 +15,12 @@ All workspaces inherit compiler settings from [`tsconfig.base.json`](../../tscon
 - **Ban `any` and unsafe assertions.** Never use `any`, and avoid unsafe narrowing `as` assertions in production source (`typescript/no-unsafe-type-assertion`). Narrow `unknown` inputs with type guards, discriminated unions, or Zod schemas.
 - **Inference vs. explicit annotations.** Infer local variables and internal helpers; annotate exported functions, class methods, and public entrypoints explicitly to lock down public contracts.
 
+## Public entrypoints and `index.ts` rules
+
+- **Boundary-only `index.ts` files.** Create `index.ts` files only at `package.json` `exports` entrypoints and mechanically enforced module or slice boundaries (FSD slices, backend/CLI vertical slices, and package concern subpaths). Never add ad-hoc convenience barrels for internal folders.
+- **Pure declarative named re-exports.** Keep every `index.ts` strictly to explicit named `export { ... }` and `export type { ... }` statements with zero runtime logic and zero wildcard re-exports (`export *` / `export type *`).
+- **Automated enforcement.** Oxlint (`oxc/no-barrel-file`) bans wildcard barrels across all workspaces, Fallow (`boundaries.zones[].publicFiles`) enforces `index.ts` entrypoints across backend, CLI, and package zones, Steiger enforces FSD slice public APIs in `apps/frontend`, and `turbo boundaries` enforces workspace `exports`.
+
 ## Schema-first domain contracts (Zod)
 
 Validate all data crossing system boundaries (HTTP payloads, CLI flags, environment config, database rows, IPC messages) with Zod, and derive TypeScript types directly from schemas using `z.infer`:
