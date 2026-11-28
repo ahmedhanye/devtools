@@ -6,18 +6,20 @@ At-a-glance map of workspaces, folder ownership, dependency boundaries, and dire
 
 DevTools partitions code into three tiers linked via Bun workspace references (`"workspace:*"`):
 
-| Tier             | Directory             | Package                | Hosts                                                                                     |
-| :--------------- | :-------------------- | :--------------------- | :---------------------------------------------------------------------------------------- |
-| **Applications** | `apps/cli`            | `@devtools/cli`        | CLI commands, programmatic CLI seams, Daemon host, lazy DB wiring, and binary entrypoint. |
-| **Applications** | `apps/api`            | `@devtools/api`        | In-process Hono HTTP API (`/api/*`), loopback security middleware, and `DbHandle` wiring. |
-| **Applications** | `apps/frontend`       | `@devtools/frontend`   | Next.js App Router dashboard (FSD v2.1) exported as static assets for the Daemon.         |
-| **Packages**     | `packages/core`       | `@devtools/core`       | Browser-safe platform schemas and errors (`.`) plus Node/Bun host utilities (`./node`).   |
-| **Packages**     | `packages/db`         | `@devtools/db`         | Embedded SQLite (`bun:sqlite`) `DbSession`/`DbHandle` lifecycle and Drizzle schemas.      |
-| **Packages**     | `packages/browser`    | `@devtools/browser`    | Chromium Browser Resolution Waterfall, Managed Browser Cache, and Chrome launcher.        |
-| **Packages**     | `packages/lighthouse` | `@devtools/lighthouse` | In-process Lighthouse engine, `AuditJobManager`, `./schemas`, and 3-tier persistence.     |
-| **Site**         | `site`                | `@devtools/site`       | Public Fumadocs documentation website and `/llms.txt` endpoints.                          |
+| Tier             | Directory             | Package                | Hosts                                                                                        |
+| :--------------- | :-------------------- | :--------------------- | :------------------------------------------------------------------------------------------- |
+| **Applications** | `apps/cli`            | `@devtools/cli`        | CLI commands, programmatic CLI seams, Daemon host, lazy DB wiring, and binary entrypoint.    |
+| **Applications** | `apps/api`            | `@devtools/api`        | In-process Hono HTTP API (`/api/*`), loopback security middleware, and `DbHandle` wiring.    |
+| **Applications** | `apps/frontend`       | `@devtools/frontend`   | Next.js App Router dashboard (FSD v2.1) exported as static assets for the Daemon.            |
+| **Packages**     | `packages/core`       | `@devtools/core`       | Browser-safe platform schemas and errors (`.`) plus Node/Bun host utilities (`./node`).      |
+| **Packages**     | `packages/db`         | `@devtools/db`         | Embedded SQLite (`bun:sqlite`) `DbSession`/`DbHandle` lifecycle and Drizzle schemas.         |
+| **Packages**     | `packages/browser`    | `@devtools/browser`    | Chromium Browser Resolution Waterfall, Managed Browser Cache, and Chrome launcher.           |
+| **Packages**     | `packages/lighthouse` | `@devtools/lighthouse` | In-process Lighthouse engine, `AuditJobManager`, `./schemas`, and 3-tier persistence.        |
+| **Site**         | `site`                | `@devtools/site`       | Product Docs website built with Fumadocs (`site/content/docs/**`) and `/llms.txt` endpoints. |
 
-Repository tooling lives outside workspace packages under `scripts/` (coverage, diff coverage, secret scanning, agent governance, migration checks), `.github/` (CI and release workflows), and `docs/` (engineering guides, ADRs, glossaries).
+Repository tooling lives outside workspace packages under `scripts/` (coverage, diff coverage, secret scanning, agent governance, migration checks), `.github/` (CI and release workflows), and Engineering Docs in root `*.md` and `docs/` (architecture guides, ADRs, coding standards, testing, review, contributing guides, and `GLOSSARY.md`).
+
+Engineering Docs (`root *.md`, `docs/**`, workspace `README.md`) cover internal architecture, standards, and contributor workflows. Product Docs (`site/content/docs/**`) cover public tutorials, how-to guides, references, and explanations for DevTools users, and do not duplicate contributor internals.
 
 ## Component interaction model
 
