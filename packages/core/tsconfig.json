@@ -1,9 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": ".",
-    "declaration": true,
-    "erasableSyntaxOnly": true
+    "rootDir": "."
   },
   "include": ["src/**/*", "tests/**/*"]
 }
