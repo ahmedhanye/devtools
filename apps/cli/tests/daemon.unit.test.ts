@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  resolveDaemonConfig,
-  resolveStaticDir,
-} from "../src/commands/web/daemon";
+import { resolveDaemonConfig, resolveStaticDir } from "../src/daemon/daemon";
 
 describe("Daemon Configuration & Static Directory Resolution", () => {
   test("resolveDaemonConfig returns defaults when options and env are empty", () => {

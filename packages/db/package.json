@@ -3,6 +3,7 @@
   "description": "Database persistence schemas and migration utilities for DevTools",
   "private": true,
   "type": "module",
+  "sideEffects": false,
   "exports": {
     ".": "./src/index.ts"
   },

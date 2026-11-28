@@ -18,7 +18,7 @@ export {
   schema,
   systemMetadata,
   type LighthouseRunRow,
-} from "./schema";
+} from "./schema/schema";
 
 // Re-exported Drizzle primitives & helpers
 export { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
