@@ -27,14 +27,14 @@ Developer tooling monorepo providing local workflows across CLI, Daemon, HTTP AP
 # Install workspace dependencies and Git hooks
 bun install
 
-# Run linters, typechecks, architecture gates, coverage, and binary smoke checks
+# Start the web dashboard (:3000) and API dev server (:4000) together
+bun run dev
+
+# Start the Fumadocs documentation site (:3001)
+bun run dev:site
+
+# Run linters, boundary checks, typechecks, architecture gates, coverage, and binary smoke checks
 bun run verify
-```
-
-To run the Fumadocs documentation site locally on `http://localhost:3001`:
-
-```bash
-bun --filter @devtools/site dev
 ```
 
 ## Engineering documentation
