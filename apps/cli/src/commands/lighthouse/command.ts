@@ -1,5 +1,5 @@
 import type { EnvMap } from "@devtools/core";
-import type { LighthouseStore } from "@devtools/lighthouse";
+import type { LighthouseStore } from "@devtools/lighthouse/application";
 import { InvalidArgumentError, Option, type Command } from "commander";
 import type {
   LighthouseAuditCommandDeps,
@@ -11,8 +11,6 @@ import type {
   LighthouseOpenCommandDeps,
   LighthouseOpenCommandOptions,
 } from "./types";
-
-export type * from "./types";
 
 /**
  * Injectable action handlers and composition-root host dependencies for testing

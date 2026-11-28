@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
-  "entry": ["apps/frontend/steiger.config.js", "apps/cli/src/index.ts"],
+  "entry": ["apps/frontend/steiger.config.js"],
   "ignoreDependencyOverrides": [
     {
       "package": "eslint-plugin-react-hooks/zod-validation-error",
@@ -86,19 +86,23 @@
         "patterns": [
           "packages/lighthouse/src/contracts/**",
           "!packages/lighthouse/src/contracts/schemas.ts"
-        ]
+        ],
+        "publicFiles": ["**/index.ts"]
       },
       {
         "name": "lighthouse-domain",
-        "patterns": ["packages/lighthouse/src/domain/**"]
+        "patterns": ["packages/lighthouse/src/domain/**"],
+        "publicFiles": ["**/index.ts"]
       },
       {
         "name": "lighthouse-application",
-        "patterns": ["packages/lighthouse/src/application/**"]
+        "patterns": ["packages/lighthouse/src/application/**"],
+        "publicFiles": ["**/index.ts"]
       },
       {
         "name": "lighthouse-config",
-        "patterns": ["packages/lighthouse/src/config/**"]
+        "patterns": ["packages/lighthouse/src/config/**"],
+        "publicFiles": ["**/index.ts"]
       },
       {
         "name": "lighthouse-internals",
@@ -108,33 +112,43 @@
         "name": "lighthouse-wiring",
         "patterns": [
           "packages/lighthouse/src/wiring.ts",
-          "packages/lighthouse/src/serializers.ts",
-          "packages/lighthouse/src/index.ts"
+          "packages/lighthouse/src/serializers.ts"
         ]
       },
       {
         "name": "api-shared",
-        "patterns": ["apps/api/src/shared/**"]
+        "patterns": ["apps/api/src/shared/**"],
+        "publicFiles": ["**/index.ts"]
       },
       {
         "name": "api-modules",
-        "autoDiscover": ["apps/api/src/modules"]
+        "autoDiscover": ["apps/api/src/modules"],
+        "publicFiles": ["**/index.ts"]
       },
       {
         "name": "api-app",
-        "patterns": ["apps/api/src/app/**", "apps/api/src/index.ts"]
+        "patterns": ["apps/api/src/app/**", "apps/api/src/index.ts"],
+        "publicFiles": ["apps/api/src/index.ts", "apps/api/src/app/index.ts"]
       },
       {
         "name": "cli-shared",
-        "patterns": ["apps/cli/src/shared/**"]
+        "patterns": ["apps/cli/src/shared/**"],
+        "publicFiles": ["**/index.ts"]
       },
       {
         "name": "cli-commands",
-        "autoDiscover": ["apps/cli/src/commands"]
+        "autoDiscover": ["apps/cli/src/commands"],
+        "publicFiles": ["**/index.ts"]
+      },
+      {
+        "name": "cli-daemon",
+        "patterns": ["apps/cli/src/daemon/**"],
+        "publicFiles": ["**/index.ts"]
       },
       {
         "name": "cli-app",
-        "patterns": ["apps/cli/src/app/**", "apps/cli/src/index.ts"]
+        "patterns": ["apps/cli/src/app/**", "apps/cli/src/index.ts"],
+        "publicFiles": ["apps/cli/src/index.ts", "apps/cli/src/app/index.ts"]
       },
       {
         "name": "frontend-app",
@@ -274,9 +288,13 @@
         "allow": ["cli-shared", "core", "core-node"]
       },
       {
-        "from": "cli-commands/web",
+        "from": "cli-daemon",
         "allow": ["cli-shared", "core", "core-node", "db", "api-app"],
         "allowTypeOnly": ["lighthouse-application", "lighthouse-wiring"]
+      },
+      {
+        "from": "cli-commands/web",
+        "allow": ["cli-shared", "cli-daemon", "core", "core-node"]
       },
       {
         "from": "cli-commands/browser",
@@ -304,6 +322,7 @@
           "cli-commands/web",
           "cli-commands/browser",
           "cli-commands/lighthouse",
+          "cli-daemon",
           "core",
           "core-node",
           "db",

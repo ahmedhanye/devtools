@@ -13,7 +13,7 @@ import {
 } from "@devtools/core";
 import { createTeardown } from "@devtools/core/node";
 import type { DbSession } from "@devtools/db";
-import type { LighthouseStore } from "@devtools/lighthouse";
+import type { LighthouseStore } from "@devtools/lighthouse/application";
 import type { Server } from "bun";
 
 /**
@@ -78,7 +78,7 @@ export function resolveStaticDir(
     return resolve(process.cwd(), explicit);
   }
 
-  const cliRoot = resolve(import.meta.dir, "../../..");
+  const cliRoot = resolve(import.meta.dir, "../..");
   const candidates = [
     resolve(cliRoot, "static"),
     resolve(cliRoot, "../frontend/dist"),

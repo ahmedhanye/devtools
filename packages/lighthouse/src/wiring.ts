@@ -16,6 +16,7 @@ import {
   createSqliteLighthouseStore,
   type LighthouseStoreOptions,
 } from "./infra/persistence/store-factory";
+export type { LighthouseStoreOptions };
 import {
   executeIteration,
   generateLighthouseHtmlReport,

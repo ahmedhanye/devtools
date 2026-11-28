@@ -1,12 +1,14 @@
 import type { EnvMap } from "@devtools/core";
 import type {
-  LighthouseAuditExecutionResult,
-  LighthouseFormFactor,
   LighthouseIterationExecutor,
   LighthouseStore,
-  LighthouseThrottlingMethod,
   RunLighthouseAuditOptions,
-} from "@devtools/lighthouse";
+} from "@devtools/lighthouse/application";
+import type {
+  LighthouseAuditExecutionResult,
+  LighthouseFormFactor,
+  LighthouseThrottlingMethod,
+} from "@devtools/lighthouse/contracts";
 
 /**
  * Metric polarity determining whether higher or lower values represent improvement.

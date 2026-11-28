@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type {
   LighthouseRunRecord,
   NormalizedLighthouseRun,
-} from "@devtools/lighthouse";
+} from "@devtools/lighthouse/contracts";
 import {
   formatAgentMarkdown,
   stripAnsi,

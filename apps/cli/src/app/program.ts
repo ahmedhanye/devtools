@@ -5,7 +5,7 @@ import type {
   SignalSourcePort,
 } from "@devtools/core/node";
 import type { DbHandle } from "@devtools/db";
-import type { LighthouseStore } from "@devtools/lighthouse";
+import type { LighthouseStore } from "@devtools/lighthouse/application";
 import { Command } from "commander";
 import { registerBrowserCommands } from "../commands/browser";
 import { registerLighthouseCommands } from "../commands/lighthouse";
@@ -62,7 +62,7 @@ export function createLazyLighthouseStore(): {
     closeStore();
     const [{ openDb }, { createLighthouseStore }] = await Promise.all([
       import("@devtools/db"),
-      import("@devtools/lighthouse"),
+      import("@devtools/lighthouse/wiring"),
     ]);
     const db = openDb({ env: options?.env });
     activeDb = db;

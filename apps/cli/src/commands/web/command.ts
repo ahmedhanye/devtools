@@ -8,7 +8,7 @@ import {
 } from "@devtools/core/node";
 import { InvalidArgumentError, type Command } from "commander";
 import { getColors, isStreamTTY } from "../../shared/terminal";
-import type { DaemonInstance, StartDaemonOptions } from "./daemon";
+import type { DaemonInstance, StartDaemonOptions } from "../../daemon";
 import { findNextAvailablePort, isPortAvailable } from "./port";
 
 const pc = getColors();
@@ -161,7 +161,7 @@ export async function runWebCommand(
   deps?: WebCommandDeps,
 ): Promise<DaemonInstance | undefined> {
   const output = deps?.output ?? createConsoleOutput();
-  const { resolveDaemonConfig, startDaemon } = await import("./daemon");
+  const { resolveDaemonConfig, startDaemon } = await import("../../daemon");
   let config: ReturnType<typeof resolveDaemonConfig>;
   try {
     config = resolveDaemonConfig(options);

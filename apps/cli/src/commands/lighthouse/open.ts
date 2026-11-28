@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
-import type { LighthouseRunRecord } from "@devtools/lighthouse";
+import type { LighthouseRunRecord } from "@devtools/lighthouse/contracts";
 import {
   connectRequiredLighthouseStore,
   createLighthouseCliContext,

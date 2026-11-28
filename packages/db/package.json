@@ -3,11 +3,9 @@
   "description": "Database persistence schemas and migration utilities for DevTools",
   "private": true,
   "type": "module",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts",
-    "./schema": "./src/schema/index.ts"
+    ".": "./src/index.ts"
   },
   "scripts": {
     "db:generate": "bunx --bun drizzle-kit generate",

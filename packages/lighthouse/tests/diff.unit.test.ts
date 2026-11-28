@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { type LighthouseRunRecord } from "../src";
+import type { LighthouseRunRecord } from "../src/contracts";
 import {
   computeInsightDiff,
   computeRunDeltas,

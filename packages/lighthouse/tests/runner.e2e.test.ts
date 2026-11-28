@@ -3,11 +3,9 @@ import { openDb, type DbHandle } from "@devtools/db";
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  createLighthouseStore,
-  type LighthouseProgressEvent,
-  type LighthouseStore,
-} from "../src";
+import type { LighthouseStore } from "../src/application";
+import type { LighthouseProgressEvent } from "../src/contracts";
+import { createLighthouseStore } from "../src/wiring";
 
 describe("Live Lighthouse Headless Chrome Navigation (E2E)", () => {
   let tempArtifactsDir: string;

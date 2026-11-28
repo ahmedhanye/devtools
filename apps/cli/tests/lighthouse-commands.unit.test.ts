@@ -4,13 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { openDb, type DbHandle } from "@devtools/db";
-import {
-  createLighthouseStore,
-  type LighthouseRunRecord,
-  type LighthouseStore,
-  type NewLighthouseRunRecord,
-  type NormalizedLighthouseRun,
-} from "@devtools/lighthouse";
+import type { LighthouseStore } from "@devtools/lighthouse/application";
+import type {
+  LighthouseRunRecord,
+  NewLighthouseRunRecord,
+  NormalizedLighthouseRun,
+} from "@devtools/lighthouse/contracts";
+import { createLighthouseStore } from "@devtools/lighthouse/wiring";
 import { createProgram } from "../src/app";
 import { createLazyLighthouseStore } from "../src/app/program";
 import { runLighthouseAuditCommand } from "../src/commands/lighthouse/audit";

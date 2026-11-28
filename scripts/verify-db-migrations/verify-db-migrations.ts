@@ -9,7 +9,7 @@ import {
   EMBEDDED_SQL_BY_TAG,
   type JournalEntry,
 } from "../../packages/db/src/migrator";
-import { schema } from "../../packages/db/src/schema";
+import { schema } from "../../packages/db/src/schema/schema";
 
 /**
  * Minimal subprocess result interface for injectable command execution in tests.

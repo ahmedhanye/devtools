@@ -11,10 +11,8 @@ import { join } from "node:path";
 import { ApiErrorResponseSchema, HealthResponseSchema } from "@devtools/core";
 import { createTeardown } from "@devtools/core/node";
 import { openDb } from "@devtools/db";
-import {
-  AuditCancelledError,
-  createLighthouseStore,
-} from "@devtools/lighthouse";
+import { AuditCancelledError } from "@devtools/lighthouse/contracts";
+import { createLighthouseStore } from "@devtools/lighthouse/wiring";
 import {
   ListLighthouseRunsResponseSchema,
   TriggerLighthouseAuditResponseSchema,
@@ -24,7 +22,7 @@ import {
   type StartDaemonOptions,
   serveStaticAsset,
   startDaemon,
-} from "../src/commands/web/daemon";
+} from "../src/daemon/daemon";
 
 interface GatedAuditControl {
   started: Promise<void>;

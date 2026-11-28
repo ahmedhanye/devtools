@@ -3,7 +3,7 @@ import type { EnvMap } from "@devtools/core";
 import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { ensureParentDirectory, resolveDatabaseTargetPath } from "./config";
 import { initializeBaselineSchema } from "./migrator";
-import { schema } from "./schema";
+import { schema } from "./schema/schema";
 
 const DEFAULT_BUSY_TIMEOUT_MS = 5000;
 const DEFAULT_IDLE_TIMEOUT_MS = 30_000;
